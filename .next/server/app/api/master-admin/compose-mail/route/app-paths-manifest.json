@@ -1,0 +1,3 @@
+{
+  "/api/master-admin/compose-mail/route": "app/api/master-admin/compose-mail/route.js"
+}

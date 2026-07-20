@@ -1,0 +1,1 @@
+globalThis.__RSC_MANIFEST=(globalThis.__RSC_MANIFEST||{});globalThis.__RSC_MANIFEST["/api/customer/bootstrap/route"]={"moduleLoading":{"prefix":"/_next/"},"ssrModuleMapping":{},"edgeSSRModuleMapping":{},"clientModules":{},"entryCSSFiles":{"C:\\xampp\\htdocs\\ar360\\src\\app\\api\\customer\\bootstrap\\route":[]},"rscModuleMapping":{},"edgeRscModuleMapping":{}};

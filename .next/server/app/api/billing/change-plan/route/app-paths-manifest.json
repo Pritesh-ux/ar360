@@ -1,0 +1,3 @@
+{
+  "/api/billing/change-plan/route": "app/api/billing/change-plan/route.js"
+}

@@ -1,0 +1,3 @@
+module.exports=[719901,(e,r,o)=>{r.exports=e.x("dns/promises",()=>require("dns/promises"))},687769,(e,r,o)=>{r.exports=e.x("node:events",()=>require("node:events"))},761095,(e,r,o)=>{r.exports=e.x("node:net",()=>require("node:net"))},685560,(e,r,o)=>{r.exports=e.x("node:tls",()=>require("node:tls"))},857764,(e,r,o)=>{r.exports=e.x("node:url",()=>require("node:url"))},666680,(e,r,o)=>{r.exports=e.x("node:crypto",()=>require("node:crypto"))},136340,(e,r,o)=>{r.exports=e.x("node:timers/promises",()=>require("node:timers/promises"))},57328,(e,r,o)=>{r.exports=e.x("node:assert",()=>require("node:assert"))},874096,(e,r,o)=>{r.exports=e.x("node:perf_hooks",()=>require("node:perf_hooks"))}];
+
+//# sourceMappingURL=%5Bexternals%5D__1p0n8kz._.js.map

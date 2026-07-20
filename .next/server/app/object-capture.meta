@@ -1,0 +1,17 @@
+{
+  "status": 307,
+  "headers": {
+    "location": "/dashboard/products",
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/object-capture/layout,_N_T_/object-capture/page,_N_T_/object-capture"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/object-capture/__PAGE__",
+    "/object-capture",
+    "/_index",
+    "/_head"
+  ]
+}

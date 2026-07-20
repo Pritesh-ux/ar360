@@ -1,0 +1,9 @@
+{
+  "/api/billing/plans/route": "app/api/billing/plans/route.js",
+  "/api/billing/addons/public/route": "app/api/billing/addons/public/route.js",
+  "/api/customer/bootstrap/route": "app/api/customer/bootstrap/route.js",
+  "/login/page": "app/login/page.js",
+  "/page": "app/page.js",
+  "/dashboard/settings/page": "app/dashboard/settings/page.js",
+  "/dashboard/page": "app/dashboard/page.js"
+}

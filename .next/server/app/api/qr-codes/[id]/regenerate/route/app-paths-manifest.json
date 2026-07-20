@@ -1,0 +1,3 @@
+{
+  "/api/qr-codes/[id]/regenerate/route": "app/api/qr-codes/[id]/regenerate/route.js"
+}

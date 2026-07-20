@@ -1,0 +1,3 @@
+module.exports=[397925,e=>{"use strict";let n=!1;async function r(){if(n||!process.env.SENTRY_DSN?.trim())return null;try{let r=await e.A(755340);return r.init({dsn:process.env.SENTRY_DSN,environment:process.env.SENTRY_ENVIRONMENT||"production",tracesSampleRate:Number(process.env.SENTRY_TRACES_SAMPLE_RATE||.1),enabled:!0}),n=!0,r}catch(e){return console.warn("[monitoring] Sentry init skipped:",e),null}}async function s(){await r()}e.s(["initMonitoring",0,s])},755340,e=>{e.v(n=>Promise.all(["server/chunks/[externals]__1123da5._.js","server/chunks/node_modules_0p-pr20._.js"].map(n=>e.l(n))).then(()=>n(244018)))}];
+
+//# sourceMappingURL=_0p4ses6._.js.map

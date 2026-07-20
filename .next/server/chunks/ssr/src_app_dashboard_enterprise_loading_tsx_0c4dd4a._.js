@@ -1,0 +1,3 @@
+module.exports=[68621,a=>{"use strict";var b=a.i(907997);a.s(["default",0,function(){return(0,b.jsxs)("div",{className:"animate-pulse space-y-6","aria-label":"Loading Enterprise dashboard",children:[(0,b.jsx)("div",{className:"h-16 rounded-[22px] bg-[#F0F0F0]"}),(0,b.jsxs)("div",{className:"grid gap-5 xl:grid-cols-[1.4fr_1fr]",children:[(0,b.jsx)("div",{className:"h-72 rounded-[22px] bg-[#F0F0F0]"}),(0,b.jsx)("div",{className:"h-72 rounded-[22px] bg-[#E5E5E5]"})]}),(0,b.jsx)("div",{className:"h-80 rounded-[22px] bg-[#F0F0F0]"}),(0,b.jsx)("div",{className:"h-64 rounded-[22px] bg-[#F0F0F0]"})]})}])},946716,a=>{a.n(a.i(68621))}];
+
+//# sourceMappingURL=src_app_dashboard_enterprise_loading_tsx_0c4dd4a._.js.map

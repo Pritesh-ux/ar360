@@ -1,0 +1,3 @@
+{
+  "/api/billing/addons/verify/route": "app/api/billing/addons/verify/route.js"
+}

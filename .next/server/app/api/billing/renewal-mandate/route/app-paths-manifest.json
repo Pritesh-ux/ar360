@@ -1,0 +1,3 @@
+{
+  "/api/billing/renewal-mandate/route": "app/api/billing/renewal-mandate/route.js"
+}

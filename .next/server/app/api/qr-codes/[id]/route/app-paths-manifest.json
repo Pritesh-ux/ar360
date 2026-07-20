@@ -1,0 +1,3 @@
+{
+  "/api/qr-codes/[id]/route": "app/api/qr-codes/[id]/route.js"
+}
