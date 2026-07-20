@@ -48,6 +48,8 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "2gb",
     },
     optimizePackageImports: ["lucide-react"],
+    // Avoid Windows/XAMPP EPERM failures from Next's dev MCP log file.
+    mcpServer: false,
   },
 
   compiler: {
