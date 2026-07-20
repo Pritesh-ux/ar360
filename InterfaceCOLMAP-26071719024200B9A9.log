@@ -1,0 +1,62 @@
+19:02:42 [App     ] OpenMVS x64 v2.4.0
+19:02:42 [App     ] Build date: Jan 20 2026, 00:13:37
+19:02:42 [App     ] CPU: 13th Gen Intel(R) Core(TM) i9-13900K (32 cores)
+19:02:42 [App     ] RAM: 31.69GB Physical Memory 128.00TB Virtual Memory
+19:02:42 [App     ] OS: Windows 11+ x64
+19:02:42 [App     ] Disk: 98.57GB (462.77GB) space
+19:02:42 [App     ] SSE & AVX compatible CPU & OS detected
+19:02:42 [App     ] Command line: InterfaceCOLMAP --help
+19:02:42 [App     ] 
+Import/export 3D reconstruction from COLMAP (TXT/BIN format) and to COLMAP (TXT format). 
+In order to import a scene, run COLMAP SfM and next undistort the images (only PINHOLE
+camera model supported for the moment).
+19:02:42 [App     ] Available options:
+
+Generic options:
+  -h [ --help ]                         imports SfM or MVS scene stored in 
+                                        COLMAP undistoreted format OR exports 
+                                        MVS scene to COLMAP format
+  -w [ --working-folder ] arg           working directory (default current 
+                                        directory)
+  -c [ --config-file ] arg (=InterfaceCOLMAP.cfg)
+                                        file name containing program options
+  --archive-type arg (=4294967295)      project archive type: -1-interface, 
+                                        0-text, 1-binary, 2-compressed binary
+  --process-priority arg (=-1)          process priority (below normal by 
+                                        default)
+  --max-threads arg (=0)                maximum number of threads (0 for using 
+                                        all available cores)
+  -v [ --verbosity ] arg (=2)           verbosity level
+
+Main options:
+  -i [ --input-file ] arg               input COLMAP folder containing cameras,
+                                        images and points files OR input MVS 
+                                        project file
+  -p [ --pointcloud-file ] arg          point-cloud with views file name 
+                                        (overwrite existing point-cloud)
+  -o [ --output-file ] arg              output filename for storing the MVS 
+                                        project
+  --image-folder arg (=images/)         folder to the undistorted images
+  -f [ --normalize ] arg (=0)           normalize intrinsics while exporting to
+                                        MVS format
+  -e [ --force-points ] arg (=0)        force exporting point-cloud as sparse 
+                                        points also even if dense point-cloud 
+                                        detected
+  --binary arg (=1)                     use binary format for cameras, images 
+                                        and points files
+  --no-points arg (=0)                  export cameras, images and points files
+                                        but not including the sparse 
+                                        point-cloud
+  --common-intrinsics arg (=0)          force using common intrinsics for all 
+                                        cameras
+19:02:42 [App     ] MEMORYINFO: {
+19:02:42 [App     ] 	PageFaultCount 1665
+19:02:42 [App     ] 	PeakWorkingSetSize 6.24MB
+19:02:42 [App     ] 	WorkingSetSize 6.24MB
+19:02:42 [App     ] 	QuotaPeakPagedPoolUsage 75.81KB
+19:02:42 [App     ] 	QuotaPagedPoolUsage 75.52KB
+19:02:42 [App     ] 	QuotaPeakNonPagedPoolUsage 25.28KB
+19:02:42 [App     ] 	QuotaNonPagedPoolUsage 9.57KB
+19:02:42 [App     ] 	PagefileUsage 1.24MB
+19:02:42 [App     ] 	PeakPagefileUsage 1.24MB
+19:02:42 [App     ] } ENDINFO

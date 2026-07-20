@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="AR360">
+  <rect width="32" height="32" rx="8" fill="#0A0B14"/>
+  <path
+    d="M16 4.2
+       C21.8 4.2 24.7 5.3 26.4 7
+       C28.1 8.7 29.2 11.6 29.2 16
+       C29.2 20.4 28.1 23.3 26.4 25
+       C24.7 26.7 21.8 27.8 16 27.8
+       C10.2 27.8 7.3 26.7 5.6 25
+       C3.9 23.3 2.8 20.4 2.8 16
+       C2.8 11.6 3.9 8.7 5.6 7
+       C7.3 5.3 10.2 4.2 16 4.2Z"
+    fill="none"
+    stroke="#B9FF2C"
+    stroke-width="2.6"
+    stroke-linejoin="round"
+  />
+</svg>

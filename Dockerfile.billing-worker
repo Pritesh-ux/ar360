@@ -1,0 +1,24 @@
+# syntax=docker/dockerfile:1
+FROM node:20-alpine
+
+ARG APP_UID=1001
+ARG APP_GID=1001
+
+WORKDIR /app
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    SKIP_RUNTIME_DDL=true
+
+COPY package.json package-lock.json ./
+RUN npm ci --include=dev && npm cache clean --force
+COPY src ./src
+COPY scripts ./scripts
+COPY database ./database
+COPY tsconfig.json next-env.d.ts ./
+
+RUN addgroup --system --gid "${APP_GID}" ar360 \
+    && adduser --system --uid "${APP_UID}" --ingroup ar360 ar360 \
+    && chown -R ar360:ar360 /app
+
+USER ar360
+CMD ["npm", "run", "worker:razorpay-webhook"]

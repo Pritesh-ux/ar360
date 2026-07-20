@@ -1,0 +1,4778 @@
+@import "tailwindcss";
+
+:root {
+  --color-bg: #F8F9F3;
+  --color-page: #FFFFFF;
+  --color-surface: #FFFFFF;
+  --color-surface-soft: #F5F7F1;
+
+  --color-sidebar: #050706;
+  --color-primary: #B8FF3C;
+  --color-primary-hover: #A7F22F;
+  --color-primary-soft: #EEFFD2;
+
+  --color-text: #07090A;
+  --color-muted: #66706B;
+  --color-border: #E4E7DF;
+
+  --color-danger: #FF6B6B;
+  --color-danger-soft: #FFF1F1;
+  --color-success: #22C55E;
+  --color-success-soft: #EAFBEF;
+
+  /* Canonical AR360 user panel tokens */
+  --ar-primary: var(--color-primary);
+  --ar-primary-hover: var(--color-primary-hover);
+  --ar-primary-soft: var(--color-primary-soft);
+  --ar-primary-border: #C5F031;
+  --ar-background: var(--color-bg);
+  --ar-surface: var(--color-surface);
+  --ar-surface-soft: var(--color-surface-soft);
+  --ar-rail: var(--color-sidebar);
+  --ar-border: var(--color-border);
+  --ar-text: var(--color-text);
+  --ar-text-muted: var(--color-muted);
+  --ar-success: var(--color-success);
+  --ar-warning: #F59E0B;
+  --ar-danger: var(--color-danger);
+  --ar-info: #0EA5E9;
+  --ar-shadow-sm: var(--shadow-sm);
+  --ar-shadow-md: var(--shadow-md);
+
+  /* Sidebar reference tokens */
+  --sidebar-bg: #fafaf8;
+  --sidebar-black: #090a09;
+  --sidebar-green: #55ce0c;
+  --sidebar-green-dark: #3db11d;
+  --sidebar-green-soft: #f1fae7;
+  --sidebar-text: #101010;
+  --sidebar-muted: #5b5b5b;
+
+  --radius-sm: 12px;
+  --radius-md: 18px;
+  --radius-lg: 26px;
+  --radius-xl: 34px;
+
+  --shadow-sm: 0 4px 14px rgba(5, 7, 6, 0.05);
+  --shadow-md: 0 14px 40px rgba(5, 7, 6, 0.08);
+
+  /* Legacy compatibility aliases for existing CSS selectors */
+  --primary: var(--color-primary);
+  --primary-hover: var(--color-primary-hover);
+  --primary-soft: var(--color-primary-soft);
+  --bg: var(--color-bg);
+  --surface: var(--color-surface);
+  --surface-soft: var(--color-surface-soft);
+  --sidebar: var(--color-sidebar);
+  --text: var(--color-text);
+  --muted: var(--color-muted);
+  --border: var(--color-border);
+  --danger: var(--color-danger);
+  --success: var(--color-success);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100%;
+  overflow-x: hidden;
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: linear-gradient(to right, rgba(5, 7, 6, 0.03) 1px, transparent 1px), linear-gradient(to bottom, rgba(5, 7, 6, 0.03) 1px, transparent 1px);
+  background-size: 44px 44px;
+  opacity: 0.28;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: none !important;
+}
+
+main:not([data-viewer-page]),
+section:not([data-viewer-section]),
+header:not([data-viewer-header]),
+footer {
+  position: relative;
+  z-index: 1;
+}
+
+[data-viewer-header] {
+  position: fixed !important;
+  z-index: 80 !important;
+  pointer-events: none;
+}
+
+[data-viewer-header] button,
+[data-viewer-header] a,
+[data-viewer-header] [class*="pointer-events-auto"] {
+  pointer-events: auto !important;
+}
+
+model-viewer {
+  width: 100%;
+  height: 100%;
+  background: var(--surface);
+  --poster-color: var(--surface);
+}
+
+[data-viewer-page] model-viewer {
+  background: transparent !important;
+  --poster-color: transparent !important;
+}
+
+@layer utilities {
+  .bg-cyan-50,
+  .bg-cyan-100,
+  .bg-blue-50,
+  .bg-blue-100,
+  .bg-indigo-50 {
+    background-color: var(--primary-soft) !important;
+  }
+
+  .bg-cyan-500,
+  .bg-cyan-400,
+  .bg-blue-500,
+  .bg-blue-600,
+  .bg-indigo-600 {
+    background-color: var(--primary) !important;
+    color: var(--text) !important;
+  }
+
+  .text-cyan-300,
+  .text-cyan-500,
+  .text-cyan-600,
+  .text-cyan-700,
+  .text-cyan-800,
+  .text-blue-500,
+  .text-blue-600 {
+    color: var(--primary) !important;
+  }
+
+  .border-cyan-100,
+  .border-cyan-200,
+  .border-blue-200 {
+    border-color: var(--border) !important;
+  }
+
+  .shadow-cyan-500\/20,
+  .shadow-cyan-500\/30,
+  .shadow-blue-500\/20 {
+    box-shadow: 0 12px 30px rgba(184, 255, 60, 0.18) !important;
+  }
+
+  .backdrop-blur-sm,
+  .backdrop-blur-md,
+  .backdrop-blur-xl,
+  .backdrop-blur-2xl,
+  .backdrop-blur-3xl {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  [class*="bg-[#00B2CA]"],
+  [class*="bg-[#0598c7]"],
+  [class*="bg-[#0097ac]"] {
+    background-color: var(--primary) !important;
+    color: var(--sidebar) !important;
+  }
+
+  [class*="text-[#00B2CA]"],
+  [class*="text-[#0598c7]"],
+  [class*="text-[#0097ac]"] {
+    color: var(--primary) !important;
+  }
+
+  [class*="border-[#00B2CA]"],
+  [class*="border-[#0598c7]"],
+  [class*="border-[#0097ac]"] {
+    border-color: var(--primary) !important;
+  }
+
+  [class*="shadow-cyan"],
+  [class*="shadow-blue"] {
+    box-shadow: var(--shadow-sm) !important;
+  }
+}
+
+/* main premium glass */
+/*.black-glass {
+  background:
+    linear-gradient(180deg, rgba(22,22,24,.72), rgba(6,6,7,.82));
+  border: 1px solid rgba(255,255,255,.20);
+  backdrop-filter: blur(42px) saturate(140%);
+  -webkit-backdrop-filter: blur(42px) saturate(140%);
+  box-shadow:
+    0 40px 140px rgba(0,0,0,.78),
+    inset 0 1px 0 rgba(255,255,255,.18),
+    inset 0 -1px 0 rgba(255,255,255,.06);
+}
+
+/* small premium card */
+/*.black-card {
+  background:
+    linear-gradient(180deg, rgba(22,22,24,.78), rgba(8,8,9,.86));
+  border: 1px solid rgba(255,255,255,.18);
+  backdrop-filter: blur(34px) saturate(130%);
+  -webkit-backdrop-filter: blur(34px) saturate(130%);
+  box-shadow:
+    0 28px 90px rgba(0,0,0,.72),
+    inset 0 1px 0 rgba(255,255,255,.14),
+    inset 0 -1px 0 rgba(255,255,255,.04);
+}
+
+/* blue edge lighting */
+/*.blue-glow {
+  box-shadow:
+    0 0 0 1px rgba(22,136,255,.22),
+    0 0 45px rgba(22,136,255,.20),
+    0 45px 150px rgba(0,0,0,.82),
+    inset 0 1px 0 rgba(255,255,255,.12);
+}
+
+/* premium blue button */
+.btn-blue {
+  background: linear-gradient(180deg, #2495ff 0%, #075cff 100%);
+  box-shadow:
+    0 0 30px rgba(22,136,255,.55),
+    0 18px 50px rgba(0,92,255,.35),
+    inset 0 1px 0 rgba(255,255,255,.42);
+}
+
+/* model shadow */
+.product-stage {
+  filter:
+    drop-shadow(0 55px 110px rgba(22,136,255,.25))
+    drop-shadow(0 34px 90px rgba(0,0,0,.95));
+}
+
+/* better scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(15,23,42,.18);
+  border-radius: 99px;
+}
+
+.settings-light-scroll {
+  scrollbar-color: rgba(15,23,42,.18) transparent;
+}
+
+.settings-light-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.settings-light-scroll::-webkit-scrollbar-thumb {
+  background: rgba(15,23,42,.18);
+  border-radius: 99px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.pricing-card {
+  background:
+    radial-gradient(circle at 50% 0%, rgba(90, 130, 190, 0.18), transparent 38%),
+    linear-gradient(180deg, rgba(25, 29, 38, 0.92), rgba(17, 20, 28, 0.96));
+  border: 1px solid rgba(255,255,255,.12);
+
+  box-shadow:
+  inset 0 1px 0 rgba(255,255,255,.10),
+  0 0 0 1px rgba(255,255,255,.04),
+  0 35px 90px rgba(0,0,0,.55);
+}
+
+.pricing-card::before{
+content:"";
+position:absolute;
+left:0;
+right:0;
+top:0;
+height:140px;
+
+background:
+linear-gradient(
+180deg,
+rgba(255,255,255,.09),
+transparent
+);
+
+pointer-events:none;
+}
+
+.pricing-card:hover{
+
+transform:translateY(-10px);
+
+transition:.35s;
+
+box-shadow:
+
+0 45px 120px rgba(0,0,0,.65);
+
+}
+
+.pricing-card-active {
+  background:
+    radial-gradient(circle at 50% 0%, rgba(100, 150, 255, 0.34), transparent 42%),
+    linear-gradient(180deg, rgba(31, 40, 58, 0.96), rgba(18, 23, 34, 0.98));
+}
+
+.pricing-card::after{
+
+content:"";
+
+position:absolute;
+
+left:0;
+
+right:0;
+
+bottom:0;
+
+height:140px;
+
+background:
+
+linear-gradient(
+
+transparent,
+
+rgba(0,0,0,.35)
+
+);
+
+pointer-events:none;
+
+}
+
+.premium-panel {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(95,125,175,.16), transparent 32%),
+    linear-gradient(180deg, rgba(18,21,28,.72), rgba(7,8,11,.90));
+  border: 1px solid rgba(255,255,255,.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.10),
+    0 28px 90px rgba(0,0,0,.58);
+}
+
+.premium-panel::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 180px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.055), transparent),
+    radial-gradient(circle at 50% 0%, rgba(120,150,210,.18), transparent 42%);
+  pointer-events: none;
+}
+
+.premium-panel > * {
+  position: relative;
+  z-index: 1;
+}
+
+.premium-card {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(105,135,190,.18), transparent 38%),
+    linear-gradient(180deg, rgba(20,24,32,.88), rgba(9,10,14,.96));
+  border: 1px solid rgba(255,255,255,.115);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.09),
+    0 22px 70px rgba(0,0,0,.50);
+}
+
+.premium-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,.045), transparent 38%);
+  pointer-events: none;
+}
+
+.premium-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+section {
+  scroll-margin-top: 90px;
+}
+
+.story-section {
+  min-height: 760px;
+}
+
+.story-section,
+.snap-section {
+  scroll-margin-top: 0;
+}
+
+@media (min-width: 1024px) {
+  .story-section {
+    min-height: max(860px, 100svh);
+  }
+
+  .snap-section {
+    min-height: 100svh;
+  }
+}
+
+/* Product editor dark workspace overrides */
+.product-editor-shell {
+  --editor-accent: var(--primary);
+  --editor-accent-hover: var(--primary-hover);
+  --editor-accent-contrast: var(--sidebar);
+  --editor-control: var(--surface);
+  --editor-control-strong: var(--surface-soft);
+  --editor-control-soft: rgba(5, 7, 6, 0.05);
+  --editor-line: var(--border);
+  --editor-muted: var(--muted);
+  --editor-value-bg: var(--surface-soft);
+  --editor-viewer-bg: var(--surface);
+  background: var(--surface-soft) !important;
+  color: var(--text) !important;
+  isolation: isolate;
+}
+
+html[data-portal-theme="light"] .product-editor-shell {
+  --editor-accent: var(--primary);
+  --editor-accent-hover: var(--primary-hover);
+  --editor-accent-contrast: var(--sidebar);
+  --editor-control: var(--surface);
+  --editor-control-strong: var(--surface-soft);
+  --editor-control-soft: rgba(5, 7, 6, 0.05);
+  --editor-line: var(--border);
+  --editor-muted: var(--muted);
+  --editor-value-bg: var(--surface-soft);
+  --editor-viewer-bg: var(--surface);
+}
+
+html[data-portal-theme="light"] .product-editor-shell .portal-model-canvas,
+html[data-portal-theme="light"] .product-editor-shell .portal-viewer-layer {
+  background: var(--surface) !important;
+}
+
+html[data-portal-theme="light"] .product-editor-shell model-viewer {
+  background: var(--editor-viewer-bg, #ffffff) !important;
+  --poster-color: var(--editor-viewer-bg, #ffffff) !important;
+}
+
+.product-editor-shell .editor-left-nav {
+  background: #06090c !important;
+  border-right: 1px solid rgba(255,255,255,.10) !important;
+  box-shadow: 14px 0 45px rgba(0,0,0,.22) !important;
+}
+
+.product-editor-shell .editor-topbar {
+  position: absolute !important;
+  top: 0 !important;
+  right: 360px !important;
+  left: 96px !important;
+  background: var(--surface) !important;
+  border-bottom: 1px solid var(--border) !important;
+  color: var(--text) !important;
+}
+
+.product-editor-shell .editor-topbar h1,
+.product-editor-shell .editor-topbar p {
+  color: var(--text) !important;
+}
+
+.product-editor-shell .editor-topbar p {
+  opacity: .7;
+}
+
+.product-editor-shell .editor-topbar p:last-child {
+  color: var(--primary) !important;
+  opacity: 1;
+}
+
+.product-editor-shell .portal-model-canvas,
+.product-editor-shell .portal-viewer-layer {
+  background: var(--surface) !important;
+}
+
+.product-editor-shell .portal-model-canvas {
+  position: relative !important;
+  inset: auto !important;
+  height: auto !important;
+  width: auto !important;
+}
+
+.product-editor-shell model-viewer {
+  background: var(--editor-viewer-bg, #030405) !important;
+  --poster-color: var(--editor-viewer-bg, #030405) !important;
+}
+
+.product-editor-shell .editor-control-card {
+  background: var(--editor-control) !important;
+  border-color: var(--editor-line) !important;
+}
+
+.product-editor-shell .editor-accent-card {
+  background: color-mix(in srgb, var(--editor-accent) 13%, transparent) !important;
+  border-color: var(--editor-accent) !important;
+}
+
+.product-editor-shell .editor-value-pill {
+  background: var(--editor-value-bg) !important;
+  color: var(--portal-text, #ffffff) !important;
+  border: 1px solid var(--editor-line);
+}
+
+.product-editor-shell .editor-ghost-action {
+  min-height: 2rem;
+  border-radius: .65rem;
+  padding: 0 .65rem;
+  color: var(--editor-muted) !important;
+  font-size: .75rem;
+  font-weight: 900;
+  transition: color .18s ease, background-color .18s ease;
+}
+
+.product-editor-shell .editor-ghost-action:hover {
+  background: var(--editor-control-soft) !important;
+  color: var(--editor-accent) !important;
+}
+
+.product-editor-shell .editor-toggle {
+  background: var(--editor-control-strong) !important;
+  border: 1px solid var(--editor-line);
+  padding: 0;
+}
+
+.product-editor-shell .editor-toggle.is-on {
+  background: var(--editor-accent) !important;
+}
+
+.product-editor-shell .editor-toggle > div {
+  background: #ffffff;
+  box-shadow: 0 3px 12px rgba(0,0,0,.26);
+}
+
+html[data-portal-theme="light"] .product-editor-shell .editor-toggle > div {
+  background: #ffffff;
+}
+
+.product-editor-shell .editor-range {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  border: 0 !important;
+  outline: none;
+  cursor: pointer;
+  background:
+    linear-gradient(
+      90deg,
+      var(--editor-accent) 0%,
+      var(--editor-accent) var(--range-progress, 0%),
+      rgba(148, 163, 184, .32) var(--range-progress, 0%),
+      rgba(148, 163, 184, .32) 100%
+    ) !important;
+}
+
+.product-editor-shell .editor-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 18px;
+  width: 18px;
+  border-radius: 999px;
+  border: 3px solid var(--editor-accent-contrast);
+  background: var(--editor-accent);
+  box-shadow: 0 5px 18px rgba(0,0,0,.35);
+}
+
+.product-editor-shell .editor-range::-moz-range-thumb {
+  height: 18px;
+  width: 18px;
+  border-radius: 999px;
+  border: 3px solid var(--editor-accent-contrast);
+  background: var(--editor-accent);
+  box-shadow: 0 5px 18px rgba(0,0,0,.35);
+}
+
+.product-editor-shell .editor-checkbox {
+  height: 16px;
+  width: 16px;
+  accent-color: var(--editor-accent);
+}
+
+.product-editor-shell .editor-color-input {
+  border-color: var(--editor-line) !important;
+  background: var(--editor-control-strong) !important;
+  padding: 2px;
+  cursor: pointer;
+}
+
+/* Keep color/texture swatches visible on white panels (avoid white-on-white).
+   Final override also lives at end of file — later no-border / lime remaps fight these. */
+.product-editor-shell .studio-color-swatch,
+.product-editor-shell .studio-texture-swatch {
+  border: 2px solid #6b7280 !important;
+  border-color: #6b7280 !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7) !important;
+  background-clip: padding-box !important;
+}
+
+.product-editor-shell .studio-color-hex {
+  border: 2px solid #6b7280 !important;
+  border-color: #6b7280 !important;
+  background: #f9fafb !important;
+  color: #111111 !important;
+  font-weight: 600 !important;
+}
+
+.product-editor-shell .studio-color-hex::placeholder {
+  color: #9ca3af !important;
+  opacity: 1 !important;
+}
+
+.product-editor-shell .editor-primary-action {
+  background: var(--editor-accent) !important;
+  color: var(--editor-accent-contrast) !important;
+}
+
+.product-editor-shell .editor-primary-action *,
+.product-editor-shell .editor-primary-action svg {
+  color: var(--editor-accent-contrast) !important;
+  stroke: var(--editor-accent-contrast) !important;
+}
+
+.product-editor-shell .editor-side-panel .editor-primary-action.editor-primary-action {
+  color: var(--editor-accent-contrast) !important;
+}
+
+.product-editor-shell .editor-side-panel {
+  background: #070a0d !important;
+  border-left: 1px solid rgba(255,255,255,.10) !important;
+}
+
+.product-editor-shell .editor-side-panel > div:first-child {
+  background: #06090c !important;
+  border-bottom: 1px solid rgba(255,255,255,.10) !important;
+}
+
+.product-editor-shell .portal-model-toolbar {
+  background: rgba(9,13,17,.94) !important;
+  border: 1px solid rgba(255,255,255,.12) !important;
+  color: #fff !important;
+  box-shadow: 0 22px 70px rgba(0,0,0,.40) !important;
+}
+
+.product-editor-shell h1,
+.product-editor-shell h2,
+.product-editor-shell h3,
+.product-editor-shell b {
+  color: #fff !important;
+}
+
+.product-editor-shell p,
+.product-editor-shell label {
+  color: #aeb7c2 !important;
+}
+
+.product-editor-shell .editor-side-panel h3,
+.product-editor-shell .editor-side-panel [class*="font-bold"],
+.product-editor-shell .editor-side-panel [class*="font-black"] {
+  color: #fff !important;
+}
+
+.product-editor-shell .editor-side-panel > div:first-child button,
+.product-editor-shell .editor-topbar button {
+  background: transparent !important;
+  color: #fff !important;
+}
+
+.product-editor-shell .editor-left-nav button:not([class*="bg-[#00B2CA]"]),
+.product-editor-shell .portal-model-toolbar button:not([class*="bg-[#00B2CA]"]):not(.editor-primary-action) {
+  background: #050b10 !important;
+  color: #fff !important;
+}
+
+.product-editor-shell [class*="bg-[#00B2CA]"],
+.product-editor-shell [class*="hover:bg-[#0097ac]"],
+.product-editor-shell button[class*="bg-[#00B2CA]"],
+.product-editor-shell a[class*="bg-[#00B2CA]"] {
+  color: #02060a !important;
+}
+
+.product-editor-shell [class*="bg-[#00B2CA]"] svg {
+  color: #02060a !important;
+  stroke: #02060a !important;
+}
+
+html[data-portal-theme="light"] .product-editor-shell [class*="bg-[#00B2CA]"],
+html[data-portal-theme="light"] .product-editor-shell button[class*="bg-[#00B2CA]"],
+html[data-portal-theme="light"] .product-editor-shell a[class*="bg-[#00B2CA]"] {
+  background: #050505 !important;
+  color: #fff !important;
+  box-shadow: 0 16px 42px rgba(2, 6, 23, 0.12) !important;
+}
+
+html[data-portal-theme="light"] .product-editor-shell [class*="bg-[#00B2CA]"] *,
+html[data-portal-theme="light"] .product-editor-shell button[class*="bg-[#00B2CA]"] * {
+  color: #fff !important;
+  stroke: #fff !important;
+}
+
+html[data-portal-theme="light"] .product-editor-shell .editor-left-nav button[class*="bg-slate-950"] {
+  background: #050505 !important;
+  color: #fff !important;
+  box-shadow: 0 16px 36px rgba(2, 6, 23, 0.18) !important;
+}
+
+/* AR360 fixed white + cyan production theme */
+:root,
+html[data-portal-theme="cyan"] {
+  --portal-bg: #ffffff;
+  --portal-bg-soft: #f7fbfd;
+  --portal-panel: #ffffff;
+  --portal-panel-soft: #f9fcfe;
+  --portal-text: #07111f;
+  --portal-muted: #6b7280;
+  --portal-line: #d6dde4;
+  --portal-line-strong: #b9c4cf;
+  --portal-accent: #00B2CA;
+  --portal-accent-deep: #0097ac;
+  --portal-accent-soft: rgba(0, 178, 202, 0.12);
+}
+
+html[data-portal-theme="cyan"],
+html[data-portal-theme="cyan"] body {
+  background: #ffffff !important;
+  color: var(--portal-text) !important;
+}
+
+html[data-portal-theme="cyan"] body::before,
+html[data-portal-theme="cyan"] body::after {
+  display: none !important;
+}
+
+html[data-portal-theme="cyan"] .customer-portal {
+  background: #ffffff !important;
+  color: var(--portal-text) !important;
+}
+
+html[data-portal-theme="cyan"] .customer-portal main,
+html[data-portal-theme="cyan"] .customer-portal header,
+html[data-portal-theme="cyan"] .customer-portal aside,
+html[data-portal-theme="cyan"] .customer-portal section,
+html[data-portal-theme="cyan"] .customer-portal article,
+html[data-portal-theme="cyan"] .customer-portal [class*="bg-[#02060a]"],
+html[data-portal-theme="cyan"] .customer-portal [class*="bg-[#030405]"],
+html[data-portal-theme="cyan"] .customer-portal [class*="bg-[#050b10]"],
+html[data-portal-theme="cyan"] .customer-portal [class*="bg-[#06090c]"],
+html[data-portal-theme="cyan"] .customer-portal [class*="bg-[#070a0d]"],
+html[data-portal-theme="cyan"] .customer-portal [class*="bg-[#090d11]"],
+html[data-portal-theme="cyan"] .customer-portal [class*="bg-[#101820]"],
+html[data-portal-theme="cyan"] .customer-portal [class*="bg-[#111820]"],
+html[data-portal-theme="cyan"] .customer-portal [class*="bg-[#151f29]"],
+html[data-portal-theme="cyan"] .customer-portal [class*="bg-[#252b30]"],
+html[data-portal-theme="cyan"] .customer-portal [class*="bg-[#2b3338]"],
+html[data-portal-theme="cyan"] .customer-portal [class*="bg-[#343c41]"],
+html[data-portal-theme="cyan"] .customer-portal [class*="bg-slate-950"],
+html[data-portal-theme="cyan"] .customer-portal [class*="bg-slate-900"],
+html[data-portal-theme="cyan"] .customer-portal [class*="bg-slate-800"] {
+  background-color: #ffffff !important;
+  color: var(--portal-text) !important;
+  background-image: none !important;
+}
+
+html[data-portal-theme="cyan"] .customer-portal [class*="border-white"],
+html[data-portal-theme="cyan"] .customer-portal [class*="border-slate"],
+html[data-portal-theme="cyan"] .customer-portal [class*="border-[#"],
+html[data-portal-theme="cyan"] .customer-portal input,
+html[data-portal-theme="cyan"] .customer-portal select,
+html[data-portal-theme="cyan"] .customer-portal textarea {
+  border-color: var(--portal-line) !important;
+}
+
+html[data-portal-theme="cyan"] .customer-portal h1,
+html[data-portal-theme="cyan"] .customer-portal h2,
+html[data-portal-theme="cyan"] .customer-portal h3,
+html[data-portal-theme="cyan"] .customer-portal h4,
+html[data-portal-theme="cyan"] .customer-portal b,
+html[data-portal-theme="cyan"] .customer-portal strong,
+html[data-portal-theme="cyan"] .customer-portal [class*="text-white"],
+html[data-portal-theme="cyan"] .customer-portal [class*="text-slate-950"],
+html[data-portal-theme="cyan"] .customer-portal [class*="text-slate-900"] {
+  color: var(--portal-text) !important;
+}
+
+html[data-portal-theme="cyan"] .customer-portal p,
+html[data-portal-theme="cyan"] .customer-portal span,
+html[data-portal-theme="cyan"] .customer-portal label,
+html[data-portal-theme="cyan"] .customer-portal [class*="text-slate-300"],
+html[data-portal-theme="cyan"] .customer-portal [class*="text-slate-400"],
+html[data-portal-theme="cyan"] .customer-portal [class*="text-slate-500"],
+html[data-portal-theme="cyan"] .customer-portal [class*="text-slate-600"],
+html[data-portal-theme="cyan"] .customer-portal input::placeholder {
+  color: var(--portal-muted) !important;
+}
+
+html[data-portal-theme="cyan"] .customer-portal [class*="bg-[#00B2CA]"],
+html[data-portal-theme="cyan"] .customer-portal [class*="bg-[#0097ac]"],
+html[data-portal-theme="cyan"] .customer-portal [class*="bg-cyan"],
+html[data-portal-theme="cyan"] .customer-portal .editor-primary-action,
+html[data-portal-theme="cyan"] .customer-portal button[type="submit"] {
+  background: var(--portal-accent) !important;
+  border-color: var(--portal-accent) !important;
+  color: #ffffff !important;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.08) !important;
+}
+
+html[data-portal-theme="cyan"] .customer-portal [class*="text-[#00B2CA]"],
+html[data-portal-theme="cyan"] .customer-portal [class*="text-cyan"],
+html[data-portal-theme="cyan"] .customer-portal a:hover,
+html[data-portal-theme="cyan"] .customer-portal button:hover svg {
+  color: var(--portal-accent) !important;
+}
+
+html[data-portal-theme="cyan"] .customer-portal input,
+html[data-portal-theme="cyan"] .customer-portal select,
+html[data-portal-theme="cyan"] .customer-portal textarea {
+  background: #ffffff !important;
+  color: var(--portal-text) !important;
+  outline: none !important;
+}
+
+html[data-portal-theme="cyan"] .customer-portal input:focus,
+html[data-portal-theme="cyan"] .customer-portal select:focus,
+html[data-portal-theme="cyan"] .customer-portal textarea:focus,
+html[data-portal-theme="cyan"] .customer-portal button:focus-visible,
+html[data-portal-theme="cyan"] .customer-portal a:focus-visible {
+  border-color: var(--portal-accent) !important;
+  box-shadow: 0 0 0 2px rgba(0, 178, 202, 0.18) !important;
+}
+
+html[data-portal-theme="cyan"] .customer-portal .editor-range,
+html[data-portal-theme="cyan"] .customer-portal input[type="range"] {
+  accent-color: var(--portal-accent) !important;
+}
+
+html[data-portal-theme="cyan"] .customer-portal ::selection {
+  background: var(--portal-accent-soft);
+}
+
+/* Product editor also follows the same cyan accent, while keeping the 3D canvas usable. */
+html[data-portal-theme="cyan"] .product-editor-shell {
+  --editor-accent: var(--portal-accent);
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .editor-primary-action,
+html[data-portal-theme="cyan"] .product-editor-shell [class*="bg-[#00B2CA]"] {
+  background: var(--portal-accent) !important;
+  color: #ffffff !important;
+  border-color: var(--portal-accent) !important;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.08) !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell [class*="text-[#00B2CA]"],
+html[data-portal-theme="cyan"] .product-editor-shell [class*="border-[#00B2CA]"] {
+  color: var(--portal-accent) !important;
+  border-color: var(--portal-accent) !important;
+}
+
+
+/* AR360 final cyan theme: no neon glow, Apple-style soft shadows only. */
+:root,
+html[data-portal-theme="cyan"] {
+  --portal-accent: #00B2CA;
+  --portal-accent-deep: #0097ac;
+  --portal-accent-soft: rgba(0, 178, 202, 0.10);
+  --portal-apple-shadow: none;
+  --portal-panel-shadow: none;
+}
+
+html[data-portal-theme="cyan"] body::before,
+html[data-portal-theme="cyan"] body::after {
+  display: none !important;
+}
+
+html[data-portal-theme="cyan"] .customer-portal a,
+html[data-portal-theme="cyan"] .customer-portal button,
+html[data-portal-theme="cyan"] .product-editor-shell button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html[data-portal-theme="cyan"] .customer-portal a:focus-visible,
+html[data-portal-theme="cyan"] .customer-portal button:focus-visible,
+html[data-portal-theme="cyan"] .product-editor-shell button:focus-visible {
+  outline: 2px solid rgba(0, 178, 202, 0.35) !important;
+  outline-offset: 3px !important;
+  box-shadow: none !important;
+}
+
+html[data-portal-theme="cyan"] .customer-portal [class*="shadow-cyan"],
+html[data-portal-theme="cyan"] .customer-portal [class*="shadow-[0_0"],
+html[data-portal-theme="cyan"] .customer-portal [class*="rgba(5,152,199"],
+html[data-portal-theme="cyan"] .customer-portal [class*="rgba(0,170,255"],
+html[data-portal-theme="cyan"] .customer-portal [class*="rgba(0,229,255"],
+html[data-portal-theme="cyan"] .product-editor-shell [class*="shadow-cyan"],
+html[data-portal-theme="cyan"] .product-editor-shell [class*="shadow-[0_0"],
+html[data-portal-theme="cyan"] .product-editor-shell [class*="rgba(5,152,199"],
+html[data-portal-theme="cyan"] .product-editor-shell [class*="rgba(0,170,255"],
+html[data-portal-theme="cyan"] .product-editor-shell [class*="rgba(0,229,255"] {
+  box-shadow: var(--portal-panel-shadow) !important;
+}
+
+html[data-portal-theme="cyan"] .customer-portal [class*="bg-[#00B2CA]"],
+html[data-portal-theme="cyan"] .customer-portal [class*="bg-[#0097ac]"],
+html[data-portal-theme="cyan"] .customer-portal [class*="bg-cyan"],
+html[data-portal-theme="cyan"] .customer-portal .editor-primary-action,
+html[data-portal-theme="cyan"] .customer-portal button[type="submit"],
+html[data-portal-theme="cyan"] .product-editor-shell .editor-primary-action,
+html[data-portal-theme="cyan"] .product-editor-shell [class*="bg-[#00B2CA]"] {
+  background: var(--portal-accent) !important;
+  border-color: var(--portal-accent) !important;
+  color: #ffffff !important;
+  box-shadow: var(--portal-apple-shadow) !important;
+}
+
+html[data-portal-theme="cyan"] .customer-portal [class*="text-[#00B2CA]"],
+html[data-portal-theme="cyan"] .customer-portal [class*="text-cyan"],
+html[data-portal-theme="cyan"] .customer-portal a:hover,
+html[data-portal-theme="cyan"] .customer-portal button:hover svg,
+html[data-portal-theme="cyan"] .product-editor-shell [class*="text-[#00B2CA]"] {
+  color: var(--portal-accent) !important;
+}
+
+html[data-portal-theme="cyan"] .customer-portal [class*="border-[#00B2CA]"],
+html[data-portal-theme="cyan"] .customer-portal [class*="border-cyan"],
+html[data-portal-theme="cyan"] .product-editor-shell [class*="border-[#00B2CA]"] {
+  border-color: var(--portal-accent) !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .editor-left-nav button,
+html[data-portal-theme="cyan"] .product-editor-shell .editor-topbar button {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .editor-left-nav button {
+  color: var(--portal-text) !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .editor-left-nav button[aria-pressed="true"] {
+  color: var(--portal-accent) !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .editor-topbar button {
+  color: var(--portal-text) !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .portal-model-toolbar {
+  background: rgba(255, 255, 255, 0.92) !important;
+  border-color: var(--portal-line) !important;
+  color: var(--portal-text) !important;
+  box-shadow: var(--portal-panel-shadow) !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .portal-model-toolbar button:not(.editor-primary-action) {
+  background: rgba(248, 251, 253, 0.92) !important;
+  color: var(--portal-text) !important;
+  box-shadow: none !important;
+}
+
+/* Final white product/editor surfaces. */
+html[data-portal-theme="cyan"] .product-editor-shell {
+  --editor-accent: var(--portal-accent);
+  --editor-accent-hover: var(--portal-accent-deep);
+  --editor-accent-contrast: #ffffff;
+  --editor-control: #ffffff;
+  --editor-control-strong: #f8fbfd;
+  --editor-control-soft: rgba(0, 178, 202, 0.08);
+  --editor-line: var(--portal-line);
+  --editor-muted: var(--portal-muted);
+  --editor-value-bg: #f8fbfd;
+  --editor-viewer-bg: #030405;
+  background: #f7fbfd !important;
+  color: var(--portal-text) !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .editor-left-nav {
+  background: rgba(255, 255, 255, 0.94) !important;
+  border-right: 1px solid var(--portal-line) !important;
+  box-shadow: 10px 0 26px rgba(15, 23, 42, 0.055) !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .editor-topbar {
+  background: rgba(255, 255, 255, 0.94) !important;
+  border-bottom: 1px solid var(--portal-line) !important;
+  color: var(--portal-text) !important;
+  box-shadow: var(--portal-apple-shadow) !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .editor-topbar h1,
+html[data-portal-theme="cyan"] .product-editor-shell .editor-topbar p {
+  color: var(--portal-text) !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .editor-topbar p:not(:last-child) {
+  color: var(--portal-muted) !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .editor-topbar p:last-child {
+  color: var(--portal-accent) !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel {
+  background: rgba(255, 255, 255, 0.94) !important;
+  border-left: 1px solid var(--portal-line) !important;
+  color: var(--portal-text) !important;
+  box-shadow: -14px 0 42px rgba(15, 23, 42, 0.08) !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel > div:first-child {
+  background: rgba(248, 251, 253, 0.96) !important;
+  border-bottom: 1px solid var(--portal-line) !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel > div:first-child button {
+  background: transparent !important;
+  border-bottom-color: transparent !important;
+  color: var(--portal-text) !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel > div:first-child button:hover {
+  background: var(--portal-accent-soft) !important;
+  color: var(--portal-accent) !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel > div:first-child button[class*="border-[#00B2CA]"] {
+  background: var(--portal-accent-soft) !important;
+  border-bottom-color: var(--portal-accent) !important;
+  color: var(--portal-accent) !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel section {
+  border-color: var(--portal-line) !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel section > button {
+  background: rgba(255, 255, 255, 0.92) !important;
+  color: var(--portal-text) !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel section > div {
+  background: rgba(255, 255, 255, 0.88) !important;
+  color: var(--portal-text) !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel h3,
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel h4,
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel strong,
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel b,
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel [class*="text-white"] {
+  color: var(--portal-text) !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel p,
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel label,
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel [class*="text-slate-200"],
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel [class*="text-slate-300"],
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel [class*="text-slate-400"],
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel [class*="text-slate-500"] {
+  color: var(--portal-muted) !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel [class*="border-white"],
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel [class*="border-slate"] {
+  border-color: var(--portal-line) !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel [class*="bg-[#06090c]"],
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel [class*="bg-[#101820]"],
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel [class*="bg-[#151f29]"],
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel [class*="bg-[#252b30]"],
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel [class*="bg-[#343c41]"],
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel [class*="bg-white/"] {
+  background-color: #f8fbfd !important;
+  color: var(--portal-text) !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel input:not([type="range"]):not([type="checkbox"]):not([type="color"]),
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel select,
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel textarea {
+  background: #ffffff !important;
+  border: 1px solid var(--portal-line) !important;
+  color: var(--portal-text) !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .editor-control-card,
+html[data-portal-theme="cyan"] .product-editor-shell .editor-value-pill {
+  background: #f8fbfd !important;
+  border-color: var(--portal-line) !important;
+  color: var(--portal-text) !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .editor-ghost-action {
+  background: #f8fbfd !important;
+  border: 1px solid var(--portal-line) !important;
+  color: var(--portal-muted) !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .editor-ghost-action:hover {
+  background: var(--portal-accent-soft) !important;
+  color: var(--portal-accent) !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .editor-toggle {
+  background: #e8eef3 !important;
+  border-color: var(--portal-line) !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .editor-toggle.is-on {
+  background: var(--portal-accent) !important;
+}
+
+html[data-portal-theme="cyan"] .customer-portal,
+html[data-portal-theme="cyan"] .customer-portal *,
+html[data-portal-theme="cyan"] .customer-portal *::before,
+html[data-portal-theme="cyan"] .customer-portal *::after,
+html[data-portal-theme="cyan"] .product-editor-shell,
+html[data-portal-theme="cyan"] .product-editor-shell *,
+html[data-portal-theme="cyan"] .product-editor-shell *::before,
+html[data-portal-theme="cyan"] .product-editor-shell *::after {
+  box-shadow: none !important;
+}
+
+html[data-portal-theme="cyan"] .customer-portal [class*="bg-[#00B2CA]"],
+html[data-portal-theme="cyan"] .customer-portal [class*="bg-[#05b6d3]"],
+html[data-portal-theme="cyan"] .customer-portal [class*="bg-cyan-500"],
+html[data-portal-theme="cyan"] .customer-portal [class*="bg-cyan-400"],
+html[data-portal-theme="cyan"] .product-editor-shell [class*="bg-[#00B2CA]"],
+html[data-portal-theme="cyan"] .product-editor-shell [class*="bg-[#05b6d3]"],
+html[data-portal-theme="cyan"] .product-editor-shell [class*="bg-cyan-500"],
+html[data-portal-theme="cyan"] .product-editor-shell [class*="bg-cyan-400"] {
+  background: var(--portal-accent) !important;
+  color: #ffffff !important;
+}
+
+html[data-portal-theme="cyan"] .customer-portal [class*="bg-[#00B2CA]"] *,
+html[data-portal-theme="cyan"] .customer-portal [class*="bg-[#05b6d3]"] *,
+html[data-portal-theme="cyan"] .customer-portal [class*="bg-cyan-500"] *,
+html[data-portal-theme="cyan"] .customer-portal [class*="bg-cyan-400"] *,
+html[data-portal-theme="cyan"] .product-editor-shell [class*="bg-[#00B2CA]"] *,
+html[data-portal-theme="cyan"] .product-editor-shell [class*="bg-[#05b6d3]"] *,
+html[data-portal-theme="cyan"] .product-editor-shell [class*="bg-cyan-500"] *,
+html[data-portal-theme="cyan"] .product-editor-shell [class*="bg-cyan-400"] * {
+  color: #ffffff !important;
+  stroke: currentColor !important;
+}
+
+/* AR360 lime workspace theme inspired by the LOCK GLB mockup. */
+html[data-portal-theme="lime"] {
+  color-scheme: light;
+  --portal-bg: var(--color-bg);
+  --portal-bg-soft: var(--color-surface-soft);
+  --portal-panel: var(--color-surface);
+  --portal-panel-solid: var(--color-page);
+  --portal-panel-soft: var(--color-surface-soft);
+  --portal-text: var(--color-text);
+  --portal-muted: var(--color-muted);
+  --portal-line: var(--color-border);
+  --portal-line-strong: var(--color-border);
+  --portal-accent: var(--color-primary);
+  --portal-accent-deep: var(--color-primary-hover);
+  --portal-accent-soft: var(--color-primary-soft);
+  --portal-accent-wash: var(--color-primary-soft);
+  --portal-black: #050505;
+  --portal-apple-shadow: var(--shadow-sm);
+  --portal-panel-shadow: var(--shadow-sm);
+  --portal-radius-shell: 28px;
+  --portal-radius-panel: 28px;
+  --portal-radius-control: 16px;
+  --portal-radius-small: 12px;
+  --portal-radius-rail: 28px;
+  --portal-radius-pill: 999px;
+}
+
+html[data-portal-theme="lime"],
+html[data-portal-theme="lime"] body {
+  background: #dddddd !important;
+  color: var(--color-text) !important;
+}
+
+html[data-portal-theme="lime"] body::before,
+html[data-portal-theme="lime"] body::after {
+  display: none !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal {
+  background: #dddddd !important;
+  color: var(--color-text) !important;
+}
+
+html[data-portal-theme="lime"] .user-panel-shell {
+  background: var(--ar-background) !important;
+  color: var(--ar-text) !important;
+}
+
+html[data-portal-theme="lime"] .user-panel-content {
+  background: transparent !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal main.dashboard-main-shell {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal .dashboard-content-shell {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 28px !important;
+  margin-top: 24px !important;
+  margin-bottom: 28px !important;
+  height: calc(100vh - 52px) !important;
+  width: calc(100% - 28px) !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal main.min-h-0 {
+  background: transparent !important;
+  border: none !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal .app-sidebar-rail {
+  background: var(--color-sidebar) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal .sidebar-nav-item {
+  color: rgba(255, 255, 255, 0.6) !important;
+  background: transparent !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal .sidebar-nav-item.is-active {
+  background: var(--color-primary) !important;
+  color: var(--color-sidebar) !important;
+  box-shadow: none !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal .sidebar-nav-item:hover:not(.is-active) {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #ffffff !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal [class*="bg-[radial-gradient"],
+html[data-portal-theme="lime"] .customer-portal [class*="bg-[#02070d]"],
+html[data-portal-theme="lime"] .customer-portal [class*="bg-[#050b12]"],
+html[data-portal-theme="lime"] .customer-portal [class*="bg-[#070d13]"],
+html[data-portal-theme="lime"] .customer-portal [class*="bg-[#07111b]"],
+html[data-portal-theme="lime"] .customer-portal [class*="bg-[#08111a]"],
+html[data-portal-theme="lime"] .customer-portal [class*="bg-[#0d1721]"],
+html[data-portal-theme="lime"] .customer-portal [class*="bg-[#101416]"],
+html[data-portal-theme="lime"] .customer-portal [class*="bg-[#101820]"],
+html[data-portal-theme="lime"] .customer-portal [class*="bg-[#111c27]"],
+html[data-portal-theme="lime"] .customer-portal [class*="bg-[#15191c]"],
+html[data-portal-theme="lime"] .customer-portal [class*="bg-[#252b30]"],
+html[data-portal-theme="lime"] .customer-portal [class*="bg-[#283138]"],
+html[data-portal-theme="lime"] .customer-portal [class*="bg-[#343c41]"],
+html[data-portal-theme="lime"] .customer-portal [class*="bg-slate-950"],
+html[data-portal-theme="lime"] .customer-portal [class*="bg-slate-900"],
+html[data-portal-theme="lime"] .customer-portal [class*="bg-slate-800"],
+html[data-portal-theme="lime"] .customer-portal [class*="bg-white/"] {
+  background: var(--color-surface) !important;
+  background-image: none !important;
+  color: var(--color-text) !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal [class*="bg-[#f8fbfd]"],
+html[data-portal-theme="lime"] .customer-portal [class*="bg-slate-50"],
+html[data-portal-theme="lime"] .customer-portal [class*="bg-gray-50"],
+html[data-portal-theme="lime"] .customer-portal [class*="bg-[var(--portal-bg-soft)]"] {
+  background-color: #dddddd !important;
+  background-image: none !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-[22px]"],
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-[24px]"],
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-[26px]"],
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-[28px]"],
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-3xl"] {
+  border-radius: var(--portal-radius-panel) !important;
+  border-color: var(--color-border) !important;
+  box-shadow: var(--shadow-sm) !important;
+  background-color: var(--color-surface) !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal [class*="border-white/"]:not(input):not(select):not(textarea):not(.user-panel-input),
+html[data-portal-theme="lime"] .customer-portal [class*="border-slate"]:not(input):not(select):not(textarea):not(.user-panel-input),
+html[data-portal-theme="lime"] .customer-portal [class*="border-cyan"]:not(input):not(select):not(textarea):not(.user-panel-input),
+html[data-portal-theme="lime"] .customer-portal [class*="border-[#"]:not(input):not(select):not(textarea):not(.user-panel-input),
+html[data-portal-theme="lime"] .product-editor-shell [class*="border-white/"]:not(.user-panel-sidebar *):not(input):not(select):not(textarea):not(.user-panel-input):not(.editor-variant-input):not(.studio-color-swatch):not(.studio-texture-swatch):not(.studio-color-hex),
+html[data-portal-theme="lime"] .product-editor-shell [class*="border-slate"]:not(.user-panel-sidebar *):not(input):not(select):not(textarea):not(.user-panel-input):not(.editor-variant-input):not(.studio-color-swatch):not(.studio-texture-swatch):not(.studio-color-hex),
+html[data-portal-theme="lime"] .product-editor-shell [class*="border-cyan"]:not(.user-panel-sidebar *):not(input):not(select):not(textarea):not(.user-panel-input):not(.editor-variant-input):not(.studio-color-swatch):not(.studio-texture-swatch):not(.studio-color-hex),
+html[data-portal-theme="lime"] .product-editor-shell [class*="border-[#"]:not(.user-panel-sidebar *):not(input):not(select):not(textarea):not(.user-panel-input):not(.editor-variant-input):not(.studio-color-swatch):not(.studio-texture-swatch):not(.studio-color-hex) {
+  border-color: var(--color-border) !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal h1,
+html[data-portal-theme="lime"] .customer-portal h2,
+html[data-portal-theme="lime"] .customer-portal h3,
+html[data-portal-theme="lime"] .customer-portal h4,
+html[data-portal-theme="lime"] .customer-portal strong,
+html[data-portal-theme="lime"] .customer-portal b,
+html[data-portal-theme="lime"] .customer-portal [class*="text-white"],
+html[data-portal-theme="lime"] .customer-portal [class*="text-slate-950"],
+html[data-portal-theme="lime"] .customer-portal [class*="text-slate-900"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="text-white"]:not(.user-panel-sidebar *),
+html[data-portal-theme="lime"] .product-editor-shell [class*="text-slate-950"]:not(.user-panel-sidebar *),
+html[data-portal-theme="lime"] .product-editor-shell [class*="text-slate-900"]:not(.user-panel-sidebar *) {
+  color: var(--color-text) !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal p,
+html[data-portal-theme="lime"] .customer-portal label,
+html[data-portal-theme="lime"] .customer-portal [class*="text-slate-200"],
+html[data-portal-theme="lime"] .customer-portal [class*="text-slate-300"],
+html[data-portal-theme="lime"] .customer-portal [class*="text-slate-400"],
+html[data-portal-theme="lime"] .customer-portal [class*="text-slate-500"],
+html[data-portal-theme="lime"] .customer-portal [class*="text-slate-600"],
+html[data-portal-theme="lime"] .product-editor-shell p,
+html[data-portal-theme="lime"] .product-editor-shell label,
+html[data-portal-theme="lime"] .product-editor-shell [class*="text-slate-200"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="text-slate-300"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="text-slate-400"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="text-slate-500"] {
+  color: var(--color-muted) !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal .app-sidebar-rail,
+html[data-portal-theme="lime"] .customer-portal .app-sidebar-rail *,
+html[data-portal-theme="lime"] .product-editor-shell .editor-left-nav,
+html[data-portal-theme="lime"] .product-editor-shell .editor-left-nav * {
+  color: inherit !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal button[class*="bg-[var(--portal-accent)]"],
+html[data-portal-theme="lime"] .customer-portal button[class*="bg-[#C9FF57]"],
+html[data-portal-theme="lime"] .customer-portal button[class*="bg-cyan"],
+html[data-portal-theme="lime"] .customer-portal button[type="submit"],
+html[data-portal-theme="lime"] .customer-portal [class*="bg-[#00B2CA]"],
+html[data-portal-theme="lime"] .customer-portal [class*="bg-[#0097ac]"],
+html[data-portal-theme="lime"] .customer-portal [class*="bg-[#05b6d3]"] {
+  background-color: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+  color: var(--color-text) !important;
+  font-weight: 700 !important;
+  border-radius: var(--radius-sm) !important;
+  box-shadow: none !important;
+  transition: all 0.2s ease-in-out !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal button[class*="bg-[var(--portal-accent)]"]:hover,
+html[data-portal-theme="lime"] .customer-portal button[class*="bg-[#C9FF57]"]:hover,
+html[data-portal-theme="lime"] .customer-portal button[class*="bg-cyan"]:hover,
+html[data-portal-theme="lime"] .customer-portal button[type="submit"]:hover,
+html[data-portal-theme="lime"] .customer-portal [class*="bg-[#00B2CA]"]:hover,
+html[data-portal-theme="lime"] .customer-portal [class*="bg-[#0097ac]"]:hover,
+html[data-portal-theme="lime"] .customer-portal [class*="bg-[#05b6d3]"]:hover {
+  background-color: var(--color-primary-hover) !important;
+  border-color: var(--color-primary-hover) !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal [class*="bg-cyan-50"],
+html[data-portal-theme="lime"] .customer-portal [class*="bg-cyan-100"],
+html[data-portal-theme="lime"] .customer-portal [class*="bg-[#00B2CA]/"],
+html[data-portal-theme="lime"] .customer-portal [class*="bg-[#e8faff]"],
+html[data-portal-theme="lime"] .customer-portal [class*="bg-[#dff7ff]"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="bg-cyan-50"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="bg-cyan-100"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="bg-[#00B2CA]/"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="bg-[#e8faff]"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="bg-[#dff7ff]"] {
+  background-color: var(--color-primary-soft) !important;
+  color: var(--color-text) !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal [class*="text-[#00B2CA]"],
+html[data-portal-theme="lime"] .customer-portal [class*="text-[#0097ac]"],
+html[data-portal-theme="lime"] .customer-portal [class*="text-[#05b6d3]"],
+html[data-portal-theme="lime"] .customer-portal [class*="text-[#0598c7]"],
+html[data-portal-theme="lime"] .customer-portal [class*="text-cyan"],
+html[data-portal-theme="lime"] .customer-portal a:hover,
+html[data-portal-theme="lime"] .product-editor-shell [class*="text-[#00B2CA]"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="text-[#0097ac]"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="text-[#05b6d3]"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="text-cyan"] {
+  color: #7fa900 !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal input,
+html[data-portal-theme="lime"] .customer-portal select,
+html[data-portal-theme="lime"] .customer-portal textarea,
+html[data-portal-theme="lime"] .product-editor-shell input:not([type="range"]):not([type="checkbox"]):not([type="color"]),
+html[data-portal-theme="lime"] .product-editor-shell select,
+html[data-portal-theme="lime"] .product-editor-shell textarea {
+  background-color: #ffffff !important;
+  border: 1px solid #C8CDD4 !important;
+  color: var(--color-text) !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal input:focus,
+html[data-portal-theme="lime"] .customer-portal select:focus,
+html[data-portal-theme="lime"] .customer-portal textarea:focus,
+html[data-portal-theme="lime"] .product-editor-shell input:focus,
+html[data-portal-theme="lime"] .product-editor-shell select:focus,
+html[data-portal-theme="lime"] .product-editor-shell textarea:focus {
+  border-color: #C8CDD4 !important;
+  box-shadow: none !important;
+}
+
+/* Secondary Button standard style */
+html[data-portal-theme="lime"] .customer-portal button:not([class*="bg-[var(--portal-accent)]"]):not([class*="bg-[#C9FF57]"]):not([class*="bg-cyan"]):not([type="submit"]):not([class*="bg-[#00B2CA]"]):not([class*="bg-[#0097ac]"]):not([class*="bg-red"]):not([class*="text-red"]):not(.sidebar-nav-item):not(.up-product-card-action):not(.up-product-menu-item):not(.up-select-check) {
+  background-color: var(--color-page) !important;
+  border: 1px solid var(--color-border) !important;
+  color: var(--color-text) !important;
+  font-weight: 500 !important;
+  border-radius: var(--radius-sm) !important;
+  box-shadow: none !important;
+  transition: all 0.2s ease-in-out !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal button:not([class*="bg-[var(--portal-accent)]"]):not([class*="bg-[#C9FF57]"]):not([class*="bg-cyan"]):not([type="submit"]):not([class*="bg-[#00B2CA]"]):not([class*="bg-[#0097ac]"]):not([class*="bg-red"]):not([class*="text-red"]):not(.sidebar-nav-item):not(.up-product-card-action):not(.up-product-menu-item):not(.up-select-check):hover {
+  background-color: var(--color-surface-soft) !important;
+}
+
+/* Danger Button standard style */
+html[data-portal-theme="lime"] .customer-portal button[class*="bg-red"]:not(.up-product-menu-item),
+html[data-portal-theme="lime"] .customer-portal button[class*="text-red"]:not(.up-product-menu-item) {
+  background-color: var(--color-danger-soft) !important;
+  color: var(--color-danger) !important;
+  border: 1px solid var(--color-danger-soft) !important;
+  border-radius: var(--radius-sm) !important;
+  font-weight: 700 !important;
+  transition: all 0.2s ease-in-out !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal button[class*="bg-red"]:not(.up-product-menu-item):hover,
+html[data-portal-theme="lime"] .customer-portal button[class*="text-red"]:not(.up-product-menu-item):hover {
+  background-color: #ffd6d6 !important;
+  color: var(--color-danger) !important;
+  border-color: #ffd6d6 !important;
+}
+
+/* Disabled Button standard style */
+html[data-portal-theme="lime"] .customer-portal button:disabled {
+  opacity: 0.55 !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell {
+  --editor-accent: var(--portal-accent);
+  --editor-accent-hover: var(--portal-accent-deep);
+  --editor-accent-contrast: #050505;
+  --editor-control: rgba(255, 255, 255, 0.88);
+  --editor-control-strong: #f8faf1;
+  --editor-control-soft: var(--portal-accent-soft);
+  --editor-line: var(--portal-line);
+  --editor-muted: var(--portal-muted);
+  --editor-value-bg: #f5f7ef;
+  --editor-viewer-bg: #ffffff;
+  background: #dddddd !important;
+  color: var(--portal-text) !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-left-nav {
+  bottom: 28px !important;
+  left: 28px !important;
+  top: 28px !important;
+  width: 96px !important;
+  border: 0 !important;
+  border-radius: 38px !important;
+  background: linear-gradient(180deg, #050505 0%, #0b0d0b 100%) !important;
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.2) !important;
+  color: #ffffff !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-left-nav button {
+  height: 56px !important;
+  width: 56px !important;
+  border-radius: 18px !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  color: #050505 !important;
+  box-shadow: none !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-left-nav button:hover {
+  background: #ffffff !important;
+  color: #050505 !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-left-nav button[aria-pressed="true"] {
+  background: #ffffff !important;
+  color: #050505 !important;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22) !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-left-nav .editor-sidebar-nav-item {
+  height: 56px !important;
+  width: 56px !important;
+  border-radius: 18px !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  color: #050505 !important;
+  box-shadow: none !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-left-nav .editor-sidebar-nav-item:hover {
+  background: #ffffff !important;
+  color: #050505 !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-left-nav .editor-sidebar-nav-item.is-active {
+  background: #ffffff !important;
+  color: #050505 !important;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22) !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-left-nav .editor-rail-logout {
+  background: rgba(255, 255, 255, 0.92) !important;
+  color: #050505 !important;
+  box-shadow: none !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-left-nav .editor-rail-logout:hover {
+  background: #ffffff !important;
+  color: #050505 !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-left-nav [class*="bg-[#C9FF57]"] {
+  background: var(--portal-accent) !important;
+  color: #050505 !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-topbar {
+  left: 152px !important;
+  right: 388px !important;
+  top: 24px !important;
+  height: 72px !important;
+  border: 1px solid var(--portal-line) !important;
+  border-radius: 28px !important;
+  background: rgba(255, 255, 255, 0.88) !important;
+  box-shadow: var(--portal-apple-shadow) !important;
+  color: var(--portal-text) !important;
+  padding-left: 24px !important;
+  padding-right: 24px !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-topbar button {
+  color: var(--portal-text) !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .portal-model-canvas {
+  /* Layout handled by flex rules below — keep flush (no floating card radius) */
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  border: 0 !important;
+  overflow: hidden !important;
+  background: #F0F2F5 !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .portal-viewer-layer {
+  background:
+    linear-gradient(rgba(12, 14, 16, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(12, 14, 16, 0.04) 1px, transparent 1px),
+    linear-gradient(180deg, #f5f6f8 0%, #eef0f3 100%) !important;
+  background-size: 38px 38px, 38px 38px, auto !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .portal-viewer-layer.hide-grid {
+  background: radial-gradient(ellipse at 50% 42%, #f8f9fb 0%, #eef0f3 70%, #e8eaee 100%) !important;
+  background-size: auto !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell model-viewer {
+  background: transparent !important;
+  --poster-color: transparent !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .portal-model-toolbar {
+  bottom: 32px !important;
+  left: 0 !important;
+  right: 0 !important;
+  width: max-content !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  transform: none !important;
+  border: 1px solid var(--portal-line) !important;
+  background: rgba(255, 255, 255, 0.9) !important;
+  box-shadow: var(--portal-apple-shadow) !important;
+  color: var(--portal-text) !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .portal-model-toolbar button:not(.editor-primary-action) {
+  background: rgba(255, 255, 255, 0.82) !important;
+  color: var(--portal-text) !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel {
+  bottom: 28px !important;
+  right: 28px !important;
+  top: 24px !important;
+  width: 340px !important;
+  border: 1px solid var(--portal-line) !important;
+  border-radius: 30px !important;
+  background: rgba(255, 255, 255, 0.9) !important;
+  box-shadow: var(--portal-panel-shadow) !important;
+  color: var(--portal-text) !important;
+  overflow: hidden !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel > div:first-child {
+  background: rgba(255, 255, 255, 0.82) !important;
+  border-bottom: 1px solid var(--portal-line) !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel > div:first-child button {
+  color: var(--portal-muted) !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel > div:first-child button[class*="border-[#00B2CA]"],
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel > div:first-child button[class*="border-[#C9FF57]"] {
+  background: var(--portal-accent-soft) !important;
+  border-bottom-color: var(--portal-accent-deep) !important;
+  color: #050505 !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel section,
+html[data-portal-theme="lime"] .product-editor-shell .editor-control-card,
+html[data-portal-theme="lime"] .product-editor-shell .editor-value-pill {
+  background: transparent !important;
+  border-color: var(--portal-line) !important;
+  color: var(--portal-text) !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel section > button,
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel section > div,
+html[data-portal-theme="lime"] .product-editor-shell [class*="bg-[#101820]"]:not(.user-panel-sidebar *),
+html[data-portal-theme="lime"] .product-editor-shell [class*="bg-[#252b30]"]:not(.user-panel-sidebar *),
+html[data-portal-theme="lime"] .product-editor-shell [class*="bg-[#2b3338]"]:not(.user-panel-sidebar *),
+html[data-portal-theme="lime"] .product-editor-shell [class*="bg-[#343c41]"]:not(.user-panel-sidebar *),
+html[data-portal-theme="lime"] .product-editor-shell [class*="bg-white/"]:not(.user-panel-sidebar *) {
+  background: rgba(255, 255, 255, 0.76) !important;
+  color: var(--portal-text) !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-toggle {
+  background: #e7ebe1 !important;
+  border-color: var(--portal-line) !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-toggle.is-on,
+html[data-portal-theme="lime"] .product-editor-shell .editor-range::-webkit-slider-thumb,
+html[data-portal-theme="lime"] .product-editor-shell .editor-range::-moz-range-thumb {
+  background: var(--portal-accent) !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-range {
+  background:
+    linear-gradient(
+      90deg,
+      var(--portal-accent) 0%,
+      var(--portal-accent) var(--range-progress, 0%),
+      rgba(8, 10, 13, 0.12) var(--range-progress, 0%),
+      rgba(8, 10, 13, 0.12) 100%
+    ) !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .portal-viewer-layer [class*="bg-[#030405]"],
+html[data-portal-theme="lime"] .product-editor-shell .portal-viewer-layer [class*="bg-[#071017]"] {
+  background: rgba(255, 255, 255, 0.82) !important;
+  color: var(--portal-text) !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel,
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel h1,
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel h2,
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel h3,
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel h4,
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel strong,
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel b,
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel span,
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel button,
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel select,
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel option {
+  color: #080a0d !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel p,
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel label,
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel [class*="text-slate-100"],
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel [class*="text-slate-200"],
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel [class*="text-slate-300"],
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel [class*="text-slate-400"],
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel [class*="text-slate-500"],
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel .editor-ghost-action {
+  color: #47504d !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel section > button span,
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel section > button svg,
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel .editor-value-pill {
+  color: #080a0d !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel .editor-ghost-action {
+  background: transparent !important;
+  border-color: transparent !important;
+  font-weight: 900 !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel .editor-ghost-action:hover {
+  background: var(--portal-accent-soft) !important;
+  color: #080a0d !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel .editor-material-trigger,
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel .editor-material-title,
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel .editor-material-chevron {
+  color: #080a0d !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel .editor-material-title {
+  display: block !important;
+  min-width: 0 !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel .editor-material-body {
+  color: #080a0d !important;
+}
+
+/* Consistent radius scale for the customer workspace and editor. */
+html[data-portal-theme="lime"] .customer-portal .app-sidebar-rail,
+html[data-portal-theme="lime"] .product-editor-shell .editor-left-nav {
+  border-radius: var(--portal-radius-rail) !important;
+  overflow: hidden !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal .products-dashboard-page,
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-[30px]"],
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-[32px]"],
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-[34px]"],
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-[36px]"],
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-[38px]"],
+html[data-portal-theme="lime"] .product-editor-shell .editor-topbar,
+html[data-portal-theme="lime"] .product-editor-shell [class*="rounded-[30px]"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="rounded-[32px]"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="rounded-[34px]"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="rounded-[36px]"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="rounded-[38px]"] {
+  border-radius: var(--portal-radius-shell) !important;
+}
+
+/* Editor canvas + side panel stay flush (no floating card radius) */
+html[data-portal-theme="lime"] .product-editor-shell .portal-model-canvas,
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel {
+  border-radius: 0 !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-[22px]"],
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-[24px]"],
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-[26px]"],
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-[28px]"],
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-3xl"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="rounded-[22px]"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="rounded-[24px]"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="rounded-[26px]"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="rounded-[28px]"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="rounded-3xl"],
+html[data-portal-theme="lime"] .product-editor-shell .editor-control-card {
+  border-radius: var(--portal-radius-panel) !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-2xl"],
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-[18px]"],
+html[data-portal-theme="lime"] .customer-portal button:not([class*="rounded-full"]),
+html[data-portal-theme="lime"] .customer-portal input:not([type="checkbox"]):not([type="radio"]),
+html[data-portal-theme="lime"] .customer-portal textarea,
+html[data-portal-theme="lime"] .customer-portal select,
+html[data-portal-theme="lime"] .product-editor-shell [class*="rounded-2xl"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="rounded-[18px]"],
+html[data-portal-theme="lime"] .product-editor-shell button:not([class*="rounded-full"]),
+html[data-portal-theme="lime"] .product-editor-shell input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+html[data-portal-theme="lime"] .product-editor-shell textarea,
+html[data-portal-theme="lime"] .product-editor-shell select,
+html[data-portal-theme="lime"] .product-editor-shell .editor-value-pill {
+  border-radius: var(--portal-radius-control) !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-xl"],
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-lg"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="rounded-xl"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="rounded-lg"],
+html[data-portal-theme="lime"] .product-editor-shell .editor-ghost-action {
+  border-radius: var(--portal-radius-small) !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-full"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="rounded-full"],
+html[data-portal-theme="lime"] .product-editor-shell .portal-model-toolbar {
+  border-radius: var(--portal-radius-pill) !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal .products-dashboard-page > header {
+  border-radius: var(--portal-radius-shell) !important;
+  border: 1px solid var(--color-border) !important;
+  margin-bottom: 24px !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal .products-dashboard-page > main {
+  border-radius: var(--portal-radius-shell) !important;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal .products-dashboard-page aside,
+html[data-portal-theme="lime"] .customer-portal .products-dashboard-page section {
+  border-radius: var(--portal-radius-panel) !important;
+  border: 1px solid var(--color-border) !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel > div:first-child {
+  border-radius: var(--portal-radius-shell) var(--portal-radius-shell) 0 0 !important;
+  overflow: hidden !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel > div:first-child button {
+  border-radius: 0 !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal [data-portal-dropdown="menu"],
+html[data-portal-theme="lime"] .product-editor-shell [data-portal-dropdown="menu"] {
+  border-radius: var(--portal-radius-control) !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal .app-sidebar-rail,
+html[data-portal-theme="lime"] .product-editor-shell .editor-left-nav {
+  border-radius: var(--portal-radius-rail) !important;
+}
+
+/* QR Center client page panel rounded corners override */
+html[data-portal-theme="lime"] .customer-portal [class*="QrCenterClient_stats"] > div,
+html[data-portal-theme="lime"] .customer-portal [class*="QrCenterClient_toolbar"],
+html[data-portal-theme="lime"] .customer-portal [class*="QrCenterClient_productCard"],
+html[data-portal-theme="lime"] .customer-portal [class*="QrCenterClient_empty"],
+html[data-portal-theme="lime"] .customer-portal [class*="QrCenterClient_controlSection"],
+html[data-portal-theme="lime"] .customer-portal [class*="QrCenterClient_stickyPreview"],
+html[data-portal-theme="lime"] .customer-portal [class*="QrCenterClient_bottomSaveBar"] {
+  border-radius: var(--portal-radius-panel) !important;
+  border-color: var(--color-border) !important;
+}
+
+@media (max-width: 1180px) {
+  html[data-portal-theme="lime"] .product-editor-shell .editor-topbar {
+    right: auto !important;
+  }
+
+  html[data-portal-theme="lime"] .product-editor-shell .portal-model-canvas {
+    right: auto !important;
+  }
+
+  html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel {
+    display: none !important;
+  }
+}
+
+/* Responsive layout pass: customer dashboard, product editor, and admin surfaces. */
+html[data-portal-theme="lime"] .customer-portal *:not(img):not(svg):not(video):not(canvas),
+html[data-portal-theme="lime"] .product-editor-shell *:not(img):not(svg):not(video):not(canvas),
+.master-admin-shell *:not(img):not(svg):not(video):not(canvas) {
+  min-width: 0;
+}
+
+html[data-portal-theme="lime"] .customer-portal img,
+html[data-portal-theme="lime"] .product-editor-shell img,
+.master-admin-shell img,
+.user-panel-shell img,
+.user-panel-sidebar img {
+  max-width: 100%;
+}
+
+.brand-logo-wrap {
+  line-height: 0 !important;
+}
+
+.master-admin-shell .brand-logo,
+.user-panel-shell .brand-logo,
+.user-panel-sidebar .brand-logo,
+.editor-app-rail .brand-logo,
+.brand-logo-wrap .brand-logo {
+  flex-shrink: 0 !important;
+  display: block !important;
+  overflow: visible !important;
+  max-width: none !important;
+  max-height: none !important;
+}
+
+@media (max-width: 1280px) {
+  html[data-portal-theme="lime"] .customer-portal .dashboard-main-shell {
+    padding-left: 124px !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .dashboard-content-shell {
+    padding: 18px !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .app-sidebar-rail {
+    bottom: 18px !important;
+    left: 18px !important;
+    top: 18px !important;
+    width: 84px !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .app-sidebar-rail nav {
+    gap: 12px !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .app-sidebar-rail .sidebar-nav-item {
+    height: 52px !important;
+    width: 52px !important;
+  }
+}
+
+@media (max-width: 1180px) {
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page > header {
+    height: auto !important;
+    min-height: 172px !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page > header > div:first-child {
+    align-items: stretch !important;
+    flex-direction: column !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page > header > div:first-child > div:last-child,
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page > header > div:nth-child(2) {
+    flex-wrap: wrap !important;
+    width: 100% !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page > header > div:first-child > div:last-child > div:first-child {
+    width: min(100%, 460px) !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page > main {
+    overflow-y: auto !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page > main > div {
+    grid-template-columns: 1fr !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page > main aside {
+    height: auto !important;
+    max-height: 290px !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page > main section {
+    min-height: 520px !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page > main section > div[class*="overflow-y-auto"] {
+    overflow-x: hidden !important;
+   }
+
+  html[data-portal-theme="lime"] .customer-portal .dashboard-upload-product > main,
+  html[data-portal-theme="lime"] .customer-portal .upload-product-modal-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .dashboard-upload-product > main {
+    gap: 18px !important;
+    padding: 18px !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .settings-dashboard-page {
+    overflow-y: auto !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .settings-dashboard-page > div {
+    grid-template-columns: 1fr !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .settings-dashboard-page aside {
+    height: auto !important;
+    max-height: none !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .settings-dashboard-page aside nav {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    overflow: visible !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .settings-dashboard-page section {
+    min-height: 720px !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .settings-dashboard-page [class*="grid-cols-[1fr_360px]"],
+  html[data-portal-theme="lime"] .customer-portal .settings-dashboard-page [class*="grid-cols-4"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (min-width: 901px) and (max-width: 1180px) {
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page {
+    height: 100% !important;
+    min-height: 0 !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page > main {
+    overflow: hidden !important;
+    padding: 14px !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page > main > div {
+    align-items: stretch !important;
+    gap: 14px !important;
+    grid-template-columns: 210px minmax(0, 1fr) !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page > main aside {
+    height: 100% !important;
+    max-height: none !important;
+  }
+
+ 
+
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page > main section {
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page > main section > div[class*="overflow-y-auto"] {
+    overflow-x: hidden !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page > main section > div[class*="overflow-y-auto"] > div[style] {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)) !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page .group.relative.cursor-pointer {
+    min-width: 0 !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page [data-portal-dropdown="menu"] {
+    max-width: calc(100vw - 32px) !important;
+  }
+
+  html[data-portal-theme="lime"] .product-editor-shell .editor-left-nav {
+    bottom: 16px !important;
+    left: 16px !important;
+    top: 16px !important;
+    width: 88px !important;
+  }
+
+  html[data-portal-theme="lime"] .product-editor-shell .editor-topbar {
+    left: auto !important;
+    right: auto !important;
+    top: auto !important;
+  }
+
+  html[data-portal-theme="lime"] .product-editor-shell .portal-model-canvas {
+    bottom: auto !important;
+    left: auto !important;
+    right: auto !important;
+    top: auto !important;
+  }
+
+  html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel {
+    bottom: auto !important;
+    display: flex !important;
+    right: auto !important;
+    top: auto !important;
+    width: var(--editor-panel-width, 320px) !important;
+  }
+
+  html[data-portal-theme="lime"] .product-editor-shell .portal-model-toolbar {
+    bottom: 24px !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: max-content !important;
+    max-width: calc(100% - 24px) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    transform: none !important;
+    overflow-x: auto !important;
+  }
+}
+
+@media (max-width: 900px) {
+  html[data-portal-theme="lime"] .customer-portal {
+    min-height: 100dvh !important;
+    overflow: hidden !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .dashboard-main-shell {
+    height: 100dvh !important;
+    padding-left: 0 !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .dashboard-content-shell {
+    height: 100% !important;
+    overflow-y: auto !important;
+    padding: 12px 12px calc(96px + env(safe-area-inset-bottom)) !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .app-sidebar-rail {
+    bottom: 12px !important;
+    flex-direction: row !important;
+    height: 72px !important;
+    left: 12px !important;
+    padding: 0 10px !important;
+    right: 12px !important;
+    top: auto !important;
+    width: auto !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .app-sidebar-rail > div:first-child {
+    flex: 0 0 58px !important;
+    height: 100% !important;
+    width: 58px !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .app-sidebar-rail > nav {
+    align-items: center !important;
+    flex: 1 1 auto !important;
+    flex-direction: row !important;
+    gap: 8px !important;
+    height: 100% !important;
+    overflow-x: auto !important;
+    padding: 0 !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .app-sidebar-rail .sidebar-nav-item {
+    flex: 0 0 46px !important;
+    height: 46px !important;
+    width: 46px !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .app-sidebar-rail > div:last-child {
+    display: none !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .dashboard-content-shell > section[class*="h-full"][class*="overflow-hidden"],
+  html[data-portal-theme="lime"] .customer-portal .dashboard-content-shell > section > div[class*="h-full"][class*="overflow-hidden"] {
+    height: auto !important;
+    min-height: 100% !important;
+    overflow: visible !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page {
+    min-height: 100% !important;
+    overflow-y: auto !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page > header {
+    border-radius: var(--portal-radius-shell) !important;
+    padding: 16px !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page > header h1,
+  html[data-portal-theme="lime"] .customer-portal .dashboard-upload-product h1 {
+    font-size: 24px !important;
+    line-height: 1.12 !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page > header > div:first-child > div:last-child > *,
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page > header > div:nth-child(2) > *,
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page > header > div:nth-child(2) > .ml-auto {
+    flex: 1 1 100% !important;
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page > main {
+    border-radius: var(--portal-radius-shell) !important;
+    margin-top: 12px !important;
+    padding: 12px !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page > main aside {
+    max-height: 240px !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .dashboard-upload-product {
+    border-radius: var(--portal-radius-shell) !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .dashboard-upload-product > header {
+    align-items: stretch !important;
+    flex-direction: column !important;
+    gap: 14px !important;
+    height: auto !important;
+    padding: 16px !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .dashboard-upload-product > header > button:last-child {
+    width: 100% !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .dashboard-upload-product > main {
+    padding: 12px !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .dashboard-upload-product > main > section > div:first-child > div,
+  html[data-portal-theme="lime"] .customer-portal .dashboard-upload-product [class*="grid-cols-2"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .dashboard-upload-product aside {
+    width: 100% !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .dashboard-upload-product aside [class*="h-[380px]"] {
+    height: 280px !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .settings-dashboard-page > div {
+    gap: 12px !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .settings-dashboard-page aside nav,
+  html[data-portal-theme="lime"] .customer-portal .settings-dashboard-page [class*="grid-cols-[1fr_360px]"],
+  html[data-portal-theme="lime"] .customer-portal .settings-dashboard-page [class*="grid-cols-2"],
+  html[data-portal-theme="lime"] .customer-portal .settings-dashboard-page [class*="grid-cols-4"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .settings-dashboard-page section {
+    min-height: 0 !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .settings-dashboard-page section > header {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .settings-dashboard-page section > div {
+    padding: 18px !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .upload-product-modal {
+    align-items: end !important;
+    padding: 10px !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .upload-product-modal-card {
+    max-height: calc(100dvh - 20px) !important;
+    overflow-y: auto !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .upload-product-modal-card > div:first-child {
+    height: auto !important;
+    padding: 14px !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .upload-product-modal-grid {
+    gap: 14px !important;
+    padding: 14px !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .upload-product-modal-grid [class*="h-[390px]"],
+  html[data-portal-theme="lime"] .customer-portal .upload-preview-stage {
+    aspect-ratio: 1 / 1 !important;
+    height: auto !important;
+    max-width: 100% !important;
+  }
+
+  html[data-portal-theme="lime"] .product-editor-shell .editor-left-nav {
+    bottom: 12px !important;
+    flex-direction: row !important;
+    height: 72px !important;
+    left: 12px !important;
+    padding: 0 10px !important;
+    right: 12px !important;
+    top: auto !important;
+    width: auto !important;
+  }
+
+  html[data-portal-theme="lime"] .product-editor-shell .editor-left-nav > div:first-child {
+    flex: 0 0 58px !important;
+    height: 100% !important;
+    width: 58px !important;
+  }
+
+  html[data-portal-theme="lime"] .product-editor-shell .editor-left-nav nav {
+    align-items: center !important;
+    flex: 1 1 auto !important;
+    flex-direction: row !important;
+    gap: 8px !important;
+    height: 100% !important;
+    overflow-x: auto !important;
+    padding: 0 !important;
+  }
+
+  html[data-portal-theme="lime"] .product-editor-shell .editor-left-nav .editor-sidebar-nav-item {
+    flex: 0 0 46px !important;
+    height: 46px !important;
+    width: 46px !important;
+  }
+
+  html[data-portal-theme="lime"] .product-editor-shell .editor-left-nav > div:last-child {
+    display: none !important;
+  }
+
+  html[data-portal-theme="lime"] .product-editor-shell .editor-topbar {
+    height: 76px !important;
+    left: 12px !important;
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+    right: 12px !important;
+    top: 12px !important;
+  }
+
+  html[data-portal-theme="lime"] .product-editor-shell .editor-topbar h1 {
+    max-width: 42vw !important;
+    font-size: 16px !important;
+  }
+
+  html[data-portal-theme="lime"] .product-editor-shell .editor-topbar > div:last-child {
+    gap: 6px !important;
+  }
+
+  html[data-portal-theme="lime"] .product-editor-shell .editor-topbar > div:last-child button {
+    height: 38px !important;
+    width: 38px !important;
+  }
+
+  html[data-portal-theme="lime"] .product-editor-shell .portal-model-canvas {
+    bottom: auto !important;
+    left: auto !important;
+    right: auto !important;
+    top: auto !important;
+  }
+
+  html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel {
+    display: none !important;
+  }
+
+  html[data-portal-theme="lime"] .product-editor-shell .portal-model-toolbar {
+    bottom: 92px !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: max-content !important;
+    max-width: calc(100% - 24px) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    overflow-x: auto !important;
+    transform: none !important;
+  }
+}
+
+@media (max-width: 640px) {
+  html[data-portal-theme="lime"] .customer-portal .dashboard-content-shell {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .app-sidebar-rail > div:first-child,
+  html[data-portal-theme="lime"] .product-editor-shell .editor-left-nav > div:first-child {
+    display: none !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .app-sidebar-rail .sidebar-nav-item,
+  html[data-portal-theme="lime"] .product-editor-shell .editor-left-nav .editor-sidebar-nav-item {
+    flex-basis: 44px !important;
+    height: 44px !important;
+    width: 44px !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page > header > div:first-child > div:last-child {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page > header > div:first-child > div:last-child > div:first-child,
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page > header > div:first-child > div:last-child > button:last-child {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page > main aside {
+    display: none !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .products-dashboard-page [data-portal-dropdown="menu"] {
+    left: 12px !important;
+    max-width: calc(100vw - 24px) !important;
+    width: calc(100vw - 24px) !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .dashboard-upload-product > header > div:first-child {
+    align-items: flex-start !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .dashboard-upload-product h2,
+  html[data-portal-theme="lime"] .customer-portal .settings-dashboard-page h2 {
+    font-size: 22px !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .settings-dashboard-page section > header {
+    align-items: flex-start !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+    height: auto !important;
+    padding-bottom: 14px !important;
+    padding-top: 14px !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .settings-dashboard-page section > header > div {
+    flex-wrap: wrap !important;
+  }
+
+  html[data-portal-theme="lime"] .product-editor-shell .editor-topbar > div:last-child button:nth-child(n + 3) {
+    display: none !important;
+  }
+
+  html[data-portal-theme="lime"] .product-editor-shell .portal-model-toolbar button {
+    flex: 0 0 auto !important;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+    white-space: nowrap !important;
+  }
+
+  .master-admin-shell main {
+    padding-bottom: calc(84px + env(safe-area-inset-bottom)) !important;
+  }
+
+  .master-admin-shell [class*="fixed"][class*="inset-0"] {
+    align-items: end !important;
+    padding: 10px !important;
+  }
+
+  .master-admin-shell [class*="max-w-"],
+  .master-admin-shell [class*="w-["] {
+    max-width: calc(100vw - 20px) !important;
+  }
+
+  .master-admin-shell table {
+    font-size: 12px !important;
+  }
+}
+/* Master Admin Design System Mapping */
+.master-admin-shell {
+  background-color: #F4F7F5 !important;
+  color: #0f172a !important;
+  --color-bg: #F4F7F5;
+  --color-page: #ffffff;
+  --color-surface: #ffffff;
+  --color-surface-soft: #f8fafc;
+  --color-sidebar: #ffffff;
+  --color-text: #0f172a;
+  --color-muted: #64748b;
+  --color-border: #e2e8f0;
+  --color-primary: #A6FF2E;
+  --color-primary-hover: #96F01E;
+  --color-primary-soft: rgba(166, 255, 46, 0.12);
+  --color-success: #16a34a;
+  --color-danger: #ef4444;
+  --color-danger-soft: rgba(239, 68, 68, 0.08);
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --shadow-sm: 0 2px 12px rgba(15, 23, 42, 0.04);
+}
+
+.master-admin-shell main [class*="bg-white"],
+.master-admin-shell main [class*="bg-[#FFFFFF]"],
+.master-admin-shell main [class*="bg-[#ffffff]"],
+.master-admin-shell main [class*="bg-white/"] {
+  background-color: var(--color-surface) !important;
+}
+
+.master-admin-shell main [class*="bg-[#F7FAFC]"],
+.master-admin-shell main [class*="bg-[#f7fafc]"],
+.master-admin-shell main [class*="bg-slate-50"],
+.master-admin-shell main [class*="bg-gray-50"] {
+  background-color: var(--color-surface-soft) !important;
+}
+
+.master-admin-shell main [class*="border-slate-"],
+.master-admin-shell main [class*="border-gray-"],
+.master-admin-shell main [class*="border-slate-200"],
+.master-admin-shell main [class*="border-slate-100"] {
+  border-color: var(--color-border) !important;
+}
+
+.master-admin-shell main h1,
+.master-admin-shell main h2,
+.master-admin-shell main h3,
+.master-admin-shell main h4,
+.master-admin-shell main th,
+.master-admin-shell main [class*="text-slate-900"],
+.master-admin-shell main [class*="text-slate-950"],
+.master-admin-shell main [class*="text-black"] {
+  color: var(--color-text) !important;
+}
+
+.master-admin-shell main p,
+.master-admin-shell main label,
+.master-admin-shell main td,
+.master-admin-shell main [class*="text-slate-500"],
+.master-admin-shell main [class*="text-slate-600"],
+.master-admin-shell main [class*="text-gray-500"] {
+  color: var(--color-muted) !important;
+}
+
+.master-admin-shell main [class*="hover:bg-slate-"],
+.master-admin-shell main [class*="hover:bg-gray-"] {
+  background-color: var(--color-surface-soft) !important;
+}
+
+/* Form controls (inputs, selects, textareas) inside master admin */
+.master-admin-shell main input:not([type="checkbox"]):not([type="radio"]),
+.master-admin-shell main select,
+.master-admin-shell main textarea {
+  background-color: var(--color-page) !important;
+  border: 1px solid var(--color-border) !important;
+  color: var(--color-text) !important;
+  border-radius: var(--radius-sm) !important;
+  outline: none !important;
+}
+
+.master-admin-shell main input:not([type="checkbox"]):not([type="radio"]):focus,
+.master-admin-shell main select:focus,
+.master-admin-shell main textarea:focus {
+  border-color: var(--color-primary-hover) !important;
+  box-shadow: 0 0 0 1px var(--color-primary-hover) !important;
+}
+
+/* Primary buttons in master admin */
+.master-admin-shell main button[class*="bg-slate-950"],
+.master-admin-shell main button[class*="bg-black"],
+.master-admin-shell main a[class*="bg-slate-950"],
+.master-admin-shell main a[class*="bg-black"],
+.master-admin-shell main button[class*="bg-[#018ABE]"],
+.master-admin-shell main a[class*="bg-[#018ABE]"] {
+  background-color: var(--color-primary) !important;
+  color: var(--color-text) !important;
+  font-weight: 700 !important;
+  border-radius: var(--radius-sm) !important;
+  transition: all 0.2s ease-in-out !important;
+  border-color: var(--color-primary) !important;
+  box-shadow: none !important;
+}
+
+.master-admin-shell main button[class*="bg-slate-950"]:hover,
+.master-admin-shell main button[class*="bg-black"]:hover,
+.master-admin-shell main a[class*="bg-slate-950"]:hover,
+.master-admin-shell main a[class*="bg-black"]:hover,
+.master-admin-shell main button[class*="bg-[#018ABE]"]:hover,
+.master-admin-shell main a[class*="bg-[#018ABE]"]:hover {
+  background-color: var(--color-primary-hover) !important;
+  border-color: var(--color-primary-hover) !important;
+}
+
+/* Suspend/Delete actions in master admin */
+.master-admin-shell main button[class*="bg-red-"],
+.master-admin-shell main button[class*="text-red-"],
+.master-admin-shell main a[class*="bg-red-"],
+.master-admin-shell main a[class*="text-red-"] {
+  background-color: var(--color-danger-soft) !important;
+  color: var(--color-danger) !important;
+  border: 1px solid var(--color-danger-soft) !important;
+  border-radius: var(--radius-sm) !important;
+  font-weight: 700 !important;
+  transition: all 0.2s ease-in-out !important;
+}
+
+.master-admin-shell main button[class*="bg-red-"]:hover,
+.master-admin-shell main button[class*="text-red-"]:hover,
+.master-admin-shell main a[class*="bg-red-"]:hover,
+.master-admin-shell main a[class*="text-red-"]:hover {
+  background-color: #ffd6d6 !important;
+  color: var(--color-danger) !important;
+  border-color: #ffd6d6 !important;
+}
+
+/* Standardize master admin tables */
+.master-admin-shell table {
+  border-collapse: collapse !important;
+  width: 100% !important;
+}
+
+.master-admin-shell th {
+  background-color: var(--color-surface-soft) !important;
+  font-weight: 700 !important;
+  border-bottom: 1.5px solid var(--color-border) !important;
+}
+
+.master-admin-shell td {
+  border-bottom: 1px solid var(--color-border) !important;
+}
+
+.master-admin-shell tr:hover td {
+  background-color: rgba(166, 255, 46, 0.05) !important;
+}
+
+.master-admin-shell tr.active-row td,
+.master-admin-shell tr.selected-row td {
+  background-color: rgba(166, 255, 46, 0.12) !important;
+}
+
+/* Map legacy blue and cyan classes to standard lime tokens */
+.master-admin-shell [class*="bg-[#018ABE]"],
+.master-admin-shell [class*="bg-[#01739A]"],
+.master-admin-shell [class*="bg-[#0178A3]"],
+.master-admin-shell [class*="bg-[#00B2CA]"],
+.master-admin-shell [class*="bg-[#0797a8]"] {
+  background-color: var(--color-primary) !important;
+  background-image: none !important;
+  color: var(--color-sidebar) !important;
+}
+
+.master-admin-shell [class*="text-[#018ABE]"],
+.master-admin-shell [class*="text-[#0178A3]"],
+.master-admin-shell [class*="text-[#00B2CA]"],
+.master-admin-shell [class*="text-[#0797a8]"] {
+  color: var(--color-primary-hover) !important;
+}
+
+.master-admin-shell [class*="shadow-[#018ABE]"],
+.master-admin-shell [class*="shadow-[#00B2CA]"] {
+  box-shadow: none !important;
+}
+
+.master-admin-shell [class*="border-[#018ABE]"],
+.master-admin-shell [class*="border-[#0178A3]"],
+.master-admin-shell [class*="border-[#00B2CA]"] {
+  border-color: var(--color-primary) !important;
+}
+
+.master-admin-shell [class*="hover:bg-[#018ABE]"]:hover,
+.master-admin-shell [class*="hover:bg-[#01739A]"]:hover,
+.master-admin-shell [class*="hover:bg-[#00B2CA]"]:hover {
+  background-color: var(--color-primary-hover) !important;
+  color: var(--color-sidebar) !important;
+}
+
+.master-admin-shell [class*="hover:text-[#018ABE]"]:hover {
+  color: var(--color-primary-hover) !important;
+}
+
+/* Soft Wash Overrides */
+.master-admin-shell [class*="bg-[#E6F7FB]"] {
+  background-color: var(--color-primary-soft) !important;
+  color: var(--color-text) !important;
+}
+
+.master-admin-shell [class*="text-[#E6F7FB]"] {
+  color: var(--color-text) !important;
+}
+
+/* Popular card gradients */
+.master-admin-shell [class*="from-[#00B2CA]"],
+.master-admin-shell [class*="to-[#0797a8]"] {
+  background: var(--color-primary) !important;
+  background-image: none !important;
+  color: var(--color-sidebar) !important;
+  border-color: var(--color-primary) !important;
+}
+
+.master-admin-shell [class*="from-[#00B2CA]"] *,
+.master-admin-shell [class*="to-[#0797a8]"] * {
+  color: var(--color-sidebar) !important;
+}
+
+/* Custom buttons nested in active pricing card container */
+.master-admin-shell [class*="from-[#00B2CA]"] button[class*="text-[#00B2CA]"] {
+  background-color: var(--color-sidebar) !important;
+  color: #ffffff !important;
+}
+
+/* Refresh/New action buttons on plan control page */
+.master-admin-shell main button[class*="bg-[#00B2CA]"],
+.master-admin-shell main a[class*="bg-[#00B2CA]"] {
+  background-color: var(--color-primary) !important;
+  color: var(--color-sidebar) !important;
+}
+
+.master-admin-shell main button[class*="bg-[#00B2CA]"]:hover,
+.master-admin-shell main a[class*="bg-[#00B2CA]"]:hover {
+  background-color: var(--color-primary-hover) !important;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  overflow-x: hidden;
+  overscroll-behavior-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+* {
+  scrollbar-width: thin;
+}
+/* FINAL SIDEBAR + RADIUS NORMALIZATION
+   Keep dashboard products and product editor side rail exactly identical. */
+:root,
+html[data-portal-theme="lime"] {
+  --ui-radius-shell: 28px;
+  --ui-radius-panel: 22px;
+  --ui-radius-control: 18px;
+  --ui-radius-small: 12px;
+  --ui-radius-rail: 28px;
+  --ui-radius-pill: 999px;
+}
+
+html[data-portal-theme="lime"] .customer-portal .app-sidebar-rail,
+html[data-portal-theme="lime"] .product-editor-shell .app-sidebar-rail {
+  top: 28px !important;
+  bottom: 28px !important;
+  left: 28px !important;
+  width: 96px !important;
+  border-radius: var(--ui-radius-rail) !important;
+  border: 0 !important;
+  overflow: hidden !important;
+  background: #050505 !important;
+  color: #ffffff !important;
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.18) !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal .app-sidebar-rail > div:first-child,
+html[data-portal-theme="lime"] .product-editor-shell .app-sidebar-rail > div:first-child {
+  height: 92px !important;
+  display: grid !important;
+  place-items: center !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal .app-sidebar-rail > div:first-child > div,
+html[data-portal-theme="lime"] .product-editor-shell .app-sidebar-rail > div:first-child > div {
+  width: 54px !important;
+  height: 54px !important;
+  border-radius: var(--ui-radius-control) !important;
+  background: var(--color-primary) !important;
+  color: #050505 !important;
+  box-shadow: none !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal .app-sidebar-rail nav,
+html[data-portal-theme="lime"] .product-editor-shell .app-sidebar-rail nav {
+  gap: 14px !important;
+  padding-top: 14px !important;
+  padding-bottom: 14px !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal .app-sidebar-rail .sidebar-nav-item,
+html[data-portal-theme="lime"] .product-editor-shell .app-sidebar-rail .sidebar-nav-item {
+  width: 56px !important;
+  height: 56px !important;
+  border-radius: var(--ui-radius-control) !important;
+  border: 0 !important;
+  background: #ffffff !important;
+  color: #050505 !important;
+  box-shadow: none !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal .app-sidebar-rail .sidebar-nav-item svg,
+html[data-portal-theme="lime"] .product-editor-shell .app-sidebar-rail .sidebar-nav-item svg {
+  color: inherit !important;
+  stroke: currentColor !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal .app-sidebar-rail .sidebar-nav-item.is-active,
+html[data-portal-theme="lime"] .product-editor-shell .app-sidebar-rail .sidebar-nav-item.is-active {
+  background: var(--color-primary) !important;
+  color: #050505 !important;
+  box-shadow: none !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal .app-sidebar-rail .sidebar-nav-item:hover:not(.is-active),
+html[data-portal-theme="lime"] .product-editor-shell .app-sidebar-rail .sidebar-nav-item:hover:not(.is-active) {
+  background: rgba(255, 255, 255, 0.92) !important;
+  color: #050505 !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal .app-sidebar-rail > div:last-child,
+html[data-portal-theme="lime"] .product-editor-shell .app-sidebar-rail > div:last-child {
+  border-top: 1px solid rgba(255, 255, 255, 0.18) !important;
+  padding: 16px !important;
+  gap: 12px !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal .app-sidebar-rail > div:last-child > div,
+html[data-portal-theme="lime"] .product-editor-shell .app-sidebar-rail > div:last-child > div {
+  background: #ffffff !important;
+  color: #050505 !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal .app-sidebar-rail > div:last-child > a,
+html[data-portal-theme="lime"] .product-editor-shell .app-sidebar-rail > div:last-child > a {
+  width: 50px !important;
+  height: 50px !important;
+  border-radius: var(--ui-radius-control) !important;
+  background: #ffffff !important;
+  color: #050505 !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Standard radius across customer panel, editor, website cards and master-admin. */
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-[30px]"],
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-[32px]"],
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-[34px]"],
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-[36px]"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="rounded-[30px]"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="rounded-[32px]"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="rounded-[34px]"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="rounded-[36px]"],
+.master-admin-shell [class*="rounded-[30px]"],
+.master-admin-shell [class*="rounded-[32px]"],
+.master-admin-shell [class*="rounded-[34px]"],
+.master-admin-shell [class*="rounded-[36px]"] {
+  border-radius: var(--ui-radius-shell) !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-[22px]"],
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-[24px]"],
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-[26px]"],
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-[28px]"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="rounded-[22px]"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="rounded-[24px]"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="rounded-[26px]"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="rounded-[28px]"],
+.master-admin-shell [class*="rounded-[22px]"],
+.master-admin-shell [class*="rounded-[24px]"],
+.master-admin-shell [class*="rounded-[26px]"],
+.master-admin-shell [class*="rounded-[28px]"] {
+  border-radius: var(--ui-radius-panel) !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-2xl"],
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-[18px]"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="rounded-2xl"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="rounded-[18px]"],
+.master-admin-shell [class*="rounded-2xl"],
+.master-admin-shell [class*="rounded-[18px]"] {
+  border-radius: var(--ui-radius-control) !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-xl"],
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-lg"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="rounded-xl"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="rounded-lg"],
+.master-admin-shell [class*="rounded-xl"],
+.master-admin-shell [class*="rounded-lg"] {
+  border-radius: var(--ui-radius-small) !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal [class*="rounded-full"],
+html[data-portal-theme="lime"] .product-editor-shell [class*="rounded-full"],
+.master-admin-shell [class*="rounded-full"] {
+  border-radius: var(--ui-radius-pill) !important;
+}
+
+/* Keep product editor content aligned with the properties panel. */
+html[data-portal-theme="lime"] .product-editor-shell .editor-topbar {
+  right: auto !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .portal-model-canvas {
+  right: auto !important;
+}
+
+@media (max-width: 1280px) {
+  html[data-portal-theme="lime"] .customer-portal .app-sidebar-rail,
+  html[data-portal-theme="lime"] .product-editor-shell .app-sidebar-rail {
+    top: 18px !important;
+    bottom: 18px !important;
+    left: 18px !important;
+    width: 84px !important;
+  }
+
+  html[data-portal-theme="lime"] .customer-portal .app-sidebar-rail .sidebar-nav-item,
+  html[data-portal-theme="lime"] .product-editor-shell .app-sidebar-rail .sidebar-nav-item {
+    width: 52px !important;
+    height: 52px !important;
+  }
+}
+
+/* Patch: cleaner upload modal, dropdowns, editor action buttons, and mobile viewer sizing */
+html[data-portal-theme="lime"] .customer-portal .upload-product-modal,
+.customer-portal .upload-product-modal {
+  background: rgba(15, 23, 42, .42) !important;
+  backdrop-filter: blur(14px) !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal .upload-product-modal-card,
+.customer-portal .upload-product-modal-card {
+  max-width: 920px !important;
+  border-radius: 20px !important;
+  box-shadow: 0 18px 55px rgba(15, 23, 42, .14) !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal .upload-product-modal-card > div:first-child,
+.customer-portal .upload-product-modal-card > div:first-child {
+  min-height: 70px !important;
+  height: auto !important;
+  padding: 14px 22px !important;
+}
+
+html[data-portal-theme="lime"] .customer-portal .upload-product-modal-grid,
+.customer-portal .upload-product-modal-grid {
+  gap: 20px !important;
+  padding: 20px !important;
+}
+
+@media (min-width: 1024px) {
+  html[data-portal-theme="lime"] .customer-portal .upload-product-modal-grid,
+  .customer-portal .upload-product-modal-grid {
+    grid-template-columns: minmax(0, 1fr) 360px !important;
+  }
+}
+
+.customer-portal .upload-product-modal-grid section > div,
+.customer-portal .upload-product-modal-grid [class*="rounded-[24px]"] {
+  border-radius: 20px !important;
+}
+
+.customer-portal .upload-product-modal-grid label[class*="border-dashed"] {
+  min-height: 180px !important;
+  height: auto !important;
+  border-radius: 20px !important;
+}
+
+.customer-portal .upload-preview-stage,
+.customer-portal .upload-product-modal-grid .upload-preview-stage {
+  aspect-ratio: 1 / 1 !important;
+  width: 100% !important;
+  max-width: 360px !important;
+  height: auto !important;
+  border: 1px solid #E5E7EB !important;
+  border-radius: 16px !important;
+  background: #ffffff !important;
+}
+
+.customer-portal .upload-preview-stage model-viewer,
+.customer-portal .upload-preview-stage > div {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 100% !important;
+}
+
+.customer-portal .upload-product-modal button,
+.customer-portal .upload-product-modal input,
+.customer-portal .upload-product-modal select,
+.customer-portal .upload-product-modal [role="button"] {
+  border-radius: 16px !important;
+}
+
+/* Dropdown polish: remove heavy stacked lines and keep popup aligned below trigger. */
+.customer-portal .upload-product-modal [class*="absolute"][class*="top-[56px]"],
+.customer-portal [class*="absolute"][class*="top-[56px]"] {
+  top: calc(100% + 8px) !important;
+  border-radius: 18px !important;
+  padding: 6px !important;
+  border: 1px solid rgba(15, 23, 42, .10) !important;
+  box-shadow: 0 18px 44px rgba(15, 23, 42, .12) !important;
+}
+
+.customer-portal .upload-product-modal [class*="absolute"][class*="top-[56px]"] button,
+.customer-portal [class*="absolute"][class*="top-[56px]"] button {
+  height: 38px !important;
+  border: 0 !important;
+  border-radius: 13px !important;
+  margin: 1px 0 !important;
+  box-shadow: none !important;
+}
+
+/* Editor right-panel actions: consistent SaaS pill style. */
+html[data-portal-theme="lime"] .product-editor-shell .editor-primary-action,
+.product-editor-shell .editor-primary-action {
+  border-radius: 18px !important;
+  box-shadow: 0 10px 26px rgba(170, 255, 36, .24) !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel > .editor-primary-action,
+.product-editor-shell .editor-side-panel > .editor-primary-action {
+  margin: 12px !important;
+  width: calc(100% - 24px) !important;
+  min-height: 56px !important;
+  border-radius: 20px !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel .editor-ghost-action,
+.product-editor-shell .editor-side-panel .editor-ghost-action {
+  min-width: 58px !important;
+  height: 32px !important;
+  border-radius: 999px !important;
+  background: transparent !important;
+  color: #64706c !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel .editor-ghost-action:hover,
+.product-editor-shell .editor-side-panel .editor-ghost-action:hover {
+  background: var(--portal-accent-wash, #efffd6) !important;
+  color: #080a0d !important;
+}
+
+.product-editor-shell .editor-side-panel > div:first-child button,
+.product-editor-shell .editor-side-panel [class*="border-b"] button {
+  border-radius: 0 !important;
+}
+
+.product-editor-shell .editor-side-panel > div:first-child button:hover,
+.product-editor-shell .editor-side-panel [class*="border-b"] button:hover {
+  background: var(--portal-accent-wash, #efffd6) !important;
+}
+
+/* Public mobile viewer: give the model more breathing room above the bottom toolbar. */
+@media (max-width: 639px) {
+  .customer-portal .upload-product-modal-grid,
+  html[data-portal-theme="lime"] .customer-portal .upload-product-modal-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .customer-portal .upload-product-modal-grid [class*="h-[390px]"],
+  .customer-portal .upload-preview-stage {
+    aspect-ratio: 1 / 1 !important;
+    height: auto !important;
+    max-width: min(360px, 100%) !important;
+    margin-inline: auto !important;
+  }
+
+  model-viewer {
+    --model-viewer-mobile-safe-bottom: 96px;
+  }
+}
+
+/* Final no-border UI pass: remove panel/card borders across user and master-admin panels while keeping layout, radius and shadows.
+   Keep a dedicated input border token — form fields must stay editable/visible. */
+:root,
+html[data-portal-theme="lime"],
+html[data-portal-theme="cyan"] {
+  --color-border: transparent;
+  --portal-line: transparent;
+  --portal-line-strong: transparent;
+  --editor-line: transparent;
+  --input-border: #C8CDD4;
+}
+
+/* User/customer panel surfaces */
+html[data-portal-theme="lime"] .customer-portal :is(header, main, aside, section, article, .dashboard-content-shell, .dashboard-main-shell),
+html[data-portal-theme="cyan"] .customer-portal :is(header, main, aside, section, article, .dashboard-content-shell, .dashboard-main-shell),
+.customer-portal [class*="rounded-[22px]"],
+.customer-portal [class*="rounded-[24px]"],
+.customer-portal [class*="rounded-[26px]"],
+.customer-portal [class*="rounded-[28px]"],
+.customer-portal [class*="rounded-[32px]"],
+.customer-portal [class*="rounded-3xl"] {
+  border-color: transparent !important;
+}
+
+/* Editor panels */
+.product-editor-shell :is(.editor-topbar, .portal-model-canvas, .portal-model-toolbar, .editor-side-panel, .editor-control-card, .editor-value-pill),
+.product-editor-shell .editor-side-panel > div:first-child,
+.product-editor-shell .editor-side-panel section,
+.product-editor-shell [class*="rounded-[22px]"],
+.product-editor-shell [class*="rounded-[24px]"],
+.product-editor-shell [class*="rounded-[26px]"],
+.product-editor-shell [class*="rounded-[28px]"],
+.product-editor-shell [class*="rounded-[32px]"] {
+  border-color: transparent !important;
+}
+
+/* Master admin panel surfaces */
+[class*="master-admin"] :is(header, main, aside, section, article, div[class*="rounded-[22px]"], div[class*="rounded-[24px]"], div[class*="rounded-[26px]"], div[class*="rounded-[28px]"], div[class*="rounded-[32px]"], div[class*="rounded-3xl"]),
+body:has([href^="/master-admin"]) :is(header, main, aside, section, article, div[class*="rounded-[22px]"], div[class*="rounded-[24px]"], div[class*="rounded-[26px]"], div[class*="rounded-[28px]"], div[class*="rounded-[32px]"], div[class*="rounded-3xl"]) {
+  border-color: transparent !important;
+}
+
+/* Remove separator lines inside panels, keep form/input focus borders usable. */
+.customer-portal :is([class*="border-t"], [class*="border-b"], [class*="border-l"], [class*="border-r"]),
+.product-editor-shell :is([class*="border-t"], [class*="border-b"], [class*="border-l"], [class*="border-r"]),
+[class*="master-admin"] :is([class*="border-t"], [class*="border-b"], [class*="border-l"], [class*="border-r"]) {
+  border-color: transparent !important;
+}
+
+/* Keep real input/dropdown fields readable with a very soft internal line only. */
+.customer-portal :is(input, select, textarea),
+.product-editor-shell :is(input:not([type="range"]):not([type="checkbox"]):not([type="color"]), select, textarea) {
+  border-color: rgba(15, 23, 42, 0.08) !important;
+}
+
+/* Form field visibility restore after no-border panel pass.
+   Panels stay clean, but real fields and bulk-select controls must look editable/clickable. */
+.customer-portal :is(input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="color"]), select, textarea),
+.master-admin-shell :is(input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="color"]), select, textarea),
+.product-editor-shell :is(input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="color"]), select, textarea) {
+  border: 1px solid rgba(15, 23, 42, 0.14) !important;
+  background: #ffffff !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.75), 0 1px 2px rgba(15,23,42,.035) !important;
+}
+
+.customer-portal :is(input, select, textarea):hover,
+.master-admin-shell :is(input, select, textarea):hover,
+.product-editor-shell :is(input, select, textarea):hover {
+  border-color: rgba(15, 23, 42, 0.22) !important;
+}
+
+.customer-portal :is(input, select, textarea):focus,
+.master-admin-shell :is(input, select, textarea):focus,
+.product-editor-shell :is(input, select, textarea):focus {
+  border-color: var(--portal-accent, var(--color-primary)) !important;
+  box-shadow: 0 0 0 4px rgba(184,255,60,.22), inset 0 1px 0 rgba(255,255,255,.8) !important;
+}
+
+.customer-portal :is(input, select, textarea)::placeholder,
+.master-admin-shell :is(input, select, textarea)::placeholder,
+.product-editor-shell :is(input, select, textarea)::placeholder {
+  color: rgba(71, 85, 105, .58) !important;
+}
+
+/* Custom select/dropdown trigger buttons should also be visible as fields. */
+.customer-portal button[aria-haspopup="listbox"],
+.customer-portal button[data-dropdown-trigger],
+.master-admin-shell button[aria-haspopup="listbox"],
+.master-admin-shell button[data-dropdown-trigger] {
+  border: 1px solid rgba(15, 23, 42, 0.14) !important;
+  background: #ffffff !important;
+}
+
+/* Bulk edit/product selection checkboxes: keep them visible even when panel borders are removed. */
+.customer-portal .product-select-control,
+.customer-portal button[aria-label*="Select"],
+.customer-portal button[aria-label*="select"] {
+  border: 2px solid rgba(71, 85, 105, .38) !important;
+  background: #ffffff !important;
+  box-shadow: 0 2px 8px rgba(15,23,42,.08) !important;
+}
+
+.customer-portal .product-select-control:hover,
+.customer-portal button[aria-label*="Select"]:hover,
+.customer-portal button[aria-label*="select"]:hover {
+  border-color: var(--portal-accent, var(--color-primary)) !important;
+}
+
+
+/* Final no-border usability pass: panels stay clean, controls stay obvious. */
+.customer-portal .product-select-control,
+.products-dashboard-page .product-select-control,
+.product-editor-shell .product-select-control {
+  border: 2px solid rgba(15,23,42,.78) !important;
+  background: #fff !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+.customer-portal .product-select-control:hover,
+.products-dashboard-page .product-select-control:hover,
+.product-editor-shell .product-select-control:hover {
+  border-color: var(--portal-accent, #a6ff2f) !important;
+  transform: translateY(-1px);
+}
+.customer-portal :is(input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="color"]), select, textarea),
+.master-admin-shell :is(input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="color"]), select, textarea),
+.product-editor-shell :is(input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="color"]), select, textarea) {
+  border: 1.5px solid rgba(15,23,42,.18) !important;
+  background: #fff !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.85), 0 1px 3px rgba(15,23,42,.06) !important;
+}
+.customer-portal :is(input, select, textarea):focus,
+.master-admin-shell :is(input, select, textarea):focus,
+.product-editor-shell :is(input, select, textarea):focus {
+  border-color: var(--portal-accent, #a6ff2f) !important;
+  box-shadow: 0 0 0 4px rgba(166,255,47,.22), inset 0 1px 0 rgba(255,255,255,.8) !important;
+}
+
+/* Clear, consistent editable fields after panel borders were removed */
+input:not([type='checkbox']):not([type='radio']):not([type='range']),
+select,
+textarea {
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 1px 2px rgba(5,7,6,0.04);
+}
+
+input:not([type='checkbox']):not([type='radio']):not([type='range']):focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 4px rgba(184,255,60,0.22), inset 0 1px 0 rgba(255,255,255,0.8);
+}
+
+input::placeholder, textarea::placeholder {
+  color: #8b968f;
+}
+
+.master-admin-panel {
+  min-height: 100%;
+  padding: 1rem;
+  padding-bottom: 2.5rem;
+  color: var(--color-text);
+}
+
+@media (min-width: 768px) {
+  .master-admin-panel {
+    padding: 1.5rem;
+    padding-bottom: 3rem;
+  }
+}
+
+@media (min-width: 1536px) {
+  .master-admin-panel {
+    padding: 2rem;
+  }
+}
+
+.master-card {
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.master-toast {
+  position: fixed;
+  top: 1.25rem;
+  right: 1.25rem;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: 0.9rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 900;
+  color: var(--color-success);
+  box-shadow: var(--shadow-md);
+}
+
+/* Grid Toggle Button styles */
+.product-editor-shell .portal-model-toolbar button.grid-toggle-btn.grid-off {
+  opacity: 0.45 !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .portal-model-toolbar button.grid-toggle-btn {
+  background: var(--portal-accent, #C9FF57) !important;
+  color: #050505 !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .portal-model-toolbar button.grid-toggle-btn.grid-off {
+  background: rgba(0, 0, 0, 0.05) !important;
+  color: rgba(0, 0, 0, 0.4) !important;
+  opacity: 0.45 !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .portal-model-toolbar button.grid-toggle-btn {
+  background: var(--portal-accent, #00B2CA) !important;
+  color: #ffffff !important;
+}
+
+html[data-portal-theme="cyan"] .product-editor-shell .portal-model-toolbar button.grid-toggle-btn.grid-off {
+  background: rgba(0, 0, 0, 0.05) !important;
+  color: rgba(0, 0, 0, 0.4) !important;
+  opacity: 0.45 !important;
+}
+
+/* User panel visibility - restore borders and field contrast after global no-border pass */
+
+.user-panel-shell {
+  --up-border: #d4d4d8;
+  --up-border-soft: #e4e4e7;
+  --up-card-border: #dde1e6;
+  --up-input-border: #c8cdd4;
+  --up-input-bg: #ffffff;
+  --up-muted-surface: #f4f4f5;
+  --up-helper-text: #71717a;
+  --up-focus: #84d400;
+  --up-focus-ring: rgba(132, 212, 0, 0.22);
+  --color-border: var(--up-border);
+  --input-border: #c8cdd4;
+}
+
+.user-panel-shell .user-panel-content > :is(header, section, aside, article)[class*="border"],
+.user-panel-shell [class*="border-[#ECECEC]"] {
+  border-color: var(--up-card-border) !important;
+}
+
+.user-panel-shell [class*="border-t"],
+.user-panel-shell [class*="border-b"],
+.user-panel-shell [class*="border-l"],
+.user-panel-shell [class*="border-r"] {
+  border-color: var(--up-border-soft) !important;
+}
+
+.user-panel-shell [class*="divide-y"] > :not([hidden]) ~ :not([hidden]),
+.user-panel-shell [class*="divide-x"] > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--up-border-soft) !important;
+}
+
+.user-panel-shell :is(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]),
+  select,
+  textarea,
+  .user-panel-input
+) {
+  border: 1px solid var(--up-input-border) !important;
+  background-color: var(--up-input-bg) !important;
+  color: #111111 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.user-panel-shell :is(input, select, textarea, .user-panel-input):hover:not(:disabled) {
+  border-color: var(--up-input-border) !important;
+  box-shadow: none !important;
+}
+
+.user-panel-shell :is(input, select, textarea, .user-panel-input):focus,
+.user-panel-shell :is(input, select, textarea, .user-panel-input):focus-visible {
+  border: 1px solid var(--up-input-border) !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.user-panel-shell :is(input, select, textarea, .user-panel-input):disabled {
+  background-color: var(--up-muted-surface) !important;
+  border: none !important;
+  color: #525252 !important;
+  opacity: 1 !important;
+  -webkit-text-fill-color: #525252;
+}
+
+.user-panel-shell :is(input, select, textarea, .user-panel-input)::placeholder {
+  color: #a1a1aa !important;
+}
+
+.user-panel-shell :is(button, a, label)[class*="border-[#ECECEC]"] {
+  border-color: var(--up-input-border) !important;
+}
+
+.user-panel-shell .up-subpanel {
+  background: var(--up-muted-surface) !important;
+  border-color: var(--up-input-border) !important;
+}
+
+.user-panel-shell .up-hint {
+  color: var(--up-helper-text) !important;
+}
+
+.user-panel-shell [class*="bg-[#FAFAFA]"] {
+  background-color: #f4f4f5 !important;
+}
+
+/* Product editor - user panel light theme (overrides legacy dark editor rules) */
+
+.product-editor-shell {
+  --editor-accent: #84d400 !important;
+  --editor-accent-hover: #78c400 !important;
+  --editor-accent-contrast: #102000 !important;
+  --editor-control: #ffffff !important;
+  --editor-control-strong: #fafafa !important;
+  --editor-control-soft: #f4f4f5 !important;
+  --editor-line: #ececec !important;
+  --editor-muted: #737373 !important;
+  --editor-value-bg: #fafafa !important;
+  --editor-viewer-bg: #fafafa !important;
+  background: #f9fafb !important;
+  color: #111111 !important;
+}
+
+.product-editor-shell .editor-topbar,
+.product-editor-shell .portal-model-canvas,
+.product-editor-shell .editor-side-panel,
+.product-editor-shell .portal-model-toolbar {
+  border-color: #ececec !important;
+}
+
+.product-editor-shell .editor-topbar {
+  background: #ffffff !important;
+  color: #111111 !important;
+}
+
+.product-editor-shell .editor-topbar h1,
+.product-editor-shell .editor-topbar h2,
+.product-editor-shell .editor-topbar h3,
+.product-editor-shell .editor-topbar p,
+.product-editor-shell .editor-topbar button {
+  color: inherit !important;
+  background: transparent !important;
+}
+
+.product-editor-shell .editor-topbar button {
+  border-color: #ececec !important;
+}
+
+.product-editor-shell .editor-side-panel {
+  background: #ffffff !important;
+  color: #111111 !important;
+  border-left-color: #ececec !important;
+}
+
+.product-editor-shell .editor-side-panel > div:first-child {
+  background: #ffffff !important;
+  border-bottom-color: #ececec !important;
+}
+
+.product-editor-shell .portal-model-canvas,
+.product-editor-shell .portal-viewer-layer {
+  background: #ffffff !important;
+}
+
+.product-editor-shell .portal-viewer-layer {
+  background:
+    linear-gradient(rgba(12, 14, 16, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(12, 14, 16, 0.04) 1px, transparent 1px),
+    #fafafa !important;
+  background-size: 38px 38px, 38px 38px, auto !important;
+}
+
+.product-editor-shell .portal-viewer-layer.hide-grid {
+  background: #fafafa !important;
+  background-size: auto !important;
+}
+
+.product-editor-shell .portal-viewer-layer model-viewer,
+.product-editor-shell model-viewer {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 100% !important;
+  background: transparent !important;
+  --poster-color: transparent !important;
+}
+
+.product-editor-shell .portal-model-toolbar {
+  background: #ffffff !important;
+  border-color: #ececec !important;
+  color: #525252 !important;
+  box-shadow: 0 8px 24px rgba(17, 17, 17, 0.08) !important;
+}
+
+.product-editor-shell .portal-model-toolbar button:not(.editor-primary-action) {
+  background: transparent !important;
+  color: #525252 !important;
+}
+
+.product-editor-shell .portal-model-toolbar button.grid-toggle-btn {
+  background: #eef9e0 !important;
+  color: #5fa800 !important;
+}
+
+.product-editor-shell .portal-model-toolbar button.grid-toggle-btn.grid-off {
+  background: transparent !important;
+  color: #525252 !important;
+}
+
+.product-editor-shell h1,
+.product-editor-shell h2,
+.product-editor-shell h3,
+.product-editor-shell h4,
+.product-editor-shell b,
+.product-editor-shell strong {
+  color: #111111 !important;
+}
+
+.product-editor-shell .editor-side-panel p,
+.product-editor-shell .editor-side-panel label,
+.product-editor-shell .editor-side-panel span,
+.product-editor-shell .editor-side-panel button,
+.product-editor-shell .editor-side-panel select,
+.product-editor-shell .editor-side-panel option {
+  color: #525252 !important;
+}
+
+.product-editor-shell .editor-side-panel section > button,
+.product-editor-shell .editor-side-panel .editor-material-trigger,
+.product-editor-shell .editor-side-panel .editor-material-body,
+.product-editor-shell .editor-side-panel [class*="bg-[#101820]"],
+.product-editor-shell .editor-side-panel [class*="bg-[#252b30]"],
+.product-editor-shell .editor-side-panel [class*="bg-[#06090c]"] {
+  background: #ffffff !important;
+  color: #111111 !important;
+}
+
+.product-editor-shell .editor-side-panel .editor-material-body {
+  background: #fafafa !important;
+}
+
+.product-editor-shell .editor-primary-action {
+  background: #84d400 !important;
+  color: #102000 !important;
+}
+
+.product-editor-shell .user-panel-rail {
+  background: #ffffff !important;
+  color: #111111 !important;
+}
+
+/* Flush edge-to-edge editor shell - remove legacy floating-card gaps */
+
+html[data-portal-theme="lime"] .product-editor-shell,
+.product-editor-shell {
+  --editor-rail-width: 58px;
+  --editor-panel-width: 320px;
+  --editor-topbar-height: 56px;
+  background: #f9fafb !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-app-rail,
+.product-editor-shell .editor-app-rail {
+  top: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  width: var(--editor-rail-width) !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-topbar,
+.product-editor-shell .editor-topbar {
+  top: 0 !important;
+  right: var(--editor-panel-width) !important;
+  height: var(--editor-topbar-height) !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  border-top: 0 !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .portal-model-canvas,
+.product-editor-shell .portal-model-canvas {
+  inset: auto !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  border: 0 !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel,
+.product-editor-shell .editor-side-panel {
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: var(--editor-panel-width) !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  border-top: 0 !important;
+  border-bottom: 0 !important;
+  border-right: 0 !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .portal-model-toolbar,
+.product-editor-shell .portal-model-toolbar {
+  bottom: 16px !important;
+  left: 0 !important;
+  right: 0 !important;
+  width: max-content !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  transform: none !important;
+  border-radius: 16px !important;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08) !important;
+}
+
+/* Product cards - flat icon actions (no lime secondary pill buttons) */
+
+.user-panel-shell .up-product-card-actions .up-product-card-action,
+html[data-portal-theme="lime"] .customer-portal .up-product-card-actions .up-product-card-action,
+html[data-portal-theme="lime"] .customer-portal .up-product-card-actions [role="button"] {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  min-height: 0 !important;
+  font-weight: 500 !important;
+  color: #737373 !important;
+}
+
+.user-panel-shell .up-product-card-actions .up-product-card-action:hover,
+html[data-portal-theme="lime"] .customer-portal .up-product-card-actions .up-product-card-action:hover,
+html[data-portal-theme="lime"] .customer-portal .up-product-card-actions [role="button"]:hover {
+  background: transparent !important;
+  border: none !important;
+  color: #111111 !important;
+}
+
+.user-panel-shell .up-product-card .up-product-card-actions {
+  border-top-color: #f0f0f0 !important;
+}
+
+.user-panel-shell .up-product-card .up-product-card-actions + *,
+.user-panel-shell .up-product-card-stats {
+  border-top-color: #f0f0f0 !important;
+}
+
+/* =========================================================
+   AR360 USER PANEL - LIME / BLACK / SOFT GRAY THEME
+   Scoped to the customer dashboard only.
+   ========================================================= */
+.user-panel-shell {
+  --ar-primary: #c8ff46;
+  --ar-primary-hover: #d7ff76;
+  --ar-primary-soft: #f3ffd7;
+  --ar-primary-border: #bce83c;
+  --ar-background: #FAFAFA;
+  --ar-surface: #ffffff;
+  --ar-surface-soft: #f6f7f2;
+  --ar-border: #e2e4dc;
+  --ar-text: #171717;
+  --ar-text-muted: #6c7068;
+  --ar-rail: #1c1d22;
+  --ar-shadow-sm: 0 5px 18px rgba(22, 24, 20, 0.045);
+  --ar-shadow-md: 0 16px 45px rgba(22, 24, 20, 0.075);
+}
+
+.user-panel-shell .user-panel-content > * {
+  animation: arPanelIn 240ms ease-out both;
+}
+
+.user-panel-shell main {
+  background: #FAFAFA !important;
+  background-image: none !important;
+}
+
+.user-panel-shell .user-panel-content [class*="rounded-"][class*="border"] {
+  border-color: #e2e4dc;
+}
+
+.user-panel-shell .user-panel-content [class*="bg-[#F9FAFB]"],
+.user-panel-shell .user-panel-content [class*="bg-slate-50"],
+.user-panel-shell .user-panel-content [class*="bg-gray-50"] {
+  background-color: #f6f7f2 !important;
+}
+
+.user-panel-shell .user-panel-content input,
+.user-panel-shell .user-panel-content select,
+.user-panel-shell .user-panel-content textarea {
+  border-color: #dfe2d8 !important;
+  background: #fff !important;
+  color: #171717 !important;
+  box-shadow: none !important;
+}
+
+.user-panel-shell .user-panel-content input:focus,
+.user-panel-shell .user-panel-content select:focus,
+.user-panel-shell .user-panel-content textarea:focus {
+  border-color: #a9d52f !important;
+  outline: 0 !important;
+  box-shadow: 0 0 0 4px rgba(200, 255, 70, 0.20) !important;
+}
+
+.user-panel-shell .user-panel-content button[class*="bg-[#84D400]"],
+.user-panel-shell .user-panel-content a[class*="bg-[#84D400]"] {
+  background: #c8ff46 !important;
+  color: #171717 !important;
+  box-shadow: 0 10px 24px rgba(178, 224, 58, 0.18);
+}
+
+.user-panel-shell .user-panel-content [class*="text-[#84D400]"] {
+  color: #82a900 !important;
+}
+
+.user-panel-shell .user-panel-content [class*="bg-[#EEF9E0]"],
+.user-panel-shell .user-panel-content [class*="bg-[#F3FAEB]"] {
+  background-color: #f3ffd7 !important;
+}
+
+.user-panel-shell .user-panel-content [class*="ring-[#84D400]"] {
+  --tw-ring-color: rgba(167, 213, 47, 0.72) !important;
+}
+
+.user-panel-shell .up-product-card {
+  border: 1px solid #e2e4dc;
+  border-radius: 16px !important;
+  overflow: hidden;
+  background-clip: padding-box;
+  box-shadow: 0 7px 24px rgba(22, 24, 20, 0.05) !important;
+}
+
+.user-panel-shell .up-product-card:hover {
+  border-color: #c6dc8e;
+  box-shadow: 0 14px 34px rgba(22, 24, 20, 0.09) !important;
+}
+
+/* Keep dropdown usable when more-menu is open */
+.user-panel-shell .up-product-card-menu-open {
+  overflow: visible !important;
+}
+
+/* Product select checkboxes — compact circle */
+.user-panel-shell .up-select-check,
+html[data-portal-theme="lime"] .customer-portal .up-select-check {
+  width: 18px !important;
+  height: 18px !important;
+  min-width: 18px !important;
+  min-height: 18px !important;
+  padding: 0 !important;
+  border-radius: 999px !important;
+  box-shadow: none !important;
+}
+
+.user-panel-shell .up-activity-panel {
+  border-radius: 16px !important;
+  overflow: hidden;
+}
+
+.user-panel-shell .up-activity-row {
+  border-radius: 12px !important;
+}
+
+/* Notifications popover — consistent 16px corners on all sides */
+.up-notification-panel {
+  border-radius: 16px !important;
+  overflow: hidden !important;
+}
+
+/* Product card overflow menu — solid white + clear hover */
+.user-panel-shell .up-product-menu,
+html[data-portal-theme="lime"] .customer-portal .up-product-menu {
+  background: #ffffff !important;
+  border: 1px solid #e8eaed !important;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12) !important;
+}
+
+.user-panel-shell .up-product-menu .up-product-menu-item,
+html[data-portal-theme="lime"] .customer-portal .up-product-menu .up-product-menu-item {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  color: #525252 !important;
+  font-weight: 600 !important;
+}
+
+.user-panel-shell .up-product-menu .up-product-menu-item:hover,
+html[data-portal-theme="lime"] .customer-portal .up-product-menu .up-product-menu-item:hover {
+  background: #f5f5f5 !important;
+  color: #111111 !important;
+}
+
+.user-panel-shell .up-product-menu .up-product-menu-item-danger,
+html[data-portal-theme="lime"] .customer-portal .up-product-menu .up-product-menu-item-danger {
+  color: #dc2626 !important;
+  background: transparent !important;
+}
+
+.user-panel-shell .up-product-menu .up-product-menu-item-danger:hover,
+html[data-portal-theme="lime"] .customer-portal .up-product-menu .up-product-menu-item-danger:hover {
+  background: #fef2f2 !important;
+  color: #dc2626 !important;
+}
+
+@keyframes arPanelIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .user-panel-shell .user-panel-content > * { animation: none; }
+}
+
+/* =========================================================
+   AR360 USER PANEL - FINAL FLAT THEME / NO DROP SHADOWS
+   Only customer user panel. Product rows/cards keep hover depth.
+   ========================================================= */
+.user-panel-shell {
+  --ar-primary: #c8ff46;
+  --ar-primary-hover: #b8f533;
+  --ar-primary-soft: #f3ffd7;
+  --ar-page-bg: #FAFAFA;
+  --ar-surface: #ffffff;
+  --ar-surface-soft: #f6f7f2;
+  --ar-border: #e6e8df;
+}
+
+/* Global compact rhythm */
+.user-panel-shell .user-panel-content {
+  gap: 8px !important;
+  padding: 8px !important;
+}
+
+.user-panel-shell .user-panel-content > * + * {
+  margin-top: 0 !important;
+}
+
+/* Remove all page/card/button drop shadows */
+.user-panel-shell .user-panel-content *,
+.user-panel-shell .user-panel-sidebar,
+.user-panel-shell .user-panel-sidebar * {
+  --tw-shadow: 0 0 #0000 !important;
+  --tw-shadow-colored: 0 0 #0000 !important;
+}
+
+.user-panel-shell .user-panel-content [class*="shadow"],
+.user-panel-shell .user-panel-sidebar [class*="shadow"] {
+  box-shadow: none !important;
+}
+
+/* Flat surfaces: one light boundary, never double border */
+.user-panel-shell .user-panel-content > [class*="rounded"],
+.user-panel-shell .user-panel-content section[class*="rounded"],
+.user-panel-shell .user-panel-content article[class*="rounded"] {
+  box-shadow: none !important;
+}
+
+.user-panel-shell .user-panel-content [class*="rounded"][class*="border"] {
+  border-color: var(--ar-border) !important;
+}
+
+/* Primary actions - exact same lime, no glow */
+.user-panel-shell .user-panel-content button[class*="bg-[#84D400]"],
+.user-panel-shell .user-panel-content a[class*="bg-[#84D400]"],
+.user-panel-shell .user-panel-content button[class*="bg-[#C8FF46]"],
+.user-panel-shell .user-panel-content a[class*="bg-[#C8FF46]"],
+.user-panel-shell .user-panel-content .user-btn-primary {
+  background: var(--ar-primary) !important;
+  color: #151515 !important;
+  box-shadow: none !important;
+}
+
+.user-panel-shell .user-panel-content button[class*="bg-[#84D400]"]:hover,
+.user-panel-shell .user-panel-content a[class*="bg-[#84D400]"]:hover,
+.user-panel-shell .user-panel-content button[class*="bg-[#C8FF46]"]:hover,
+.user-panel-shell .user-panel-content a[class*="bg-[#C8FF46]"]:hover,
+.user-panel-shell .user-panel-content .user-btn-primary:hover {
+  background: var(--ar-primary-hover) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+/* Tabs: remove duplicate lower line; only active indicator remains */
+.user-panel-shell .user-tabs,
+.user-panel-shell [role="tablist"] {
+  box-shadow: none !important;
+}
+
+.user-panel-shell [role="tablist"] + *,
+.user-panel-shell .user-tabs + * {
+  margin-top: 0 !important;
+}
+
+/* Select/filter system: exactly one visible control */
+.user-panel-shell .user-panel-content select {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  min-height: 40px !important;
+  padding: 0 38px 0 12px !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  background-color: var(--ar-surface-soft) !important;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #454945 50%),
+    linear-gradient(135deg, #454945 50%, transparent 50%) !important;
+  background-position:
+    calc(100% - 17px) calc(50% - 2px),
+    calc(100% - 12px) calc(50% - 2px) !important;
+  background-size: 5px 5px, 5px 5px !important;
+  background-repeat: no-repeat !important;
+  box-shadow: none !important;
+  outline: 0 !important;
+}
+
+.user-panel-shell .user-panel-content select:hover {
+  background-color: #f0f2ea !important;
+}
+
+.user-panel-shell .user-panel-content select:focus {
+  border: 0 !important;
+  outline: 2px solid rgba(200, 255, 70, 0.75) !important;
+  outline-offset: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Wrappers around a select must not draw a second border/arrow */
+.user-panel-shell .user-panel-content :has(> select) {
+  box-shadow: none !important;
+}
+
+.user-panel-shell .user-panel-content :has(> select)[class*="border"] {
+  border-color: transparent !important;
+}
+
+.user-panel-shell .user-panel-content :has(> select) > svg:last-child,
+.user-panel-shell .user-panel-content :has(> select) > span:last-child > svg {
+  display: none !important;
+}
+
+/* Native option menu colors where browser supports it */
+.user-panel-shell .user-panel-content select option {
+  background: #ffffff;
+  color: #171717;
+}
+
+/* Keep normal fields subtly bordered */
+.user-panel-shell .user-panel-content input:not([type="checkbox"]):not([type="radio"]),
+.user-panel-shell .user-panel-content textarea {
+  box-shadow: none !important;
+  border-color: #dfe2d8 !important;
+}
+
+/* Stats, headers, plan areas and tables stay completely flat */
+.user-panel-shell .user-stat-card,
+.user-panel-shell .user-page-header,
+.user-panel-shell .user-card,
+.user-panel-shell .plan-card,
+.user-panel-shell table,
+.user-panel-shell thead,
+.user-panel-shell tbody,
+.user-panel-shell tr,
+.user-panel-shell td,
+.user-panel-shell th {
+  box-shadow: none !important;
+}
+
+/* Product page only: no resting shadow; hover adds depth */
+.user-panel-shell .up-product-card,
+.user-panel-shell .product-card,
+.user-panel-shell [data-product-card="true"],
+.user-panel-shell .products-table tbody tr {
+  box-shadow: none !important;
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background-color 180ms ease !important;
+}
+
+.user-panel-shell .up-product-card:hover,
+.user-panel-shell .product-card:hover,
+.user-panel-shell [data-product-card="true"]:hover {
+  transform: translateY(-2px) !important;
+  border-color: rgba(200, 255, 70, 0.9) !important;
+  box-shadow: 0 12px 28px rgba(17, 20, 16, 0.09) !important;
+}
+
+.user-panel-shell .products-table tbody tr:hover {
+  background: #fbfff3 !important;
+  box-shadow: 0 8px 20px rgba(17, 20, 16, 0.07) !important;
+}
+
+/* Sidebar: completely flat */
+.user-panel-shell .user-panel-sidebar,
+.user-panel-shell .user-panel-sidebar a,
+.user-panel-shell .user-panel-sidebar button,
+.user-panel-shell .user-panel-sidebar [class*="rounded"] {
+  box-shadow: none !important;
+}
+
+/* Compact page spacing everywhere */
+.user-panel-shell .user-panel-content [class*="gap-4"],
+.user-panel-shell .user-panel-content [class*="gap-5"],
+.user-panel-shell .user-panel-content [class*="gap-6"],
+.user-panel-shell .user-panel-content [class*="gap-8"] {
+  gap: 8px !important;
+}
+
+.user-panel-shell .user-panel-content [class*="space-y-4"] > :not([hidden]) ~ :not([hidden]),
+.user-panel-shell .user-panel-content [class*="space-y-5"] > :not([hidden]) ~ :not([hidden]),
+.user-panel-shell .user-panel-content [class*="space-y-6"] > :not([hidden]) ~ :not([hidden]),
+.user-panel-shell .user-panel-content [class*="space-y-8"] > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 8px !important;
+}
+
+/* Plan cards: cleaner visual hierarchy without shadow */
+.user-panel-shell .available-plans-grid > *,
+.user-panel-shell [data-plan-card],
+.user-panel-shell .subscription-plan-card {
+  box-shadow: none !important;
+  border: 1px solid var(--ar-border) !important;
+  background: #ffffff !important;
+  transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease !important;
+}
+
+.user-panel-shell [data-plan-card="current"],
+.user-panel-shell .subscription-plan-card.current,
+.user-panel-shell .subscription-plan-card[data-current="true"] {
+  background: #f8ffe9 !important;
+  border-color: #c8ff46 !important;
+}
+
+.user-panel-shell .available-plans-grid > *:hover,
+.user-panel-shell [data-plan-card]:hover,
+.user-panel-shell .subscription-plan-card:hover {
+  border-color: #c8ff46 !important;
+  transform: translateY(-1px) !important;
+  box-shadow: none !important;
+}
+
+@media (max-width: 768px) {
+  .user-panel-shell .user-panel-content {
+    gap: 8px !important;
+    padding: 8px !important;
+  }
+}
+
+/* AR360 Canvas editor - dark rail + lime tool system */
+.product-editor-shell .editor-app-rail,
+.product-editor-shell .user-panel-rail {
+  width: 68px !important;
+  background: #111416 !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+.product-editor-shell .user-panel-rail a {
+  box-shadow: none !important;
+}
+.product-editor-shell .editor-topbar,
+.product-editor-shell .editor-side-panel,
+.product-editor-shell .portal-model-toolbar,
+.product-editor-shell button {
+  box-shadow: none !important;
+}
+.product-editor-shell .editor-topbar {
+  border-bottom: 1px solid #eef0f1 !important;
+}
+.product-editor-shell .editor-side-panel {
+  border-left: 1px solid #eef0f1 !important;
+}
+.product-editor-shell .portal-viewer-layer {
+  background-color: #f4f5f6 !important;
+}
+.product-editor-shell .portal-model-toolbar {
+  border: 1px solid #e7e9eb !important;
+}
+.product-editor-shell .editor-primary-action {
+  background: #c8ff46 !important;
+  color: #111416 !important;
+}
+.product-editor-shell .editor-primary-action:hover {
+  background: #b9f337 !important;
+}
+
+/* =========================================================
+   AR360 CANVAS - FULL DARK SIDEBAR + 1PX SEPARATORS
+========================================================= */
+.product-editor-shell .editor-app-rail {
+  width: 244px !important;
+  background: #17191d !important;
+  border-right: 1px solid rgba(255,255,255,.14) !important;
+  box-shadow: none !important;
+}
+
+/* Re-theme shared nav links when used inside canvas sidebar */
+.product-editor-shell .editor-app-rail nav a {
+  min-height: 44px !important;
+  margin: 2px 0 !important;
+  padding: 0 14px !important;
+  border-radius: 12px !important;
+  background: transparent !important;
+  color: rgba(255,255,255,.72) !important;
+  box-shadow: none !important;
+}
+.product-editor-shell .editor-app-rail nav a svg {
+  color: rgba(255,255,255,.68) !important;
+}
+.product-editor-shell .editor-app-rail nav a:hover {
+  background: rgba(255,255,255,.07) !important;
+  color: #fff !important;
+}
+.product-editor-shell .editor-app-rail nav a:hover svg {
+  color: #fff !important;
+}
+.product-editor-shell .editor-app-rail nav a[class*="bg-[var(--ar-primary-soft)]"] {
+  background: #c8ff46 !important;
+  color: #111416 !important;
+}
+.product-editor-shell .editor-app-rail nav a[class*="bg-[var(--ar-primary-soft)]"] svg {
+  color: #111416 !important;
+}
+.product-editor-shell .editor-app-rail nav > div[class*="h-px"] {
+  background: rgba(255,255,255,.14) !important;
+}
+
+.product-editor-shell .editor-topbar {
+  border-bottom: 1px solid #e4e7e9 !important;
+  box-shadow: none !important;
+}
+.product-editor-shell .portal-model-canvas {
+  /* left offset is dynamic */
+}
+.product-editor-shell .editor-side-panel {
+  border-left: 1px solid #e4e7e9 !important;
+  box-shadow: none !important;
+}
+.product-editor-shell .editor-panel-tabs {
+  border-bottom: 1px solid #e4e7e9 !important;
+}
+
+/* Right properties panel: clear 2px separators between every section */
+.product-editor-shell .editor-side-panel section,
+.product-editor-shell .editor-material-section {
+  border-bottom: 2px solid #e4e7e9 !important;
+  box-shadow: none !important;
+}
+.product-editor-shell .editor-side-panel section:last-child,
+.product-editor-shell .editor-material-section:last-child {
+  border-bottom: 0 !important;
+}
+.product-editor-shell .editor-material-trigger,
+.product-editor-shell .editor-side-panel section > button:first-child {
+  min-height: 52px !important;
+  background: #fff !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+.product-editor-shell .editor-material-body {
+  border-top: 1px solid #eef0f1 !important;
+  background: #fafafa !important;
+}
+
+/* Top property icons: neutral by default, lime underline only for active */
+.product-editor-shell .editor-panel-tabs {
+  gap: 0 !important;
+  padding-left: 8px !important;
+  padding-right: 8px !important;
+}
+
+.product-editor-shell .editor-panel-tab-sep {
+  display: block !important;
+  width: 2px !important;
+  min-width: 2px !important;
+  height: 22px !important;
+  margin: 0 4px !important;
+  border-radius: 1px !important;
+  background: #C8CDD4 !important;
+  flex-shrink: 0 !important;
+}
+
+.product-editor-shell .editor-panel-tabs > button,
+.product-editor-shell .editor-panel-tabs > .editor-panel-tab {
+  background: transparent !important;
+  color: #687074 !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.product-editor-shell .editor-panel-tabs > button:hover,
+.product-editor-shell .editor-panel-tabs > .editor-panel-tab:hover {
+  background: #f2f4f4 !important;
+  color: #111416 !important;
+}
+
+.product-editor-shell .editor-panel-tabs > button[aria-pressed="true"],
+.product-editor-shell .editor-panel-tabs > button[class*="bg-[#F4F5F5]"],
+.product-editor-shell .editor-panel-tabs > button[class*="bg-[#C8FF46]"] {
+  background: #f4f5f5 !important;
+  color: #111416 !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.product-editor-shell .editor-panel-tabs > button span[class*="absolute"] {
+  background: #c8ff46 !important;
+}
+
+/* Canvas flush against side panel — no floating radius cut */
+html[data-portal-theme="lime"] .product-editor-shell .portal-model-canvas,
+.product-editor-shell .portal-model-canvas {
+  border-radius: 0 !important;
+  overflow: hidden !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel,
+.product-editor-shell .editor-side-panel {
+  border-radius: 0 !important;
+  overflow: hidden !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .portal-viewer-layer,
+.product-editor-shell .portal-viewer-layer {
+  border-radius: 0 !important;
+}
+
+/* Maintain a compact, flat editor with no accidental shadows */
+.product-editor-shell *,
+.product-editor-shell *::before,
+.product-editor-shell *::after {
+  --tw-shadow: 0 0 #0000 !important;
+  --tw-shadow-colored: 0 0 #0000 !important;
+}
+.product-editor-shell [class*="shadow"] {
+  box-shadow: none !important;
+}
+
+@media (max-width: 1180px) {
+  .product-editor-shell .editor-app-rail {
+    width: 76px !important;
+  }
+  .product-editor-shell .editor-app-rail > div:first-child > div:last-child,
+  .product-editor-shell .editor-app-rail nav a span,
+  .product-editor-shell .editor-app-rail > div:last-child {
+    display: none !important;
+  }
+  .product-editor-shell .editor-app-rail nav a {
+    width: 48px !important;
+    justify-content: center !important;
+    padding: 0 !important;
+    margin-inline: auto !important;
+  }
+  .product-editor-shell .editor-topbar,
+  .product-editor-shell .portal-model-canvas {
+    /* dynamic left position */
+  }
+}
+
+/* Restore visible border separators between export rows on canvas page */
+.product-editor-shell .editor-export-row {
+  border-bottom: 1px solid #ECECEC !important;
+}
+.product-editor-shell .editor-export-row:last-child {
+  border-bottom: 0 !important;
+}
+
+/* Restore visible border separators for accordion sections on canvas page */
+.product-editor-shell .editor-material-section,
+.product-editor-shell .editor-panel-section {
+  border-bottom: 2px solid #ECECEC !important;
+}
+
+/* =========================================================
+   PRODUCT EDITOR - CANONICAL FLEX LAYOUT (wins over legacy)
+   Sidebar | Topbar+Canvas | Properties panel
+   ========================================================= */
+html[data-portal-theme="lime"] .product-editor-shell,
+.product-editor-shell {
+  display: flex !important;
+  flex-direction: row !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  overflow: hidden !important;
+  background: #F9FAFB !important;
+  isolation: isolate;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-topbar,
+.product-editor-shell .editor-topbar {
+  position: relative !important;
+  inset: auto !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: var(--editor-topbar-height, 56px) !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: #ffffff !important;
+  border-bottom: 1px solid #E4E7E9 !important;
+  color: #111827 !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-topbar h1,
+html[data-portal-theme="lime"] .product-editor-shell .editor-topbar p,
+.product-editor-shell .editor-topbar h1,
+.product-editor-shell .editor-topbar p {
+  color: #111827 !important;
+  opacity: 1 !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-topbar p:last-child,
+.product-editor-shell .editor-topbar p:last-child {
+  color: inherit !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-topbar button,
+.product-editor-shell .editor-topbar button {
+  background: #F1F3F4 !important;
+  color: #25292C !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .portal-model-canvas,
+.product-editor-shell .portal-model-canvas {
+  position: relative !important;
+  inset: auto !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: auto !important;
+  height: auto !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  overflow: hidden !important;
+  background: #ffffff !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .portal-viewer-layer,
+.product-editor-shell .portal-viewer-layer {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .portal-viewer-layer model-viewer,
+.product-editor-shell .portal-viewer-layer model-viewer,
+html[data-portal-theme="lime"] .product-editor-shell model-viewer,
+.product-editor-shell model-viewer {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  display: block !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .portal-model-toolbar,
+.product-editor-shell .portal-model-toolbar {
+  position: absolute !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 16px !important;
+  top: auto !important;
+  width: max-content !important;
+  max-width: calc(100% - 24px) !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  transform: none !important;
+  background: #ffffff !important;
+  border: 1px solid #E7E9EB !important;
+  color: #525252 !important;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08) !important;
+  z-index: 50 !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .portal-model-toolbar button:not(.editor-primary-action),
+.product-editor-shell .portal-model-toolbar button:not(.editor-primary-action) {
+  background: transparent !important;
+  color: #525252 !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel,
+.product-editor-shell .editor-side-panel {
+  position: relative !important;
+  inset: auto !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  width: var(--editor-panel-width, 320px) !important;
+  height: auto !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: #ffffff !important;
+  border-left: 1px solid #E4E7E9 !important;
+  color: #111827 !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel > div:first-child,
+.product-editor-shell .editor-side-panel > div:first-child {
+  background: #ffffff !important;
+  border-bottom: 1px solid #E4E7E9 !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel h3,
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel [class*="font-bold"],
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel [class*="font-black"],
+.product-editor-shell .editor-side-panel h3,
+.product-editor-shell .editor-side-panel [class*="font-bold"],
+.product-editor-shell .editor-side-panel [class*="font-black"] {
+  color: #111827 !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel p,
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel label,
+.product-editor-shell .editor-side-panel p,
+.product-editor-shell .editor-side-panel label {
+  color: #6B7280 !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .user-panel-sidebar,
+.product-editor-shell .user-panel-sidebar {
+  position: relative !important;
+  height: 100% !important;
+  width: 100% !important;
+}
+
+@media (max-width: 900px) {
+  html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel,
+  .product-editor-shell .editor-side-panel {
+    position: fixed !important;
+    top: var(--editor-topbar-height, 56px) !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    z-index: 60 !important;
+    width: min(320px, 92vw) !important;
+    box-shadow: -12px 0 40px rgba(15, 23, 42, 0.12) !important;
+  }
+}
+
+/* =========================================================
+   FORM FIELDS — visible borders everywhere in user panel + editor
+   Panel chrome stays borderless; text inputs must always look editable.
+   ========================================================= */
+html[data-portal-theme="lime"] .user-panel-shell :is(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]),
+  select,
+  textarea,
+  .user-panel-input
+),
+html[data-portal-theme="lime"] .product-editor-shell :is(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]),
+  select,
+  textarea,
+  .user-panel-input,
+  .editor-variant-input
+),
+.user-panel-shell :is(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]),
+  select,
+  textarea,
+  .user-panel-input
+),
+.product-editor-shell :is(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]),
+  select,
+  textarea,
+  .user-panel-input,
+  .editor-variant-input
+) {
+  border: 1px solid var(--input-border, #C8CDD4) !important;
+  background-color: #ffffff !important;
+  color: #111111 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+html[data-portal-theme="lime"] .user-panel-shell :is(input, select, textarea, .user-panel-input):hover:not(:disabled),
+html[data-portal-theme="lime"] .product-editor-shell :is(input, select, textarea, .user-panel-input, .editor-variant-input):hover:not(:disabled),
+.user-panel-shell :is(input, select, textarea, .user-panel-input):hover:not(:disabled),
+.product-editor-shell :is(input, select, textarea, .user-panel-input, .editor-variant-input):hover:not(:disabled) {
+  border-color: #A8AFB8 !important;
+}
+
+html[data-portal-theme="lime"] .user-panel-shell :is(input, select, textarea, .user-panel-input):focus,
+html[data-portal-theme="lime"] .user-panel-shell :is(input, select, textarea, .user-panel-input):focus-visible,
+html[data-portal-theme="lime"] .product-editor-shell :is(input, select, textarea, .user-panel-input, .editor-variant-input):focus,
+html[data-portal-theme="lime"] .product-editor-shell :is(input, select, textarea, .user-panel-input, .editor-variant-input):focus-visible,
+.user-panel-shell :is(input, select, textarea, .user-panel-input):focus,
+.user-panel-shell :is(input, select, textarea, .user-panel-input):focus-visible,
+.product-editor-shell :is(input, select, textarea, .user-panel-input, .editor-variant-input):focus,
+.product-editor-shell :is(input, select, textarea, .user-panel-input, .editor-variant-input):focus-visible {
+  border: 1px solid var(--input-border, #C8CDD4) !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Variant modal name field — visible border (theme sets --color-border: transparent) */
+html[data-portal-theme="lime"] .product-editor-shell input.editor-variant-input:not([type="range"]):not([type="checkbox"]):not([type="color"]),
+.product-editor-shell input.editor-variant-input {
+  border: 1px solid #C8CDD4 !important;
+  background: #ffffff !important;
+  box-shadow: none !important;
+  color: #111111 !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell input.editor-variant-input:hover,
+.product-editor-shell input.editor-variant-input:hover {
+  border-color: #A8AFB8 !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell input.editor-variant-input:focus,
+html[data-portal-theme="lime"] .product-editor-shell input.editor-variant-input:focus-visible,
+.product-editor-shell input.editor-variant-input:focus,
+.product-editor-shell input.editor-variant-input:focus-visible {
+  border: 1px solid #C8CDD4 !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* =========================================================
+   EDITOR SECTION SEPARATORS - 2px light gray (reference)
+   Uses box-shadow so legacy border-color:transparent cannot hide them.
+   ========================================================= */
+html[data-portal-theme="lime"] .product-editor-shell .editor-section-block,
+html[data-portal-theme="lime"] .product-editor-shell .editor-material-section,
+html[data-portal-theme="lime"] .product-editor-shell .editor-panel-section,
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel section,
+.product-editor-shell .editor-section-block,
+.product-editor-shell .editor-material-section,
+.product-editor-shell .editor-panel-section,
+.product-editor-shell .editor-side-panel section {
+  border: 0 !important;
+  border-top: 0 !important;
+  border-right: 0 !important;
+  border-left: 0 !important;
+  border-bottom: 0 !important;
+  box-shadow: inset 0 -2px 0 #E5E7EB !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-section-block:last-child,
+html[data-portal-theme="lime"] .product-editor-shell .editor-material-section:last-child,
+html[data-portal-theme="lime"] .product-editor-shell .editor-panel-section:last-child,
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel section:last-child,
+.product-editor-shell .editor-section-block:last-child,
+.product-editor-shell .editor-material-section:last-child,
+.product-editor-shell .editor-panel-section:last-child,
+.product-editor-shell .editor-side-panel section:last-child {
+  box-shadow: none !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-material-body,
+.product-editor-shell .editor-material-body {
+  box-shadow: inset 0 1px 0 #F3F4F6 !important;
+  border-top: 0 !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-material-title,
+html[data-portal-theme="lime"] .product-editor-shell .editor-panel-section > button > span,
+.product-editor-shell .editor-material-title,
+.product-editor-shell .editor-panel-section > button > span {
+  color: #111827 !important;
+  font-weight: 600 !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-export-row,
+.product-editor-shell .editor-export-row {
+  box-shadow: inset 0 -1px 0 #E5E7EB !important;
+  border-bottom: 0 !important;
+}
+
+/* Auth + user panel: borders only on text fields; no focus glow */
+.auth-premium :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+  border: 1px solid #E5E7EB !important;
+  box-shadow: none !important;
+}
+
+.auth-premium :is(input, select, textarea):focus,
+.auth-premium :is(input, select, textarea):focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+  border-color: #E5E7EB !important;
+}
+
+.auth-premium aside,
+.auth-premium aside model-viewer {
+  background-color: #ffffff !important;
+  --poster-color: #ffffff !important;
+}
+
+.user-panel-shell :is(input, select, textarea, .user-panel-input)[class*="focus:border"],
+.user-panel-shell :is(input, select, textarea, .user-panel-input):focus,
+.user-panel-shell :is(input, select, textarea, .user-panel-input):focus-visible {
+  border: 1px solid var(--up-input-border) !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.user-panel-shell [class*="focus:border-"],
+.user-panel-shell [class*="focus:ring-"] {
+  --tw-ring-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+}
+
+/* Final: all text fields in user panel + product editor keep a visible gray border */
+html[data-portal-theme="lime"] .user-panel-shell :is(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]),
+  select,
+  textarea,
+  .user-panel-input
+),
+html[data-portal-theme="lime"] .product-editor-shell :is(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]),
+  select,
+  textarea,
+  .user-panel-input,
+  .editor-variant-input
+),
+.user-panel-shell :is(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]),
+  select,
+  textarea,
+  .user-panel-input
+),
+.product-editor-shell :is(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]),
+  select,
+  textarea,
+  .user-panel-input,
+  .editor-variant-input
+) {
+  border: 1px solid #C8CDD4 !important;
+  background-color: #ffffff !important;
+  color: #111111 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+html[data-portal-theme="lime"] .user-panel-shell :is(input, select, textarea, .user-panel-input):focus,
+html[data-portal-theme="lime"] .user-panel-shell :is(input, select, textarea, .user-panel-input):focus-visible,
+html[data-portal-theme="lime"] .product-editor-shell :is(input, select, textarea, .user-panel-input, .editor-variant-input):focus,
+html[data-portal-theme="lime"] .product-editor-shell :is(input, select, textarea, .user-panel-input, .editor-variant-input):focus-visible,
+.user-panel-shell :is(input, select, textarea, .user-panel-input):focus,
+.user-panel-shell :is(input, select, textarea, .user-panel-input):focus-visible,
+.product-editor-shell :is(input, select, textarea, .user-panel-input, .editor-variant-input):focus,
+.product-editor-shell :is(input, select, textarea, .user-panel-input, .editor-variant-input):focus-visible {
+  border: 1px solid #C8CDD4 !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.product-editor-shell .editor-poster-preview {
+  border: 1px solid #C8CDD4 !important;
+}
+
+.product-editor-shell .editor-poster-preview::after {
+  position: absolute;
+  z-index: 10;
+  inset: 0;
+  border: 1px solid #AEB5BF;
+  border-radius: inherit;
+  content: "";
+  pointer-events: none;
+}
+
+.product-editor-shell .editor-panel-divider {
+  border-top: 1px solid #D5DAE1 !important;
+}
+
+/* User panel actions stay flat: no lime glow behind buttons anywhere. */
+.user-panel-shell button,
+.user-panel-shell a[class*="bg-"],
+.product-editor-shell button,
+.product-editor-shell a[class*="bg-"],
+.product-editor-shell .editor-primary-action {
+  box-shadow: none !important;
+  filter: none !important;
+  text-shadow: none !important;
+}
+
+/* Public Enterprise request form: neutral fields with a restrained AR360 focus state. */
+.enterprise-request-modal input:not([type="checkbox"]):not([type="radio"]),
+.enterprise-request-modal textarea {
+  border: 1px solid #D5DAE2 !important;
+  background: #FFFFFF !important;
+  box-shadow: none !important;
+}
+
+.enterprise-request-modal input:not([type="checkbox"]):not([type="radio"]):hover,
+.enterprise-request-modal textarea:hover {
+  border-color: #B9C1CC !important;
+}
+
+.enterprise-request-modal input:not([type="checkbox"]):not([type="radio"]):focus,
+.enterprise-request-modal input:not([type="checkbox"]):not([type="radio"]):focus-visible,
+.enterprise-request-modal textarea:focus,
+.enterprise-request-modal textarea:focus-visible {
+  border-color: #64748B !important;
+  box-shadow: 0 0 0 3px rgba(100, 116, 139, 0.14) !important;
+  outline: none !important;
+}
+
+/* Final user-panel corner system: consistent surfaces without changing pills or button shapes. */
+.user-panel-shell .user-panel-content {
+  --up-radius-shell: 20px;
+  --up-radius-card: 16px;
+  --up-radius-control: 12px;
+}
+
+.user-panel-shell .user-panel-content :is(section, article, div):not(button):not(a)[class*="rounded-[30px]"],
+.user-panel-shell .user-panel-content :is(section, article, div):not(button):not(a)[class*="rounded-[32px]"],
+.user-panel-shell .user-panel-content :is(section, article, div):not(button):not(a)[class*="rounded-[34px]"],
+.user-panel-shell .user-panel-content :is(section, article, div):not(button):not(a)[class*="rounded-[36px]"],
+.user-panel-shell .user-panel-content :is(section, article, div):not(button):not(a)[class*="rounded-3xl"] {
+  border-radius: var(--up-radius-shell) !important;
+}
+
+.user-panel-shell .user-panel-content :is(section, article, div):not(button):not(a)[class*="rounded-[22px]"],
+.user-panel-shell .user-panel-content :is(section, article, div):not(button):not(a)[class*="rounded-[24px]"],
+.user-panel-shell .user-panel-content :is(section, article, div):not(button):not(a)[class*="rounded-[26px]"],
+.user-panel-shell .user-panel-content :is(section, article, div):not(button):not(a)[class*="rounded-[28px]"],
+.user-panel-shell .user-panel-content :is(section, article, div):not(button):not(a)[class*="rounded-2xl"],
+.user-panel-shell .user-panel-content :is(section, article, div):not(button):not(a)[class*="rounded-[18px]"] {
+  border-radius: var(--up-radius-card) !important;
+}
+
+.user-panel-shell .user-panel-content :is(section, article, div):not(button):not(a)[class*="rounded-xl"],
+.user-panel-shell .user-panel-content :is(section, article, div):not(button):not(a)[class*="rounded-lg"] {
+  border-radius: var(--up-radius-control) !important;
+}
+
+/* Studio color/texture swatches: force visible frame after no-border + lime remaps. */
+html[data-portal-theme="lime"] .product-editor-shell button.studio-color-swatch,
+html[data-portal-theme="lime"] .product-editor-shell label.studio-texture-swatch,
+html[data-portal-theme="lime"] .product-editor-shell .studio-color-swatch,
+html[data-portal-theme="lime"] .product-editor-shell .studio-texture-swatch,
+.product-editor-shell button.studio-color-swatch,
+.product-editor-shell label.studio-texture-swatch,
+.product-editor-shell .studio-color-swatch,
+.product-editor-shell .studio-texture-swatch {
+  border: 2px solid #6b7280 !important;
+  border-color: #6b7280 !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.65) !important;
+}
+
+/* Hex field lives in a body portal — do not require .product-editor-shell. */
+html[data-portal-theme="lime"] input.studio-color-hex,
+input.studio-color-hex {
+  border: 2px solid #6b7280 !important;
+  border-color: #6b7280 !important;
+  background: #f9fafb !important;
+  color: #111111 !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+}
+
+html[data-portal-theme="lime"] input.studio-color-hex::placeholder,
+input.studio-color-hex::placeholder {
+  color: #9ca3af !important;
+  opacity: 1 !important;
+}
+

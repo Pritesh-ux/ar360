@@ -1,0 +1,274 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-ar360root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-arstudio}
+      MYSQL_USER: ${MYSQL_USER:-ar360}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-ar360pass}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u${MYSQL_USER:-ar360}", "-p${MYSQL_PASSWORD:-ar360pass}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    profiles: ["s3"]
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio123456}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+
+  minio-init:
+    profiles: ["s3"]
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minio} ${MINIO_ROOT_PASSWORD:-minio123456}; do sleep 2; done &&
+      mc mb -p local/${AWS_S3_BUCKET:-ar360} || true
+      "
+
+  app:
+    build:
+      context: .
+      args:
+        APP_UID: ${APP_UID:-1001}
+        APP_GID: ${APP_GID:-1001}
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: ${MYSQL_USER:-ar360}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-ar360pass}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-arstudio}
+      AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET in .env}
+      WORKER_SECRET: ${WORKER_SECRET:?Set WORKER_SECRET in .env}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-}
+      RESEND_REPLY_TO: ${RESEND_REPLY_TO:-}
+      RAZORPAY_MODE: ${RAZORPAY_MODE:-test}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      NEXT_PUBLIC_RAZORPAY_KEY_ID: ${NEXT_PUBLIC_RAZORPAY_KEY_ID:-}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+      BILLING_SETTINGS_ENCRYPTION_KEY: ${BILLING_SETTINGS_ENCRYPTION_KEY:-}
+      RAZORPAY_NATIVE_SUBSCRIPTIONS: ${RAZORPAY_NATIVE_SUBSCRIPTIONS:-false}
+      RAZORPAY_NATIVE_SUBSCRIPTION_ROLLOUT: ${RAZORPAY_NATIVE_SUBSCRIPTION_ROLLOUT:-0}
+      RAZORPAY_ROLLOUT_ALLOWLIST: ${RAZORPAY_ROLLOUT_ALLOWLIST:-}
+      RAZORPAY_CHECKOUT_KILL_SWITCH: ${RAZORPAY_CHECKOUT_KILL_SWITCH:-false}
+      RAZORPAY_LEGACY_RENEWALS: ${RAZORPAY_LEGACY_RENEWALS:-false}
+      RAZORPAY_RECONCILIATION_ENABLED: ${RAZORPAY_RECONCILIATION_ENABLED:-true}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      SKIP_RUNTIME_DDL: "true"
+      ASSET_PROXY_ENFORCE: ${ASSET_PROXY_ENFORCE:-true}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      STORAGE_ROOT: /app/storage/Customers
+      OBJECT_CAPTURE_STORAGE_ROOT: /app/storage/private/object-capture
+      REDIS_URL: redis://redis:6379
+      JOB_QUEUE_BACKEND: ${JOB_QUEUE_BACKEND:-db}
+      OC_PROCESSOR_URL: ${OC_PROCESSOR_URL:-}
+      OC_PROCESSOR_SECRET: ${OC_PROCESSOR_SECRET:-}
+      OC_PROCESSOR_TIMEOUT_MS: ${OC_PROCESSOR_TIMEOUT_MS:-120000}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-}
+      AWS_REGION: ${AWS_REGION:-ap-south-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_ENDPOINT_URL: ${AWS_ENDPOINT_URL:-}
+      AWS_S3_FORCE_PATH_STYLE: ${AWS_S3_FORCE_PATH_STYLE:-false}
+    volumes:
+      - customer_storage:/app/storage/Customers
+      - object_capture_storage:/app/storage/private/object-capture
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 5
+
+  oc-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.oc-worker
+      args:
+        APP_UID: ${APP_UID:-1001}
+        APP_GID: ${APP_GID:-1001}
+    restart: unless-stopped
+    init: true
+    user: "${APP_UID:-1001}:${APP_GID:-1001}"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: ${MYSQL_USER:-ar360}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-ar360pass}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-arstudio}
+      OBJECT_CAPTURE_STORAGE_ROOT: /app/storage/private/object-capture
+      OC_WORKER_INTERVAL_MS: ${OC_WORKER_INTERVAL_MS:-15000}
+      OC_WORKER_ID: ${OC_WORKER_ID:-}
+      OC_LEASE_SECONDS: ${OC_LEASE_SECONDS:-90}
+      OC_HEARTBEAT_MS: ${OC_HEARTBEAT_MS:-20000}
+      OC_STAGE_TIMEOUT_MS: ${OC_STAGE_TIMEOUT_MS:-7200000}
+      OC_GLOBAL_TIMEOUT_MS: ${OC_GLOBAL_TIMEOUT_MS:-28800000}
+    volumes:
+      - object_capture_storage:/app/storage/private/object-capture
+
+  oc-cleanup:
+    build:
+      context: .
+      dockerfile: Dockerfile.oc-worker
+      args:
+        APP_UID: ${APP_UID:-1001}
+        APP_GID: ${APP_GID:-1001}
+    restart: unless-stopped
+    init: true
+    user: "${APP_UID:-1001}:${APP_GID:-1001}"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    command: ["npm", "run", "worker:oc-cleanup-loop"]
+    environment:
+      NODE_ENV: production
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: ${MYSQL_USER:-ar360}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-ar360pass}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-arstudio}
+      OBJECT_CAPTURE_STORAGE_ROOT: /app/storage/private/object-capture
+      OC_CLEANUP_INTERVAL_MS: ${OC_CLEANUP_INTERVAL_MS:-21600000}
+      OC_CLEANUP_WORKER_ID: ${OC_CLEANUP_WORKER_ID:-}
+      OC_PARTIAL_UPLOAD_RETENTION_HOURS: ${OC_PARTIAL_UPLOAD_RETENTION_HOURS:-24}
+      OC_CANCELLED_RETENTION_DAYS: ${OC_CANCELLED_RETENTION_DAYS:-7}
+      OC_SOURCE_RETENTION_DAYS: ${OC_SOURCE_RETENTION_DAYS:-30}
+    volumes:
+      - object_capture_storage:/app/storage/private/object-capture
+
+  lifecycle-email-worker:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_started
+    entrypoint: ["node", "scripts/lifecycle-notification-loop.mjs"]
+    environment:
+      NODE_ENV: production
+      APP_URL: http://app:3000
+      WORKER_SECRET: ${WORKER_SECRET:?Set WORKER_SECRET in .env}
+      LIFECYCLE_EMAIL_INTERVAL_MS: ${LIFECYCLE_EMAIL_INTERVAL_MS:-3600000}
+
+  razorpay-webhook-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.billing-worker
+      args:
+        APP_UID: ${APP_UID:-1001}
+        APP_GID: ${APP_GID:-1001}
+    restart: unless-stopped
+    init: true
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: ${MYSQL_USER:-ar360}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-ar360pass}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-arstudio}
+      RAZORPAY_MODE: ${RAZORPAY_MODE:-test}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+      BILLING_SETTINGS_ENCRYPTION_KEY: ${BILLING_SETTINGS_ENCRYPTION_KEY:-}
+
+  razorpay-reconciliation-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.billing-worker
+      args:
+        APP_UID: ${APP_UID:-1001}
+        APP_GID: ${APP_GID:-1001}
+    command: ["npm", "run", "worker:razorpay-reconcile"]
+    restart: unless-stopped
+    init: true
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: ${MYSQL_USER:-ar360}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-ar360pass}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-arstudio}
+      RAZORPAY_MODE: ${RAZORPAY_MODE:-test}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      BILLING_SETTINGS_ENCRYPTION_KEY: ${BILLING_SETTINGS_ENCRYPTION_KEY:-}
+      RAZORPAY_RECONCILIATION_BATCH_SIZE: ${RAZORPAY_RECONCILIATION_BATCH_SIZE:-50}
+      RAZORPAY_RECONCILIATION_INTERVAL_MS: ${RAZORPAY_RECONCILIATION_INTERVAL_MS:-900000}
+
+  migrate:
+    build: .
+    depends_on:
+      mysql:
+        condition: service_healthy
+    profiles: ["setup"]
+    entrypoint: ["npm", "run", "db:migrate"]
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: ${MYSQL_USER:-ar360}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-ar360pass}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-arstudio}
+
+volumes:
+  mysql_data:
+  redis_data:
+  minio_data:
+  customer_storage:
+  object_capture_storage:

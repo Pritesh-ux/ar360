@@ -1,0 +1,20 @@
+19:09:50 [App     ] OpenMVS x64 v2.4.0
+19:09:50 [App     ] Build date: Jan 20 2026, 00:13:37
+19:09:50 [App     ] CPU: 13th Gen Intel(R) Core(TM) i9-13900K (32 cores)
+19:09:50 [App     ] RAM: 31.69GB Physical Memory 128.00TB Virtual Memory
+19:09:50 [App     ] OS: Windows 11+ x64
+19:09:50 [App     ] Disk: 98.66GB (462.77GB) space
+19:09:50 [App     ] SSE & AVX compatible CPU & OS detected
+19:09:50 [App     ] Command line: RefineMesh C:\xampp\htdocs\ar360\storage\private\object-capture\CUS-848683\6f7302eb-5860-49ce-a83f-aa9594ebd774\processed\attempt-8ea28b74-8199-46fc-aa7d-8acc2a524523\scene_dense_mesh.mvs -o C:\xampp\htdocs\ar360\storage\private\object-capture\CUS-848683\6f7302eb-5860-49ce-a83f-aa9594ebd774\processed\attempt-8ea28b74-8199-46fc-aa7d-8acc2a524523\scene_dense_mesh_refine.mvs
+19:09:50 [Scene   ] error: unable to open file 'C:/xampp/htdocs/ar360/storage/private/object-capture/CUS-848683/6f7302eb-5860-49ce-a83f-aa9594ebd774/processed/attempt-8ea28b74-8199-46fc-aa7d-8acc2a524523/scene_dense_mesh.mvs'
+19:09:50 [App     ] MEMORYINFO: {
+19:09:50 [App     ] 	PageFaultCount 2163
+19:09:50 [App     ] 	PeakWorkingSetSize 8.13MB
+19:09:50 [App     ] 	WorkingSetSize 8.13MB
+19:09:50 [App     ] 	QuotaPeakPagedPoolUsage 91.22KB
+19:09:50 [App     ] 	QuotaPagedPoolUsage 91.13KB
+19:09:50 [App     ] 	QuotaPeakNonPagedPoolUsage 19.33KB
+19:09:50 [App     ] 	QuotaNonPagedPoolUsage 14.09KB
+19:09:50 [App     ] 	PagefileUsage 2.38MB
+19:09:50 [App     ] 	PeakPagefileUsage 2.38MB
+19:09:50 [App     ] } ENDINFO

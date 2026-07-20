@@ -1,0 +1,21 @@
+AR360 GLB MATERIAL/TEXTURE PATCH
+
+Changed:
+1. src/components/shared/ModelViewer.tsx
+   - GLB URLs are no longer converted into temporary wrapper blob URLs.
+   - Caller-owned blob/data URLs remain stable.
+   - Protected model URLs load directly with credentials.
+   - Viewer remounts only when its resolved model source changes.
+
+2. src/app/login/page.tsx
+   - Uses /models/chair_01.glb.
+   - Preserves the GLB's original materials on the login preview.
+
+Excluded from this downloadable source archive to stay below chat attachment limits:
+- public/Storage/Customers (generated customer uploads)
+- storage/Customers (generated customer uploads)
+- public/hdr (large optional HDR files)
+- node_modules and .next
+
+Copy your existing generated storage and HDR folders back only if needed.
+Run: npm install && npm run dev

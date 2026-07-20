@@ -1,0 +1,82 @@
+{
+  "CUS-224869": {
+    "customerUid": "CUS-224869",
+    "userId": "1",
+    "name": "pritesh",
+    "email": "asodariyapritesh5@gmail.com",
+    "folderPath": "C:\\xampp\\htdocs\\ar360\\storage\\Customers\\CUS-224869",
+    "publicFolder": "/Storage/Customers/CUS-224869",
+    "createdAt": "2026-07-11T05:54:27.694Z",
+    "updatedAt": "2026-07-11T10:03:14.830Z"
+  },
+  "CUS-813605": {
+    "customerUid": "CUS-813605",
+    "userId": "2",
+    "name": "Demo Customer",
+    "email": "customer@ar360.com",
+    "folderPath": "C:\\xampp\\htdocs\\ar360\\storage\\Customers\\CUS-813605",
+    "publicFolder": "/Storage/Customers/CUS-813605",
+    "createdAt": "2026-07-12T08:52:28.472Z",
+    "updatedAt": "2026-07-15T09:40:00.488Z"
+  },
+  "CUS-475773": {
+    "customerUid": "CUS-475773",
+    "userId": "7",
+    "name": "pritesh",
+    "email": "pritesh5@gmail.com",
+    "folderPath": "C:\\xampp\\htdocs\\ar360\\storage\\Customers\\CUS-475773",
+    "publicFolder": "/Storage/Customers/CUS-475773",
+    "createdAt": "2026-07-14T05:16:38.608Z",
+    "updatedAt": "2026-07-16T07:37:34.487Z"
+  },
+  "CUS-576262": {
+    "customerUid": "CUS-576262",
+    "userId": "9",
+    "name": "sahil",
+    "email": "sahil01@gmail.com",
+    "folderPath": "C:\\xampp\\htdocs\\ar360\\storage\\Customers\\CUS-576262",
+    "publicFolder": "/Storage/Customers/CUS-576262",
+    "createdAt": "2026-07-15T13:37:35.078Z",
+    "updatedAt": "2026-07-15T13:37:35.078Z"
+  },
+  "CUS-848683": {
+    "customerUid": "CUS-848683",
+    "userId": "10",
+    "name": "anand",
+    "email": "anand05@gmail.com",
+    "folderPath": "C:\\xampp\\htdocs\\ar360\\storage\\Customers\\CUS-848683",
+    "publicFolder": "/Storage/Customers/CUS-848683",
+    "createdAt": "2026-07-16T06:00:05.879Z",
+    "updatedAt": "2026-07-16T06:00:05.879Z"
+  },
+  "CUS-522115": {
+    "customerUid": "CUS-522115",
+    "userId": "12",
+    "name": "jay",
+    "email": "jay01@gmail.com",
+    "folderPath": "C:\\xampp\\htdocs\\ar360\\storage\\Customers\\CUS-522115",
+    "publicFolder": "/Storage/Customers/CUS-522115",
+    "createdAt": "2026-07-17T09:39:36.032Z",
+    "updatedAt": "2026-07-17T09:39:36.032Z"
+  },
+  "CUS-499978": {
+    "customerUid": "CUS-499978",
+    "userId": "13",
+    "name": "Vipoce",
+    "email": "vipoce7828@lasttea.com",
+    "folderPath": "C:\\xampp\\htdocs\\ar360\\storage\\Customers\\CUS-499978",
+    "publicFolder": "/Storage/Customers/CUS-499978",
+    "createdAt": "2026-07-17T11:43:10.968Z",
+    "updatedAt": "2026-07-17T11:43:10.968Z"
+  },
+  "CUS-419483": {
+    "customerUid": "CUS-419483",
+    "userId": "15",
+    "name": "alex",
+    "email": "yafared777@diarshop.com",
+    "folderPath": "C:\\xampp\\htdocs\\ar360\\storage\\Customers\\CUS-419483",
+    "publicFolder": "/Storage/Customers/CUS-419483",
+    "createdAt": "2026-07-19T05:09:47.379Z",
+    "updatedAt": "2026-07-19T05:09:47.379Z"
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "generatedAt": "2026-07-15T05:54:55.411Z",
+  "routes": 39,
+  "findings": [
+    {
+      "severity": "info",
+      "file": "src/app/api/master-admin/admins/[id]/route.ts",
+      "issue": "Mutation route without writeMasterAdminAudit (review manually)"
+    },
+    {
+      "severity": "info",
+      "file": "src/app/api/master-admin/billing/invoices/generate/route.ts",
+      "issue": "Mutation route without writeMasterAdminAudit (review manually)"
+    },
+    {
+      "severity": "info",
+      "file": "src/app/api/master-admin/billing/payment-reminder/route.ts",
+      "issue": "Mutation route without writeMasterAdminAudit (review manually)"
+    },
+    {
+      "severity": "info",
+      "file": "src/app/api/master-admin/billing/plans/route.ts",
+      "issue": "Mutation route without writeMasterAdminAudit (review manually)"
+    },
+    {
+      "severity": "info",
+      "file": "src/app/api/master-admin/coupons/route.ts",
+      "issue": "Mutation route without writeMasterAdminAudit (review manually)"
+    },
+    {
+      "severity": "info",
+      "file": "src/app/api/master-admin/coupons/[id]/route.ts",
+      "issue": "Mutation route without writeMasterAdminAudit (review manually)"
+    },
+    {
+      "severity": "info",
+      "file": "src/app/api/master-admin/customers/route.ts",
+      "issue": "Mutation route without writeMasterAdminAudit (review manually)"
+    },
+    {
+      "severity": "info",
+      "file": "src/app/api/master-admin/customers/[id]/subscription/route.ts",
+      "issue": "Mutation route without writeMasterAdminAudit (review manually)"
+    },
+    {
+      "severity": "info",
+      "file": "src/app/api/master-admin/notifications/route.ts",
+      "issue": "Mutation route without writeMasterAdminAudit (review manually)"
+    },
+    {
+      "severity": "info",
+      "file": "src/app/api/master-admin/payments/route.ts",
+      "issue": "Mutation route without writeMasterAdminAudit (review manually)"
+    },
+    {
+      "severity": "info",
+      "file": "src/app/api/master-admin/payments/[id]/refund/route.ts",
+      "issue": "Mutation route without writeMasterAdminAudit (review manually)"
+    },
+    {
+      "severity": "info",
+      "file": "src/app/api/master-admin/storage/route.ts",
+      "issue": "Mutation route without writeMasterAdminAudit (review manually)"
+    },
+    {
+      "severity": "info",
+      "file": "src/app/api/master-admin/support-tickets/route.ts",
+      "issue": "Mutation route without writeMasterAdminAudit (review manually)"
+    }
+  ]
+}

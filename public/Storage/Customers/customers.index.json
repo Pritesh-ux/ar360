@@ -1,0 +1,32 @@
+{
+  "CUS-819260": {
+    "customerUid": "CUS-819260",
+    "userId": "1",
+    "name": "Demo Customer",
+    "email": "customer@ar360.com",
+    "folderPath": "H:\\xampp\\htdocs\\ar360studio\\public\\Storage\\Customers\\CUS-819260",
+    "publicFolder": "/Storage/Customers/CUS-819260",
+    "createdAt": "2026-07-09T06:56:33.557Z",
+    "updatedAt": "2026-07-09T06:56:33.557Z"
+  },
+  "CUS-517886": {
+    "customerUid": "CUS-517886",
+    "userId": "3",
+    "name": "sahil",
+    "email": "sahil@gmail.com",
+    "folderPath": "H:\\xampp\\htdocs\\ar360studio\\public\\Storage\\Customers\\CUS-517886",
+    "publicFolder": "/Storage/Customers/CUS-517886",
+    "createdAt": "2026-07-09T12:14:16.640Z",
+    "updatedAt": "2026-07-09T12:33:51.412Z"
+  },
+  "CUS-841457": {
+    "customerUid": "CUS-841457",
+    "userId": "4",
+    "name": "pritesh1",
+    "email": "pritesh1@gmail.com",
+    "folderPath": "H:\\xampp\\htdocs\\ar360studio\\public\\Storage\\Customers\\CUS-841457",
+    "publicFolder": "/Storage/Customers/CUS-841457",
+    "createdAt": "2026-07-10T11:14:09.443Z",
+    "updatedAt": "2026-07-10T11:14:09.443Z"
+  }
+}

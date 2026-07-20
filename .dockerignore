@@ -1,0 +1,17 @@
+node_modules
+.next
+.git
+.gitignore
+.env
+.env.local
+.env*.local
+*.log
+terminals
+.cursor
+storage/Customers/**
+storage/private/**
+public/uploads/**
+dashboard-placeholder.tmp
+README.md
+docs
+.github

@@ -1,0 +1,83 @@
+19:02:42 [App     ] OpenMVS x64 v2.4.0
+19:02:42 [App     ] Build date: Jan 20 2026, 00:13:37
+19:02:42 [App     ] CPU: 13th Gen Intel(R) Core(TM) i9-13900K (32 cores)
+19:02:42 [App     ] RAM: 31.69GB Physical Memory 128.00TB Virtual Memory
+19:02:42 [App     ] OS: Windows 11+ x64
+19:02:42 [App     ] Disk: 98.57GB (462.77GB) space
+19:02:42 [App     ] SSE & AVX compatible CPU & OS detected
+19:02:42 [App     ] Command line: RefineMesh --help
+19:02:42 [App     ] Available options:
+
+Generic options:
+  -h [ --help ]                         produce this help message
+  -w [ --working-folder ] arg           working directory (default current 
+                                        directory)
+  -c [ --config-file ] arg (=RefineMesh.cfg)
+                                        file name containing program options
+  --export-type arg (=ply)              file type used to export the 3D scene 
+                                        (ply or obj)
+  --archive-type arg (=4294967295)      project archive type: -1-interface, 
+                                        0-text, 1-binary, 2-compressed binary
+  --process-priority arg (=-1)          process priority (below normal by 
+                                        default)
+  --max-threads arg (=0)                maximum number of threads (0 for using 
+                                        all available cores)
+  -v [ --verbosity ] arg (=2)           verbosity level
+
+Refine options:
+  -i [ --input-file ] arg               input filename containing camera poses 
+                                        and image list
+  -m [ --mesh-file ] arg                mesh file name to refine (overwrite 
+                                        existing mesh)
+  -o [ --output-file ] arg              output filename for storing the mesh
+  --resolution-level arg (=0)           how many times to scale down the images
+                                        before mesh refinement
+  --min-resolution arg (=640)           do not scale images lower than this 
+                                        resolution
+  --max-views arg (=8)                  maximum number of neighbor images used 
+                                        to refine the mesh
+  --decimate arg (=0)                   decimation factor in range [0..1] to be
+                                        applied to the input surface before 
+                                        refinement (0 - auto, 1 - disabled)
+  --close-holes arg (=30)               try to close small holes in the input 
+                                        surface (0 - disabled)
+  --ensure-edge-size arg (=1)           ensure edge size and improve vertex 
+                                        valence of the input surface (0 - 
+                                        disabled, 1 - auto, 2 - force)
+  --max-face-area arg (=32)             maximum face area projected in any pair
+                                        of images that is not subdivided (0 - 
+                                        disabled)
+  --scales arg (=2)                     how many iterations to run mesh 
+                                        optimization on multi-scale images
+  --scale-step arg (=0.5)               image scale factor used at each mesh 
+                                        optimization step
+  --alternate-pair arg (=0)             refine mesh using an image pair 
+                                        alternatively as reference (0 - both, 1
+                                        - alternate, 2 - only left, 3 - only 
+                                        right)
+  --regularity-weight arg (=0.200000003)
+                                        scalar regularity weight to balance 
+                                        between photo-consistency and 
+                                        regularization terms during mesh 
+                                        optimization
+  --rigidity-elasticity-ratio arg (=0.899999976)
+                                        scalar ratio used to compute the 
+                                        regularity gradient as a combination of
+                                        rigidity and elasticity
+  --gradient-step arg (=45.0499992)     gradient step to be used instead (0 - 
+                                        auto)
+  --planar-vertex-ratio arg (=0)        threshold used to remove vertices on 
+                                        planar patches (0 - disabled)
+  --reduce-memory arg (=1)              recompute some data in order to reduce 
+                                        memory requirements
+19:02:42 [App     ] MEMORYINFO: {
+19:02:42 [App     ] 	PageFaultCount 2159
+19:02:42 [App     ] 	PeakWorkingSetSize 8.12MB
+19:02:42 [App     ] 	WorkingSetSize 8.12MB
+19:02:42 [App     ] 	QuotaPeakPagedPoolUsage 99.13KB
+19:02:42 [App     ] 	QuotaPagedPoolUsage 99.13KB
+19:02:42 [App     ] 	QuotaPeakNonPagedPoolUsage 25.28KB
+19:02:42 [App     ] 	QuotaNonPagedPoolUsage 14.09KB
+19:02:42 [App     ] 	PagefileUsage 2.37MB
+19:02:42 [App     ] 	PeakPagefileUsage 2.37MB
+19:02:42 [App     ] } ENDINFO

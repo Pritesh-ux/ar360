@@ -1,0 +1,2105 @@
+{
+  "generatedAt": "2026-07-15T05:53:39.377Z",
+  "routes": [
+    {
+      "route": "/api/analytics/cleanup",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/analytics/cleanup/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/analytics/dashboard",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/analytics/dashboard/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/analytics/event",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/analytics/event/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/analytics/export",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/analytics/export/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/analytics/product",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/analytics/product/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/analytics/realtime",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/analytics/realtime/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/assets/:...path",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/assets/[...path]/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/auth/forgot-password",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/auth/forgot-password/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/auth/reset-password",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/auth/reset-password/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/auth/verify-2fa",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/auth/verify-2fa/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/billing/cancel",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/billing/cancel/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/billing/checkout",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/billing/checkout/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/billing/entitlement",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/billing/entitlement/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/billing/history",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/billing/history/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/billing/invoices",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/billing/invoices/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/billing/invoices/:id/download",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/billing/invoices/[id]/download/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/billing/plans",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/billing/plans/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/billing/profile",
+      "type": "api",
+      "methods": "GET,PUT",
+      "file": "src/app/api/billing/profile/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/billing/resume",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/billing/resume/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/billing/subscription",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/billing/subscription/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/billing/verify-payment",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/billing/verify-payment/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/billing/webhook/razorpay",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/billing/webhook/razorpay/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/contact",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/contact/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/customer/bootstrap",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/customer/bootstrap/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/customer/notifications",
+      "type": "api",
+      "methods": "GET,PATCH",
+      "file": "src/app/api/customer/notifications/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/dashboard/overview",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/dashboard/overview/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/db/health",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/db/health/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/demo-model",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/demo-model/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/enterprise/api-keys",
+      "type": "api",
+      "methods": "GET,POST,DELETE,PATCH",
+      "file": "src/app/api/enterprise/api-keys/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/enterprise/audit-logs",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/enterprise/audit-logs/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/enterprise/branding",
+      "type": "api",
+      "methods": "GET,PATCH",
+      "file": "src/app/api/enterprise/branding/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/enterprise/domains",
+      "type": "api",
+      "methods": "GET,POST,DELETE,PATCH",
+      "file": "src/app/api/enterprise/domains/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/enterprise/invites",
+      "type": "api",
+      "methods": "GET,POST,DELETE,PUT",
+      "file": "src/app/api/enterprise/invites/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/enterprise/team",
+      "type": "api",
+      "methods": "GET,DELETE,PATCH",
+      "file": "src/app/api/enterprise/team/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/enterprise/usage",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/enterprise/usage/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/enterprise/versions",
+      "type": "api",
+      "methods": "GET,POST,PUT",
+      "file": "src/app/api/enterprise/versions/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/enterprise/webhooks",
+      "type": "api",
+      "methods": "GET,POST,DELETE,PATCH",
+      "file": "src/app/api/enterprise/webhooks/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/enterprise/workspaces",
+      "type": "api",
+      "methods": "GET,POST",
+      "file": "src/app/api/enterprise/workspaces/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/health",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/health/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/internal/report-error",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/internal/report-error/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/internal/smoke-login",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/internal/smoke-login/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/internal/storage-smoke",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/internal/storage-smoke/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/activity-logs",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/master-admin/activity-logs/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/admins",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/master-admin/admins/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/admins/:id",
+      "type": "api",
+      "methods": "PATCH",
+      "file": "src/app/api/master-admin/admins/[id]/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/audit-logs",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/master-admin/audit-logs/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/billing/customers/:customerUid/plan",
+      "type": "api",
+      "methods": "GET,PUT",
+      "file": "src/app/api/master-admin/billing/customers/[customerUid]/plan/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/billing/invoices/generate",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/master-admin/billing/invoices/generate/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/billing/invoices/:id/download",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/master-admin/billing/invoices/[id]/download/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/billing/invoices/:id/send",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/master-admin/billing/invoices/[id]/send/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/billing/payment-reminder",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/master-admin/billing/payment-reminder/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/billing/plans",
+      "type": "api",
+      "methods": "GET,PUT,POST",
+      "file": "src/app/api/master-admin/billing/plans/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/billing",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/master-admin/billing/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/coupons",
+      "type": "api",
+      "methods": "GET,POST",
+      "file": "src/app/api/master-admin/coupons/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/coupons/:id/redemptions",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/master-admin/coupons/[id]/redemptions/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/coupons/:id",
+      "type": "api",
+      "methods": "GET,PATCH",
+      "file": "src/app/api/master-admin/coupons/[id]/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/customers",
+      "type": "api",
+      "methods": "GET,PATCH",
+      "file": "src/app/api/master-admin/customers/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/customers/:id/impersonate",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/master-admin/customers/[id]/impersonate/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/customers/:id",
+      "type": "api",
+      "methods": "GET,DELETE",
+      "file": "src/app/api/master-admin/customers/[id]/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/customers/:id/subscription",
+      "type": "api",
+      "methods": "GET,POST",
+      "file": "src/app/api/master-admin/customers/[id]/subscription/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/dashboard",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/master-admin/dashboard/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/email-center",
+      "type": "api",
+      "methods": "GET,POST",
+      "file": "src/app/api/master-admin/email-center/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/impersonation/stop",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/master-admin/impersonation/stop/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/live",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/master-admin/live/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/me",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/master-admin/me/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/notifications",
+      "type": "api",
+      "methods": "GET,PATCH",
+      "file": "src/app/api/master-admin/notifications/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/payments",
+      "type": "api",
+      "methods": "GET,POST,PUT",
+      "file": "src/app/api/master-admin/payments/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/payments/:id/refund",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/master-admin/payments/[id]/refund/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/products",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/master-admin/products/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/products/:id",
+      "type": "api",
+      "methods": "GET,PATCH",
+      "file": "src/app/api/master-admin/products/[id]/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/search",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/master-admin/search/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/settings",
+      "type": "api",
+      "methods": "GET,POST",
+      "file": "src/app/api/master-admin/settings/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/settings/test-email",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/master-admin/settings/test-email/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/storage/product-json-audit",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/master-admin/storage/product-json-audit/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/storage",
+      "type": "api",
+      "methods": "GET,POST",
+      "file": "src/app/api/master-admin/storage/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/storage-meta",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/master-admin/storage-meta/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/subscriptions",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/master-admin/subscriptions/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/support-tickets",
+      "type": "api",
+      "methods": "GET,POST",
+      "file": "src/app/api/master-admin/support-tickets/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/support-tickets/:id",
+      "type": "api",
+      "methods": "GET,PATCH",
+      "file": "src/app/api/master-admin/support-tickets/[id]/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/system-health",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/master-admin/system-health/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/viewer-analytics",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/master-admin/viewer-analytics/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/object-capture/analysis",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/object-capture/analysis/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/object-capture/analysis/:jobId",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/object-capture/analysis/[jobId]/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/object-capture/analyze",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/object-capture/analyze/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/object-capture/cancel",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/object-capture/cancel/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/object-capture/create-product",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/object-capture/create-product/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/object-capture/history",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/object-capture/history/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/object-capture/jobs",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/object-capture/jobs/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/object-capture/retry",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/object-capture/retry/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/object-capture",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/object-capture/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/object-capture/status/:jobId",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/object-capture/status/[jobId]/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/object-capture/upload",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/object-capture/upload/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/object-capture/worker/run",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/object-capture/worker/run/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/products/local-upload",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/products/local-upload/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/products",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/products/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/products/save-assets",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/products/save-assets/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/products/usdz-upload",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/products/usdz-upload/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/products/:id/duplicate",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/products/[id]/duplicate/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/products/:id",
+      "type": "api",
+      "methods": "GET,DELETE,PATCH",
+      "file": "src/app/api/products/[id]/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/public-products/:id",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/public-products/[id]/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/qr-codes",
+      "type": "api",
+      "methods": "GET,POST,PUT",
+      "file": "src/app/api/qr-codes/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/qr-codes/:id",
+      "type": "api",
+      "methods": "PATCH",
+      "file": "src/app/api/qr-codes/[id]/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/ready",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/ready/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/share-links",
+      "type": "api",
+      "methods": "GET,POST",
+      "file": "src/app/api/share-links/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/share-links/:id",
+      "type": "api",
+      "methods": "PATCH",
+      "file": "src/app/api/share-links/[id]/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/support-tickets",
+      "type": "api",
+      "methods": "GET,POST",
+      "file": "src/app/api/support-tickets/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/ar/:id",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/ar/[id]/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/contact",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/contact/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/dashboard/analytics/live",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/dashboard/analytics/live/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/dashboard/analytics",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/dashboard/analytics/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/dashboard/assets",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/dashboard/assets/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/dashboard/billing/checkout",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/dashboard/billing/checkout/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/dashboard/billing/invoices",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/dashboard/billing/invoices/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/dashboard/billing",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/dashboard/billing/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/dashboard/billing/subscription",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/dashboard/billing/subscription/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/dashboard/materials",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/dashboard/materials/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/dashboard/object-capture",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/dashboard/object-capture/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/dashboard",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/dashboard/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/dashboard/products/new",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/dashboard/products/new/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/dashboard/products",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/dashboard/products/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/dashboard/products/:id",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/dashboard/products/[id]/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/dashboard/qr-center",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/dashboard/qr-center/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/dashboard/settings",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/dashboard/settings/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/dashboard/share-center",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/dashboard/share-center/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/dashboard/support",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/dashboard/support/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/dashboard/team",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/dashboard/team/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/dashboard/variants",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/dashboard/variants/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/demo",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/demo/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/embed/:id",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/embed/[id]/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/faq",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/faq/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/forgot-password",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/forgot-password/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/login",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/login/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/logout/clear",
+      "type": "page",
+      "methods": "GET",
+      "file": "src/app/logout/clear/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/logout",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/logout/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/activity-logs",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/(panel)/activity-logs/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/admins",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/(panel)/admins/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/analytics",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/(panel)/analytics/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/audit-logs",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/(panel)/audit-logs/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/bandwidth",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/(panel)/bandwidth/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/billing",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/(panel)/billing/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/billing/payments",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/(panel)/billing/payments/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/billing/plans",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/(panel)/billing/plans/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/coupons",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/(panel)/coupons/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/customers",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/(panel)/customers/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/customers/:id/billing",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/(panel)/customers/[id]/billing/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/customers/:id",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/(panel)/customers/[id]/page.tsx",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/database",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/(panel)/database/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/email-center",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/(panel)/email-center/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/login-logs",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/(panel)/login-logs/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/notifications",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/(panel)/notifications/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/object-capture",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/(panel)/object-capture/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/(panel)",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/(panel)/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/master-admin/payments",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/(panel)/payments/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/plans",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/(panel)/plans/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/products",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/(panel)/products/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/products/:id",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/(panel)/products/[id]/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/security",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/(panel)/security/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/settings",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/(panel)/settings/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/storage",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/(panel)/storage/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/subscriptions",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/(panel)/subscriptions/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/support-tickets",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/(panel)/support-tickets/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/system-health",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/(panel)/system-health/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/viewer-analytics",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/(panel)/viewer-analytics/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/billing/invoices",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/billing/invoices/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/login",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/master-admin/login/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/master-admin/logout",
+      "type": "page",
+      "methods": "GET",
+      "file": "src/app/master-admin/logout/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/object-capture",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/object-capture/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/page.tsx",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/pricing",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/pricing/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/privacy",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/privacy/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/q/:publicId",
+      "type": "page",
+      "methods": "GET",
+      "file": "src/app/q/[publicId]/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/qr/:id",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/qr/[id]/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/qr-ar/:id",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/qr-ar/[id]/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/reset-password",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/reset-password/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/s/:token",
+      "type": "page",
+      "methods": "GET",
+      "file": "src/app/s/[token]/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/s/:token/unlock",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/s/[token]/unlock/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/signup",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/signup/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/terms",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/terms/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/verify-2fa",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/verify-2fa/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/viewer/:id",
+      "type": "page",
+      "methods": "PAGE",
+      "file": "src/app/viewer/[id]/page.tsx",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    }
+  ],
+  "duplicateRoutes": [],
+  "riskyApis": [
+    {
+      "route": "/api/analytics/event",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/analytics/event/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/assets/:...path",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/assets/[...path]/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/auth/forgot-password",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/auth/forgot-password/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/auth/reset-password",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/auth/reset-password/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/billing/cancel",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/billing/cancel/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/billing/checkout",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/billing/checkout/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/billing/entitlement",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/billing/entitlement/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/billing/history",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/billing/history/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/billing/invoices",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/billing/invoices/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/billing/invoices/:id/download",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/billing/invoices/[id]/download/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/billing/profile",
+      "type": "api",
+      "methods": "GET,PUT",
+      "file": "src/app/api/billing/profile/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/billing/resume",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/billing/resume/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/billing/subscription",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/billing/subscription/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/billing/verify-payment",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/billing/verify-payment/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/billing/webhook/razorpay",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/billing/webhook/razorpay/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/customer/bootstrap",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/customer/bootstrap/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/customer/notifications",
+      "type": "api",
+      "methods": "GET,PATCH",
+      "file": "src/app/api/customer/notifications/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/db/health",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/db/health/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/enterprise/versions",
+      "type": "api",
+      "methods": "GET,POST,PUT",
+      "file": "src/app/api/enterprise/versions/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/enterprise/workspaces",
+      "type": "api",
+      "methods": "GET,POST",
+      "file": "src/app/api/enterprise/workspaces/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": true
+    },
+    {
+      "route": "/api/health",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/health/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/internal/report-error",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/internal/report-error/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/internal/smoke-login",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/internal/smoke-login/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/billing/customers/:customerUid/plan",
+      "type": "api",
+      "methods": "GET,PUT",
+      "file": "src/app/api/master-admin/billing/customers/[customerUid]/plan/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/billing/invoices/:id/download",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/master-admin/billing/invoices/[id]/download/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/billing/invoices/:id/send",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/master-admin/billing/invoices/[id]/send/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/billing/plans",
+      "type": "api",
+      "methods": "GET,PUT,POST",
+      "file": "src/app/api/master-admin/billing/plans/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/billing",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/master-admin/billing/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/coupons/:id/redemptions",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/master-admin/coupons/[id]/redemptions/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/customers",
+      "type": "api",
+      "methods": "GET,PATCH",
+      "file": "src/app/api/master-admin/customers/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/customers/:id",
+      "type": "api",
+      "methods": "GET,DELETE",
+      "file": "src/app/api/master-admin/customers/[id]/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/customers/:id/subscription",
+      "type": "api",
+      "methods": "GET,POST",
+      "file": "src/app/api/master-admin/customers/[id]/subscription/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/dashboard",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/master-admin/dashboard/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/impersonation/stop",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/master-admin/impersonation/stop/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/live",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/master-admin/live/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/me",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/master-admin/me/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/notifications",
+      "type": "api",
+      "methods": "GET,PATCH",
+      "file": "src/app/api/master-admin/notifications/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/payments",
+      "type": "api",
+      "methods": "GET,POST,PUT",
+      "file": "src/app/api/master-admin/payments/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/payments/:id/refund",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/master-admin/payments/[id]/refund/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/products",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/master-admin/products/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/products/:id",
+      "type": "api",
+      "methods": "GET,PATCH",
+      "file": "src/app/api/master-admin/products/[id]/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/search",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/master-admin/search/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/settings",
+      "type": "api",
+      "methods": "GET,POST",
+      "file": "src/app/api/master-admin/settings/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/storage-meta",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/master-admin/storage-meta/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/master-admin/subscriptions",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/master-admin/subscriptions/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/object-capture/create-product",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/object-capture/create-product/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/object-capture",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/object-capture/route.ts",
+      "usesDirectQuery": false,
+      "hasTryCatch": false,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/products/local-upload",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/products/local-upload/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/products/save-assets",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/products/save-assets/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/products/usdz-upload",
+      "type": "api",
+      "methods": "POST",
+      "file": "src/app/api/products/usdz-upload/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/products/:id",
+      "type": "api",
+      "methods": "GET,DELETE,PATCH",
+      "file": "src/app/api/products/[id]/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/public-products/:id",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/public-products/[id]/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    },
+    {
+      "route": "/api/ready",
+      "type": "api",
+      "methods": "GET",
+      "file": "src/app/api/ready/route.ts",
+      "usesDirectQuery": true,
+      "hasTryCatch": true,
+      "hasAuth": false
+    }
+  ]
+}

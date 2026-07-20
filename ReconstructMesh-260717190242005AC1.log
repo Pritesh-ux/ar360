@@ -1,0 +1,83 @@
+19:02:42 [App     ] OpenMVS x64 v2.4.0
+19:02:42 [App     ] Build date: Jan 20 2026, 00:13:37
+19:02:42 [App     ] CPU: 13th Gen Intel(R) Core(TM) i9-13900K (32 cores)
+19:02:42 [App     ] RAM: 31.69GB Physical Memory 128.00TB Virtual Memory
+19:02:42 [App     ] OS: Windows 11+ x64
+19:02:42 [App     ] Disk: 98.57GB (462.77GB) space
+19:02:42 [App     ] SSE & AVX compatible CPU & OS detected
+19:02:42 [App     ] Command line: ReconstructMesh --help
+19:02:42 [App     ] Available options:
+
+Generic options:
+  -h [ --help ]                         produce this help message
+  -w [ --working-folder ] arg           working directory (default current 
+                                        directory)
+  -c [ --config-file ] arg (=ReconstructMesh.cfg)
+                                        file name containing program options
+  --export-type arg (=ply)              file type used to export the 3D scene 
+                                        (ply or obj)
+  --archive-type arg (=4294967295)      project archive type: -1-interface, 
+                                        0-text, 1-binary, 2-compressed binary
+  --process-priority arg (=-1)          process priority (below normal by 
+                                        default)
+  --max-threads arg (=0)                maximum number of threads (0 for using 
+                                        all available cores)
+  -v [ --verbosity ] arg (=2)           verbosity level
+
+Reconstruct options:
+  -i [ --input-file ] arg               input filename containing camera poses 
+                                        and image list
+  -p [ --pointcloud-file ] arg          dense point-cloud with views file name 
+                                        to reconstruct (overwrite existing 
+                                        point-cloud)
+  -o [ --output-file ] arg              output filename for storing the mesh
+  -d [ --min-point-distance ] arg (=1.5)
+                                        minimum distance in pixels between the 
+                                        projection of two 3D points to consider
+                                        them different while triangulating (0 -
+                                        disabled)
+  --integrate-only-roi arg (=0)         use only the points inside the ROI
+  --constant-weight arg (=1)            considers all view weights 1 instead of
+                                        the available weight
+  -f [ --free-space-support ] arg (=0)  exploits the free-space support in 
+                                        order to reconstruct weakly-represented
+                                        surfaces
+  --thickness-factor arg (=1)           multiplier adjusting the minimum 
+                                        thickness considered during visibility 
+                                        weighting
+  --quality-factor arg (=1)             multiplier adjusting the quality weight
+                                        considered during graph-cut
+
+Clean options:
+  --decimate arg (=1)                   decimation factor in range (0..1] to be
+                                        applied to the reconstructed surface (1
+                                        - disabled)
+  --target-face-num arg (=0)            target number of faces to be applied to
+                                        the reconstructed surface. (0 - 
+                                        disabled)
+  --remove-spurious arg (=20)           spurious factor for removing faces with
+                                        too long edges or isolated components 
+                                        (0 - disabled)
+  --remove-spikes arg (=1)              flag controlling the removal of spike 
+                                        faces
+  --close-holes arg (=30)               try to close small holes in the 
+                                        reconstructed surface (0 - disabled)
+  --smooth arg (=2)                     number of iterations to smooth the 
+                                        reconstructed surface (0 - disabled)
+  --edge-length arg (=0)                remesh such that the average edge 
+                                        length is this size (0 - disabled)
+  --roi-border arg (=0)                 add a border to the region-of-interest 
+                                        when cropping the scene (0 - disabled, 
+                                        >0 - percentage, <0 - absolute)
+  --crop-to-roi arg (=1)                crop scene using the region-of-interest
+19:02:42 [App     ] MEMORYINFO: {
+19:02:42 [App     ] 	PageFaultCount 2210
+19:02:42 [App     ] 	PeakWorkingSetSize 8.32MB
+19:02:42 [App     ] 	WorkingSetSize 8.32MB
+19:02:42 [App     ] 	QuotaPeakPagedPoolUsage 100.39KB
+19:02:42 [App     ] 	QuotaPagedPoolUsage 100.30KB
+19:02:42 [App     ] 	QuotaPeakNonPagedPoolUsage 25.28KB
+19:02:42 [App     ] 	QuotaNonPagedPoolUsage 14.22KB
+19:02:42 [App     ] 	PagefileUsage 2.48MB
+19:02:42 [App     ] 	PeakPagefileUsage 2.48MB
+19:02:42 [App     ] } ENDINFO

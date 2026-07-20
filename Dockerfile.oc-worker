@@ -1,0 +1,64 @@
+# syntax=docker/dockerfile:1
+# Reconstruction tools live only in this image; the Next.js web image stays small.
+FROM node:20.19.4-bookworm-slim
+
+ARG COLMAP_VERSION=3.11.1
+ARG OPENMVS_VERSION=v2.3.0
+ARG BLENDER_VERSION=4.3.3
+ARG APP_UID=1001
+ARG APP_GID=1001
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    PATH="/opt/openmvs/bin/OpenMVS:/opt/blender:/usr/local/bin:${PATH}" \
+    COLMAP_PATH=/usr/local/bin/colmap \
+    OPENMVS_INTERFACE_COLMAP_PATH=/opt/openmvs/bin/OpenMVS/InterfaceCOLMAP \
+    OPENMVS_DENSIFY_PATH=/opt/openmvs/bin/OpenMVS/DensifyPointCloud \
+    OPENMVS_RECONSTRUCT_PATH=/opt/openmvs/bin/OpenMVS/ReconstructMesh \
+    OPENMVS_REFINE_PATH=/opt/openmvs/bin/OpenMVS/RefineMesh \
+    OPENMVS_TEXTURE_PATH=/opt/openmvs/bin/OpenMVS/TextureMesh \
+    BLENDER_PATH=/opt/blender/blender
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential ca-certificates cmake curl git ninja-build xz-utils \
+      libboost-filesystem-dev libboost-graph-dev libboost-program-options-dev libboost-system-dev \
+      libceres-dev libcg-dev libeigen3-dev libflann-dev libfreeimage-dev libgflags-dev \
+      libglew-dev libgoogle-glog-dev libjpeg-dev libmetis-dev libpng-dev libsqlite3-dev \
+      libtiff-dev libxi-dev libxrandr-dev libxxf86vm-dev \
+      libcgal-dev libopencv-dev libglfw3-dev libglu1-mesa-dev libgl1 \
+      libx11-6 libxfixes3 libxrender1 libxkbcommon0 libsm6 libice6 libglib2.0-0 \
+    && git clone --depth 1 --branch "${COLMAP_VERSION}" https://github.com/colmap/colmap.git /tmp/colmap \
+    && cmake -S /tmp/colmap -B /tmp/colmap/build -GNinja \
+         -DCMAKE_BUILD_TYPE=Release -DCUDA_ENABLED=OFF -DGUI_ENABLED=OFF -DTESTS_ENABLED=OFF \
+    && cmake --build /tmp/colmap/build \
+    && cmake --install /tmp/colmap/build \
+    && git clone --recursive --depth 1 --branch "${OPENMVS_VERSION}" https://github.com/cdcseacave/openMVS.git /tmp/openmvs \
+    && cmake -S /tmp/openmvs -B /tmp/openmvs/build -GNinja \
+         -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/openmvs -DOpenMVS_USE_CUDA=OFF \
+    && cmake --build /tmp/openmvs/build \
+    && cmake --install /tmp/openmvs/build \
+    && curl -fsSL "https://download.blender.org/release/Blender4.3/blender-${BLENDER_VERSION}-linux-x64.tar.xz" \
+         -o /tmp/blender.tar.xz \
+    && mkdir -p /opt/blender \
+    && tar -xJf /tmp/blender.tar.xz --strip-components=1 -C /opt/blender \
+    && rm -rf /tmp/colmap /tmp/openmvs /tmp/blender.tar.xz /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --include=dev && npm cache clean --force
+COPY src ./src
+COPY scripts ./scripts
+COPY database ./database
+COPY tsconfig.json next-env.d.ts ./
+
+RUN groupadd --gid "${APP_GID}" ar360 \
+    && useradd --uid "${APP_UID}" --gid "${APP_GID}" --create-home --shell /usr/sbin/nologin ar360 \
+    && mkdir -p /app/storage/private/object-capture \
+    && chown -R ar360:ar360 /app
+
+USER ar360
+HEALTHCHECK --interval=60s --timeout=20s --start-period=30s --retries=3 \
+  CMD ["npm", "run", "readiness:oc", "--", "--quiet"]
+
+CMD ["npm", "run", "worker:oc"]

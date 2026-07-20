@@ -1,0 +1,25 @@
+19:09:48 [App     ] OpenMVS x64 v2.4.0
+19:09:49 [App     ] Build date: Jan 20 2026, 00:13:37
+19:09:49 [App     ] CPU: 13th Gen Intel(R) Core(TM) i9-13900K (32 cores)
+19:09:49 [App     ] RAM: 31.69GB Physical Memory 128.00TB Virtual Memory
+19:09:49 [App     ] OS: Windows 11+ x64
+19:09:49 [App     ] Disk: 98.66GB (462.77GB) space
+19:09:49 [App     ] SSE & AVX compatible CPU & OS detected
+19:09:49 [App     ] Command line: InterfaceCOLMAP -i C:\xampp\htdocs\ar360\storage\private\object-capture\CUS-848683\6f7302eb-5860-49ce-a83f-aa9594ebd774\processed\attempt-8ea28b74-8199-46fc-aa7d-8acc2a524523\dense -o C:\xampp\htdocs\ar360\storage\private\object-capture\CUS-848683\6f7302eb-5860-49ce-a83f-aa9594ebd774\processed\attempt-8ea28b74-8199-46fc-aa7d-8acc2a524523\scene.mvs
+19:09:49 [App     ] Reading cameras: C:/xampp/htdocs/ar360/storage/private/object-capture/CUS-848683/6f7302eb-5860-49ce-a83f-aa9594ebd774/processed/attempt-8ea28b74-8199-46fc-aa7d-8acc2a524523/dense/sparse/cameras.bin
+19:09:49 [App     ] Reading images: C:/xampp/htdocs/ar360/storage/private/object-capture/CUS-848683/6f7302eb-5860-49ce-a83f-aa9594ebd774/processed/attempt-8ea28b74-8199-46fc-aa7d-8acc2a524523/dense/sparse/images.bin
+19:09:49 [App     ] Reading points: C:/xampp/htdocs/ar360/storage/private/object-capture/CUS-848683/6f7302eb-5860-49ce-a83f-aa9594ebd774/processed/attempt-8ea28b74-8199-46fc-aa7d-8acc2a524523/dense/sparse/points3D.bin
+19:09:49 [App     ] Reading patch-match configuration: C:/xampp/htdocs/ar360/storage/private/object-capture/CUS-848683/6f7302eb-5860-49ce-a83f-aa9594ebd774/processed/attempt-8ea28b74-8199-46fc-aa7d-8acc2a524523/dense/stereo/patch-match.cfg
+19:09:49 [App     ] Reading depth-maps/normal-maps: C:/xampp/htdocs/ar360/storage/private/object-capture/CUS-848683/6f7302eb-5860-49ce-a83f-aa9594ebd774/processed/attempt-8ea28b74-8199-46fc-aa7d-8acc2a524523/dense/stereo/depth_maps/ and C:/xampp/htdocs/ar360/storage/private/object-capture/CUS-848683/6f7302eb-5860-49ce-a83f-aa9594ebd774/processed/attempt-8ea28b74-8199-46fc-aa7d-8acc2a524523/dense/stereo/normal_maps/
+19:09:49 [App     ] Exported data: 3 images, 107 points (11ms)
+19:09:49 [App     ] MEMORYINFO: {
+19:09:49 [App     ] 	PageFaultCount 1757
+19:09:49 [App     ] 	PeakWorkingSetSize 6.57MB
+19:09:49 [App     ] 	WorkingSetSize 6.57MB
+19:09:49 [App     ] 	QuotaPeakPagedPoolUsage 67.81KB
+19:09:49 [App     ] 	QuotaPagedPoolUsage 67.52KB
+19:09:49 [App     ] 	QuotaPeakNonPagedPoolUsage 19.33KB
+19:09:49 [App     ] 	QuotaNonPagedPoolUsage 9.57KB
+19:09:49 [App     ] 	PagefileUsage 1.27MB
+19:09:49 [App     ] 	PeakPagefileUsage 1.27MB
+19:09:49 [App     ] } ENDINFO

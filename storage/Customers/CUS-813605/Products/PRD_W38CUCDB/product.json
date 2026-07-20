@@ -1,0 +1,83 @@
+{
+  "title": "02",
+  "category": "Uncategorized",
+  "publicFolder": "/Storage/Customers/CUS-813605/Products/PRD_W38CUCDB",
+  "createdAt": "2026-07-15T09:40:03.000Z",
+  "updatedAt": "2026-07-15T10:52:29.586Z",
+  "modelUrl": "/Storage/Customers/CUS-813605/Products/PRD_W38CUCDB/model.glb",
+  "fileName": "02.glb",
+  "activeVariantId": "default",
+  "variants": [
+    {
+      "id": "default",
+      "name": "Default",
+      "materialSettings": {},
+      "environmentImage": "neutral",
+      "exposure": 1,
+      "backgroundColor": "#ffffff",
+      "transparent": false,
+      "shadowIntensity": 1,
+      "shadowSoftness": 1,
+      "autoRotate": true,
+      "cameraControls": true,
+      "showArButton": true,
+      "interactionPrompt": true,
+      "autoPlay": true,
+      "fov": 45,
+      "poster": ""
+    }
+  ],
+  "id": "PRD_W38CUCDB",
+  "poster": "",
+  "thumbnailUrl": "",
+  "qrUrl": "/Storage/Customers/CUS-813605/Products/PRD_W38CUCDB/qr.png",
+  "status": "Draft",
+  "views": 0,
+  "folder": "All",
+  "materialSettings": {},
+  "nativeMaterialSettings": {
+    "0": {
+      "baseColor": "#ffffff",
+      "metalness": 1,
+      "roughness": 1,
+      "emissiveColor": "#000000"
+    },
+    "1": {
+      "baseColor": "#ffffff",
+      "metalness": 1,
+      "roughness": 1,
+      "emissiveColor": "#000000"
+    },
+    "2": {
+      "baseColor": "#ffffff",
+      "metalness": 1,
+      "roughness": 1,
+      "emissiveColor": "#000000"
+    }
+  },
+  "environmentImage": "neutral",
+  "exposure": 1,
+  "backgroundColor": "#ffffff",
+  "transparent": false,
+  "shadowIntensity": 1,
+  "shadowSoftness": 1,
+  "autoRotate": true,
+  "cameraControls": true,
+  "showArButton": true,
+  "interactionPrompt": true,
+  "realScale": true,
+  "autoPlay": true,
+  "hideControls": false,
+  "initialZoom": 100,
+  "fov": 45,
+  "baseColor": "#ffffff",
+  "metalness": 1,
+  "roughness": 1,
+  "emissiveColor": "#000000",
+  "materialPreset": "Default",
+  "hotspots": [],
+  "logoDecals": [],
+  "destination": "http://localhost:3000/viewer/PRD_W38CUCDB",
+  "customerUid": "CUS-813605",
+  "productUid": "PRD_W38CUCDB"
+}

@@ -1,0 +1,28 @@
+19:09:50 [App     ] OpenMVS x64 v2.4.0
+19:09:50 [App     ] Build date: Jan 20 2026, 00:13:37
+19:09:50 [App     ] CPU: 13th Gen Intel(R) Core(TM) i9-13900K (32 cores)
+19:09:50 [App     ] RAM: 31.69GB Physical Memory 128.00TB Virtual Memory
+19:09:50 [App     ] OS: Windows 11+ x64
+19:09:50 [App     ] Disk: 98.66GB (462.77GB) space
+19:09:50 [App     ] SSE & AVX compatible CPU & OS detected
+19:09:50 [App     ] Command line: ReconstructMesh C:\xampp\htdocs\ar360\storage\private\object-capture\CUS-848683\6f7302eb-5860-49ce-a83f-aa9594ebd774\processed\attempt-8ea28b74-8199-46fc-aa7d-8acc2a524523\scene_dense.mvs -o C:\xampp\htdocs\ar360\storage\private\object-capture\CUS-848683\6f7302eb-5860-49ce-a83f-aa9594ebd774\processed\attempt-8ea28b74-8199-46fc-aa7d-8acc2a524523\scene_dense_mesh.mvs
+19:09:50 [Scene   ] Camera model loaded: platform 0; camera  0; f 2.324x2.324; poses 3
+19:09:50 [Scene   ] Scene loaded in interface format from 'scene_dense.mvs' (1ms):
+	3 images (3 calibrated) with a total of 8.28 MPixels (2.76 MPixels/image)
+	107 points, 0 vertices, 0 faces
+19:09:50 [DepthMap] Delaunay tetrahedralization completed: 107 points -> 72 vertices, 332 (+20) cells, 674 (+30) faces (0ms)
+19:09:50 [ScnRecnt] Delaunay tetrahedras weighting completed: 352 cells, 704 faces (0ms)
+19:09:50 [ScnRecnt] Delaunay tetrahedras graph-cut completed (34.363 flow): 10 vertices, 8 faces (0ms)
+19:09:50 [App     ] Mesh reconstruction completed: 13 vertices, 8 faces (5ms)
+19:09:50 [Mesh    ] Cleaned mesh: 0 vertices, 0 faces (0ms)
+19:09:50 [App     ] MEMORYINFO: {
+19:09:50 [App     ] 	PageFaultCount 2843
+19:09:50 [App     ] 	PeakWorkingSetSize 10.64MB
+19:09:50 [App     ] 	WorkingSetSize 10.64MB
+19:09:50 [App     ] 	QuotaPeakPagedPoolUsage 92.30KB
+19:09:50 [App     ] 	QuotaPagedPoolUsage 92.30KB
+19:09:50 [App     ] 	QuotaPeakNonPagedPoolUsage 19.33KB
+19:09:50 [App     ] 	QuotaNonPagedPoolUsage 18.47KB
+19:09:50 [App     ] 	PagefileUsage 4.82MB
+19:09:50 [App     ] 	PeakPagefileUsage 4.82MB
+19:09:50 [App     ] } ENDINFO
