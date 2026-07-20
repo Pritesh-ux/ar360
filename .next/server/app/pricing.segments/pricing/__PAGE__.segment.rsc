@@ -1,7 +1,0 @@
-1:"$Sreact.fragment"
-2:I[522016,["/_next/static/chunks/2yl1jv4w6po1z.js","/_next/static/chunks/1ntn7efqc-iiw.js","/_next/static/chunks/33pzyi0arumid.js","/_next/static/chunks/3dolcamn2f2wf.js"],""]
-3:I[443095,["/_next/static/chunks/2yl1jv4w6po1z.js","/_next/static/chunks/1ntn7efqc-iiw.js","/_next/static/chunks/33pzyi0arumid.js","/_next/static/chunks/3dolcamn2f2wf.js"],"default"]
-4:I[897367,["/_next/static/chunks/2yl1jv4w6po1z.js","/_next/static/chunks/1ntn7efqc-iiw.js"],"OutletBoundary"]
-5:"$Sreact.suspense"
-0:{"rsc":["$","$1","c",{"children":[["$","main",null,{"className":"min-h-screen bg-white text-slate-950","children":[["$","div",null,{"className":"mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 pt-8","children":[["$","$L2",null,{"href":"/","className":"text-sm font-black text-[#5F8F00] hover:underline","children":"← Back to home"}],["$","$L2",null,{"href":"/signup","className":"rounded-full bg-[#84D400] px-5 py-2 text-sm font-black text-[#102000]","children":"Start free trial"}]]}],["$","$L3",null,{}]]}],[["$","script","script-0",{"src":"/_next/static/chunks/33pzyi0arumid.js","async":true}],["$","script","script-1",{"src":"/_next/static/chunks/3dolcamn2f2wf.js","async":true}]],["$","$L4",null,{"children":["$","$5",null,{"name":"Next.MetadataOutlet","children":"$@6"}]}]]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"r9aaaOf4AHE9B5DydCL-W"}
-6:null

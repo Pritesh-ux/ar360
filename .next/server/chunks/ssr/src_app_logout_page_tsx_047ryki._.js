@@ -1,3 +1,0 @@
-module.exports=[552786,a=>{"use strict";var b=a.i(187924),c=a.i(572131);a.s(["default",0,function(){return(0,c.useEffect)(()=>{localStorage.removeItem("ar360_current_user"),localStorage.removeItem("ar_logged_in"),sessionStorage.clear(),window.location.href="/logout/clear"},[]),(0,b.jsx)("main",{className:"grid min-h-screen place-items-center bg-slate-100 text-slate-950",children:(0,b.jsx)("p",{className:"font-black",children:"Logging out..."})})}])}];
-
-//# sourceMappingURL=src_app_logout_page_tsx_047ryki._.js.map

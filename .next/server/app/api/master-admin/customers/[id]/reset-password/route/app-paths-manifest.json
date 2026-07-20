@@ -1,3 +1,0 @@
-{
-  "/api/master-admin/customers/[id]/reset-password/route": "app/api/master-admin/customers/[id]/reset-password/route.js"
-}

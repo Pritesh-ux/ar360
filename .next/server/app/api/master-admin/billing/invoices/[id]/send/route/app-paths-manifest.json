@@ -1,3 +1,0 @@
-{
-  "/api/master-admin/billing/invoices/[id]/send/route": "app/api/master-admin/billing/invoices/[id]/send/route.js"
-}

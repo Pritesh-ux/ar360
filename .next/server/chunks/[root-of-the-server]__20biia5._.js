@@ -1,3 +1,0 @@
-module.exports=[522734,(e,r,t)=>{r.exports=e.x("fs",()=>require("fs"))},449719,(e,r,t)=>{r.exports=e.x("assert",()=>require("assert"))},729698,e=>{"use strict";var r=e.i(522734),t=e.i(814747);let s=t.default.resolve(process.cwd(),"storage","Customers"),o=t.default.resolve(process.cwd(),"public","Storage","Customers");function u(e){try{return r.default.readdirSync(e).length>0}catch{return!1}}e.s(["DEFAULT_STORAGE_ROOT",0,s,"LEGACY_STORAGE_ROOT",0,o,"STORAGE_PUBLIC_PREFIX",0,"/Storage/Customers","resolveStorageRoot",0,function(){let e=process.env.STORAGE_ROOT?.trim();return e?t.default.resolve(e):u(s)?s:u(o)?o:s}])}];
-
-//# sourceMappingURL=%5Broot-of-the-server%5D__20biia5._.js.map
