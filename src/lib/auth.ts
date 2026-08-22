@@ -31,6 +31,72 @@ export type MasterAdminUser = {
   permissions?: import("./permissions/admin-permissions").AdminPermission[];
 };
 
+/**
+ * HMAC-bound purpose claim for master-admin session cookies.
+ * Customer tokens must never carry this value; verification rejects role !== "admin"
+ * and any customer-session markers so numeric user/admin id collision cannot escalate.
+ */
+export const MASTER_ADMIN_TOKEN_TYP = "master_admin" as const;
+
+export type MasterAdminSessionPayload = {
+  id: number;
+  name?: string;
+  email?: string;
+  role: "admin";
+  typ?: typeof MASTER_ADMIN_TOKEN_TYP;
+  iat?: number;
+  exp?: number;
+  /** Customer-session fields — must be absent on admin tokens. */
+  customerUid?: never;
+  sessionUid?: never;
+  sessionVersion?: never;
+};
+
+/**
+ * Cryptographically verified shape check for master-admin sessions.
+ * Does not look up the database; callers must still load Active master_admins by id.
+ */
+export function isAcceptableMasterAdminSessionPayload(
+  session: unknown,
+): session is MasterAdminSessionPayload {
+  if (!session || typeof session !== "object") return false;
+  const s = session as Record<string, unknown>;
+
+  if (typeof s.id !== "number" || !Number.isInteger(s.id) || s.id <= 0) return false;
+  // Hard requirement: only tokens minted as master-admin may authenticate as admin.
+  if (s.role !== "admin") return false;
+  // Reject customer-session markers (defense in depth against cookie-name confusion).
+  if (s.customerUid != null || s.sessionUid != null || s.sessionVersion != null) return false;
+  // typ is optional for in-flight sessions minted before typ was added; when present must match.
+  if (s.typ != null && s.typ !== MASTER_ADMIN_TOKEN_TYP) return false;
+
+  return true;
+}
+
+/** Expiry / legacy-no-exp gate used after HMAC + shape checks. */
+export function isMasterAdminSessionTimeValid(
+  session: Pick<MasterAdminSessionPayload, "exp">,
+  nowSec = Math.floor(Date.now() / 1000),
+): boolean {
+  if (typeof session.exp === "number") {
+    return session.exp >= nowSec;
+  }
+  // Legacy tokens without exp: accept briefly so live admins are not mass-logged-out.
+  // Set ALLOW_LEGACY_ADMIN_SESSIONS=false after one SESSION_MAX_AGE window post-deploy.
+  return process.env["ALLOW_LEGACY_ADMIN_SESSIONS"] !== "false";
+}
+
+/**
+ * Decode + shape + time-validate a master-admin cookie/header token.
+ * Returns null for customer tokens, forged tokens, expired tokens, etc.
+ */
+export function decodeMasterAdminSessionToken(token?: string): MasterAdminSessionPayload | null {
+  const session = decodeSigned<unknown>(token);
+  if (!isAcceptableMasterAdminSessionPayload(session)) return null;
+  if (!isMasterAdminSessionTimeValid(session)) return null;
+  return session;
+}
+
 export type AuthUser = CustomerUser | MasterAdminUser;
 
 type CustomerUserRow = CustomerUser & {
@@ -351,7 +417,8 @@ export async function setTwoFactorChallenge(userOrId: AuthUser | string, code: s
   return { token, cookieOptions };
 }
 
-export async function verifyTwoFactorCode(code: string, _emailHint?: string) {
+export async function verifyTwoFactorCode(code: string, emailHint?: string) {
+  void emailHint;
   await ensureAuthSchema();
   const cookieStore = await cookies();
   const pending = decodeSigned<{ userId: number; role: "user" | "admin"; codeHash?: string }>(
@@ -495,15 +562,17 @@ export async function createMasterAdminSession(user: MasterAdminUser) {
     throw new Error("Master admin account is disabled.");
   }
   const nowSec = Math.floor(Date.now() / 1000);
-  // Keep the signed payload small — identity + hard expiry (H11).
+  // Keep the signed payload small — identity + purpose + hard expiry.
+  // typ binds the cookie purpose under the same AUTH_SECRET as customer sessions.
   const token = encodeSigned({
     id: user.id,
     name: user.name,
     email: user.email,
     role: "admin" as const,
+    typ: MASTER_ADMIN_TOKEN_TYP,
     iat: nowSec,
     exp: nowSec + SESSION_MAX_AGE,
-  });
+  } satisfies MasterAdminSessionPayload);
   const cookieOptions = sessionCookieOptions(SESSION_MAX_AGE);
   const cookieStore = await cookies();
   cookieStore.set(ADMIN_SESSION_COOKIE, token, cookieOptions);
@@ -719,13 +788,12 @@ export async function getCurrentUser() {
 }
 
 export async function getCurrentMasterAdmin(options?: { token?: string }) {
-  type AdminSessionPayload = MasterAdminUser & { exp?: number; iat?: number };
-  let session: AdminSessionPayload | null = null;
+  let session: MasterAdminSessionPayload | null = null;
 
   // 1) Explicit token from route handler request.cookies
   const preferred = options?.token?.trim();
   if (preferred) {
-    session = decodeSigned<AdminSessionPayload>(preferred);
+    session = decodeMasterAdminSessionToken(preferred);
   }
 
   // 2) Middleware-forwarded httpOnly cookie token
@@ -734,7 +802,7 @@ export async function getCurrentMasterAdmin(options?: { token?: string }) {
       const headerList = await headers();
       const forwarded = headerList.get(ADMIN_TOKEN_HEADER);
       if (forwarded) {
-        session = decodeSigned<AdminSessionPayload>(forwarded);
+        session = decodeMasterAdminSessionToken(forwarded);
       }
       // Never trust x-ar360-admin-id — unsigned numeric IDs are forgeable.
     } catch {
@@ -745,20 +813,11 @@ export async function getCurrentMasterAdmin(options?: { token?: string }) {
   // 3) Fallback: cookies() / raw Cookie header
   if (!session?.id) {
     const token = await readSignedAuthToken(ADMIN_SESSION_COOKIE);
-    session = decodeSigned<AdminSessionPayload>(token);
+    session = decodeMasterAdminSessionToken(token);
   }
 
+  // Customer tokens (role:"user") and forged/malformed tokens never reach the DB lookup.
   if (!session?.id) return null;
-
-  const nowSec = Math.floor(Date.now() / 1000);
-  if (typeof session.exp === "number") {
-    if (session.exp < nowSec) return null;
-  } else {
-    // Legacy tokens without exp: accept briefly so live admins are not mass-logged-out.
-    // Set ALLOW_LEGACY_ADMIN_SESSIONS=false after one SESSION_MAX_AGE window post-deploy.
-    const allowLegacy = process.env["ALLOW_LEGACY_ADMIN_SESSIONS"] !== "false";
-    if (!allowLegacy) return null;
-  }
 
   const sessionId = session.id;
 

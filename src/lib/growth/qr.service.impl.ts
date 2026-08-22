@@ -434,12 +434,17 @@ export async function updateCustomerQrCode(input: {
           } as const;
         }
       }
-      const stored =
-        (await persistQrLogoAsset({
-          customerUid: input.customerUid,
-          qrId: input.id,
-          logoUrl: custom,
-        })) || custom;
+      const stored = await persistQrLogoAsset({
+        customerUid: input.customerUid,
+        qrId: input.id,
+        logoUrl: custom,
+      });
+      // Fail closed: never fall back to storing attacker-controlled remote/path URLs.
+      if (!stored) {
+        return {
+          error: "Logo could not be saved. Use a PNG, JPG, or WebP under 1 MB from an allowed source.",
+        } as const;
+      }
       // Never write multi-MB data URLs into MySQL (max_allowed_packet).
       if (stored.startsWith("data:")) {
         return {

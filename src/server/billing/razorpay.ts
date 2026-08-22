@@ -80,7 +80,8 @@ export function matchRazorpayWebhookSignature(rawBody: string, signature: string
 }
 
 export async function verifyRazorpayWebhookSignature(rawBody: string, signature: string) {
-  // Prefer Master Admin → Settings (DB) over stale .env, so live keys saved in panel actually work.
+  // Credentials come from getRazorpayKeys() which enforces the staging LIVE hard-block
+  // (DB LIVE settings never override staging TEST boundary).
   const secret = (await getRazorpayKeys()).webhookSecret?.trim() || "";
   return matchRazorpayWebhookSignature(rawBody, signature, secret);
 }

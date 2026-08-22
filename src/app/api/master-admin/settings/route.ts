@@ -9,12 +9,21 @@ import {
 } from "@/lib/master-admin-settings";
 import { getEmailDeliveryStatus } from "@/lib/email/delivery-config";
 import { query } from "@/lib/db";
+import {
+  isRazorpayLiveKeyId,
+  isStagingDeployTarget,
+  resolveDeployTarget,
+  sanitizeRazorpaySettingsForResponse,
+  validateRazorpaySettingsWrite,
+} from "@/lib/billing/razorpay-staging-boundary";
 
 export const runtime = "nodejs";
 
 function maskSecrets(settings: PlatformSettings) {
+  const razorpay = sanitizeRazorpaySettingsForResponse(settings);
   return {
     ...settings,
+    ...razorpay,
     razorpayKeySecret: settings.razorpayKeySecret ? "********" : "",
     razorpayWebhookSecret: settings.razorpayWebhookSecret ? "********" : "",
     stripeKey: settings.stripeKey ? "********" : "",
@@ -47,6 +56,8 @@ export async function GET(req: Request) {
     emailDelivery,
     razorpayHealth,
     webhookUrl: `${new URL(req.url).origin}/api/billing/webhook/razorpay`,
+    deployTarget: resolveDeployTarget(),
+    razorpayLiveAllowed: !isStagingDeployTarget(),
   });
 }
 
@@ -66,20 +77,12 @@ export async function POST(req: Request) {
   if (incoming.resendApiKey === "********") delete incoming.resendApiKey;
   if (incoming.stripeKey === "********") delete incoming.stripeKey;
 
-  const keyId = String(incoming.razorpayKeyId || "").trim();
-  if (keyId) {
-    incoming.razorpayKeyId = keyId;
-    // Key prefix is source of truth — avoid mode/key mismatch when admin pastes live keys.
-    if (keyId.startsWith("rzp_live_")) incoming.razorpayMode = "live";
-    else if (keyId.startsWith("rzp_test_")) incoming.razorpayMode = "test";
+  const validated = validateRazorpaySettingsWrite(incoming);
+  if (validated.ok === false) {
+    return NextResponse.json({ error: validated.error }, { status: 400 });
   }
-  const mode = incoming.razorpayMode === "live" ? "live" : "test";
-  incoming.razorpayMode = mode;
-  if (keyId && !keyId.startsWith(`rzp_${mode}_`)) {
-    return NextResponse.json({
-      error: `Razorpay Key ID must start with rzp_${mode}_ for ${mode} mode. Paste the matching Key ID from Razorpay ${mode === "live" ? "Live" : "Test"} Dashboard → API Keys.`,
-    }, { status: 400 });
-  }
+  Object.assign(incoming, validated.patch);
+
   if (incoming.nativeSubscriptionRolloutPercent != null) {
     const percent = Number(incoming.nativeSubscriptionRolloutPercent);
     if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
@@ -89,8 +92,16 @@ export async function POST(req: Request) {
 
   if (body?.action === "test_razorpay") {
     // Probe with submitted keys first — only persist after connectivity succeeds.
+    // Staging hard-block: never probe or persist LIVE credentials.
     const current = await getPlatformSettings();
+    const keyId = String(incoming.razorpayKeyId || "").trim();
     const probeKeyId = keyId || current.razorpayKeyId;
+    if (isStagingDeployTarget() && (isRazorpayLiveKeyId(probeKeyId) || incoming.razorpayMode === "live")) {
+      return NextResponse.json(
+        { error: "Razorpay LIVE credentials are not allowed on staging." },
+        { status: 400 },
+      );
+    }
     const probeSecret =
       typeof incoming.razorpayKeySecret === "string" && incoming.razorpayKeySecret
         ? String(incoming.razorpayKeySecret)
@@ -105,16 +116,27 @@ export async function POST(req: Request) {
       ? "live"
       : probeKeyId.startsWith("rzp_test_")
         ? "test"
-        : mode;
+        : incoming.razorpayMode === "live"
+          ? "live"
+          : "test";
+    if (isStagingDeployTarget() && probeMode === "live") {
+      return NextResponse.json(
+        { error: "Razorpay LIVE mode is not allowed on staging." },
+        { status: 400 },
+      );
+    }
     try {
       const client = new Razorpay({ key_id: probeKeyId, key_secret: probeSecret });
       await client.payments.all({ count: 1 } as { count: number });
-      incoming.razorpayMode = probeMode;
+      const savedMode: "test" | "live" = isStagingDeployTarget() ? "test" : probeMode;
+      incoming.razorpayMode = savedMode;
       await savePlatformSettings(incoming);
       await query(`INSERT INTO billing_provider_health
         (provider, provider_mode, last_connectivity_test_at, connectivity_ok, connectivity_error)
         VALUES ('razorpay', ?, NOW(), 1, NULL)
-        ON DUPLICATE KEY UPDATE last_connectivity_test_at=NOW(), connectivity_ok=1, connectivity_error=NULL`, [probeMode]);
+        ON DUPLICATE KEY UPDATE last_connectivity_test_at=NOW(), connectivity_ok=1, connectivity_error=NULL`, [
+        savedMode,
+      ]);
       await writeMasterAdminAudit({
         adminId: auth.admin.id,
         action: "settings.update",
@@ -126,8 +148,8 @@ export async function POST(req: Request) {
         adminId: auth.admin.id,
         action: "billing.provider_connectivity_test",
         entityType: "billing_provider",
-        entityId: `razorpay:${probeMode}`,
-        metadata: { reason, keyPrefix: probeKeyId.slice(0, 12) },
+        entityId: `razorpay:${savedMode}`,
+        metadata: { reason, keyMode: savedMode },
       });
       const [settings, emailDelivery, razorpayHealth] = await Promise.all([
         getPlatformSettings(),
@@ -136,10 +158,12 @@ export async function POST(req: Request) {
       ]);
       return NextResponse.json({
         success: true,
-        message: `Razorpay ${probeMode} connectivity verified. Keys are active for checkout.`,
+        message: `Razorpay ${savedMode} connectivity verified. Keys are active for checkout.`,
         settings: maskSecrets(settings),
         emailDelivery,
         razorpayHealth,
+        deployTarget: resolveDeployTarget(),
+        razorpayLiveAllowed: !isStagingDeployTarget(),
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Connectivity test failed.";
@@ -153,7 +177,15 @@ export async function POST(req: Request) {
     }
   }
 
-  await savePlatformSettings(incoming);
+  try {
+    await savePlatformSettings(incoming);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to save settings.";
+    if (/LIVE|rzp_live_|staging/i.test(message)) {
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+    throw error;
+  }
   await writeMasterAdminAudit({
     adminId: auth.admin.id,
     action: "settings.update",
@@ -169,5 +201,7 @@ export async function POST(req: Request) {
     success: true,
     settings: maskSecrets(settings),
     emailDelivery,
+    deployTarget: resolveDeployTarget(),
+    razorpayLiveAllowed: !isStagingDeployTarget(),
   });
 }

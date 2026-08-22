@@ -1,5 +1,10 @@
 import crypto from "crypto";
 import { ensureAppSchema, query } from "@/lib/db";
+import {
+  applyRazorpayDeployBoundary,
+  isStagingDeployTarget,
+  validateRazorpaySettingsWrite,
+} from "@/lib/billing/razorpay-staging-boundary";
 
 export type PlatformSettings = {
   companyName: string;
@@ -66,7 +71,8 @@ export const defaultPlatformSettings: PlatformSettings = {
   razorpayKeyId: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID || "",
   razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET || "",
   razorpayWebhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || "",
-  razorpayMode: process.env.RAZORPAY_MODE === "live" ? "live" : "test",
+  razorpayMode:
+    isStagingDeployTarget() || process.env.RAZORPAY_MODE !== "live" ? "test" : "live",
   razorpayReconciliationEnabled: process.env.RAZORPAY_RECONCILIATION_ENABLED !== "false",
   razorpayRolloutAllowlist: process.env.RAZORPAY_ROLLOUT_ALLOWLIST || "",
   razorpayKillSwitch: process.env.RAZORPAY_CHECKOUT_KILL_SWITCH === "true",
@@ -211,7 +217,15 @@ export async function getPlatformSettings(): Promise<PlatformSettings> {
 
 export async function savePlatformSettings(settings: Partial<PlatformSettings>) {
   await ensureAppSchema();
-  const entries = Object.entries(settings).filter(([key]) => key in defaultPlatformSettings);
+
+  // Last-line defense: any writer (not only the settings route) cannot persist LIVE Razorpay on staging.
+  const razorpayPatch = validateRazorpaySettingsWrite(settings as Record<string, unknown>);
+  if (razorpayPatch.ok === false) {
+    throw new Error(razorpayPatch.error);
+  }
+  const safeSettings = { ...settings, ...razorpayPatch.patch } as Partial<PlatformSettings>;
+
+  const entries = Object.entries(safeSettings).filter(([key]) => key in defaultPlatformSettings);
   for (const [key, raw] of entries) {
     const value = secretKeys.has(key) ? encryptSecret(String(raw ?? "")) : String(raw ?? "");
     await query(
@@ -225,10 +239,18 @@ export async function savePlatformSettings(settings: Partial<PlatformSettings>) 
 
 export async function getRazorpayKeys() {
   const settings = await getPlatformSettings();
-  return {
-    keyId: settings.razorpayKeyId || process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "",
-    keySecret: settings.razorpayKeySecret || process.env.RAZORPAY_KEY_SECRET || "",
-    webhookSecret: settings.razorpayWebhookSecret || process.env.RAZORPAY_WEBHOOK_SECRET || "",
-    mode: settings.razorpayMode,
-  };
+  return applyRazorpayDeployBoundary(
+    {
+      keyId: settings.razorpayKeyId || "",
+      keySecret: settings.razorpayKeySecret || "",
+      webhookSecret: settings.razorpayWebhookSecret || "",
+      mode: settings.razorpayMode === "live" ? "live" : "test",
+    },
+    {
+      keyId: process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "",
+      keySecret: process.env.RAZORPAY_KEY_SECRET || "",
+      webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || "",
+      modeHint: process.env.RAZORPAY_MODE === "live" ? "live" : "test",
+    },
+  );
 }

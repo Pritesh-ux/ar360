@@ -1,24 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { guardAdminPermission, logAdminAudit } from "@/lib/permissions/admin-rbac";
 import { ensureAppSchema, query } from "@/lib/db";
+import {
+  DATABASE_BROWSER_TABLE_GROUPS,
+  buildDatabaseBrowserRowsQuery,
+  filterSafeBrowserColumns,
+  isAllowedBrowserTable,
+  isSafeSqlIdentifier,
+  isSensitiveBrowserColumn,
+  redactSensitiveRowFields,
+} from "@/lib/master-admin/database-browser-security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const TABLE_GROUPS: Record<string, string[]> = {
-  Core: ["customers", "users", "master_admins", "admin_roles", "admin_permissions", "admin_role_permissions"],
-  Products: ["products", "product_versions", "product_assets", "product_edit_log", "product_qr_codes", "product_embed_configs"],
-  Analytics: ["analytics_events", "analytics_sessions", "analytics_daily"],
-  Billing: ["billing_plans", "billing_orders", "billing_payments", "billing_invoices", "billing_history", "billing_profiles", "billing_webhook_events", "billing_refunds", "billing_checkout_sessions", "billing_plan_price_versions", "billing_reconciliation_issues", "billing_audit_log", "billing_scheduled_changes", "billing_reconciliation_runs", "billing_renewal_events", "billing_credit_notes", "billing_admin_alerts", "billing_provider_health", "billing_notification_outbox"],
-  Payments: ["payments", "payment_methods", "plans", "customer_subscriptions", "coupons", "coupon_redemptions"],
-  Sharing: ["share_links", "share_events", "qr_scan_events", "embed_view_events"],
-  Support: ["support_tickets", "support_ticket_messages"],
-  Enterprise: ["workspaces", "workspace_members", "workspace_invites", "enterprise_requests", "custom_domains", "api_keys", "api_key_logs", "webhooks", "webhook_deliveries", "usage_counters", "usage_daily"],
-  Auth: ["auth_login_logs", "login_logs", "password_reset_tokens", "customer_sessions", "customer_activity_logs", "admin_notifications"],
-  Notifications: ["customer_notifications", "user_preferences"],
-  Settings: ["platform_settings", "storage_usage_snapshots"],
-  Account: ["data_export_requests", "account_deletion_requests"],
-};
 
 function pickField<T extends Record<string, unknown>>(row: T, ...keys: string[]) {
   for (const key of keys) {
@@ -31,8 +25,27 @@ function pickField<T extends Record<string, unknown>>(row: T, ...keys: string[])
   return undefined;
 }
 
+async function loadTableColumnMeta(tableName: string) {
+  const rawColumns = await query<Record<string, unknown>>(
+    `SELECT COLUMN_NAME AS column_name, DATA_TYPE AS data_type, IS_NULLABLE AS is_nullable,
+            COLUMN_DEFAULT AS column_default, COLUMN_KEY AS column_key
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
+     ORDER BY ORDINAL_POSITION ASC`,
+    [tableName],
+  );
+  return rawColumns.map((row) => ({
+    column_name: String(pickField(row, "column_name", "COLUMN_NAME") || ""),
+    data_type: String(pickField(row, "data_type", "DATA_TYPE") || ""),
+    is_nullable: String(pickField(row, "is_nullable", "IS_NULLABLE") || ""),
+    column_default: (pickField(row, "column_default", "COLUMN_DEFAULT") as string | null) ?? null,
+    column_key: String(pickField(row, "column_key", "COLUMN_KEY") || ""),
+  }));
+}
+
 export async function GET(req: NextRequest) {
-  const auth = await guardAdminPermission("customers.read", { request: req });
+  // Least privilege: same capability as the read-only SQL console (not customers.read).
+  const auth = await guardAdminPermission("database.query", { request: req });
   if (auth instanceof NextResponse) return auth;
 
   try {
@@ -68,7 +81,8 @@ export async function GET(req: NextRequest) {
         rowMap.set(name, Number(pickField(row, "row_count", "TABLE_ROWS", "table_rows") || 0));
       }
 
-      const tables = Object.entries(TABLE_GROUPS)
+      // Only curated allowlist — do not expose arbitrary live tables.
+      const tables = Object.entries(DATABASE_BROWSER_TABLE_GROUPS)
         .map(([group, names]) => ({
           group,
           tables: names
@@ -77,94 +91,76 @@ export async function GET(req: NextRequest) {
         }))
         .filter((group) => group.tables.length > 0);
 
-      // Any live tables not in the curated groups (so nothing "vanishes").
-      const known = new Set(Object.values(TABLE_GROUPS).flat());
-      const other = [...rowMap.keys()]
-        .filter((name) => !known.has(name))
-        .sort()
-        .map((name) => ({ name, rows: rowMap.get(name) ?? 0 }));
-      if (other.length) {
-        tables.push({ group: "Other", tables: other });
-      }
-
       const allTables = tables.flatMap((g) => g.tables);
       return NextResponse.json({ tables, totalTables: allTables.length });
     }
 
     if (action === "columns") {
-      const tableName = searchParams.get("table");
-      if (!tableName || !/^[a-z0-9_]+$/i.test(tableName)) {
-        return NextResponse.json({ error: "Invalid table name" }, { status: 400 });
+      const tableName = searchParams.get("table") || "";
+      if (!isAllowedBrowserTable(tableName) || !isSafeSqlIdentifier(tableName)) {
+        return NextResponse.json({ error: "Table is not allowed." }, { status: 400 });
       }
-      const rawColumns = await query<Record<string, unknown>>(
-        `SELECT COLUMN_NAME AS column_name, DATA_TYPE AS data_type, IS_NULLABLE AS is_nullable,
-                COLUMN_DEFAULT AS column_default, COLUMN_KEY AS column_key
-         FROM information_schema.COLUMNS
-         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
-         ORDER BY ORDINAL_POSITION ASC`,
-        [tableName],
+      const rawColumns = await loadTableColumnMeta(tableName);
+      const columns = rawColumns.filter(
+        (c) => c.column_name && !isSensitiveBrowserColumn(c.column_name) && isSafeSqlIdentifier(c.column_name),
       );
-      const columns = rawColumns.map((row) => ({
-        column_name: String(pickField(row, "column_name", "COLUMN_NAME") || ""),
-        data_type: String(pickField(row, "data_type", "DATA_TYPE") || ""),
-        is_nullable: String(pickField(row, "is_nullable", "IS_NULLABLE") || ""),
-        column_default: (pickField(row, "column_default", "COLUMN_DEFAULT") as string | null) ?? null,
-        column_key: String(pickField(row, "column_key", "COLUMN_KEY") || ""),
-      }));
       return NextResponse.json({ columns });
     }
 
     if (action === "rows") {
-      const tableName = searchParams.get("table");
-      if (!tableName || !/^[a-z0-9_]+$/i.test(tableName)) {
-        return NextResponse.json({ error: "Invalid table name" }, { status: 400 });
-      }
-      const page = Math.max(1, Number(searchParams.get("page") || "1"));
-      const pageSize = Math.min(100, Math.max(1, Number(searchParams.get("pageSize") || "25")));
-      const search = searchParams.get("search") || "";
-      const offset = (page - 1) * pageSize;
-
-      let where = "";
-      const values: (string | number)[] = [];
-
-      if (search) {
-        const rawColumns = await query<Record<string, unknown>>(
-          `SELECT COLUMN_NAME AS column_name, DATA_TYPE AS data_type
-           FROM information_schema.COLUMNS
-           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
-          [tableName],
-        );
-        const searchable = rawColumns
-          .map((row) => ({
-            column_name: String(pickField(row, "column_name", "COLUMN_NAME") || ""),
-            data_type: String(pickField(row, "data_type", "DATA_TYPE") || "").toLowerCase(),
-          }))
-          .filter((c) =>
-            ["varchar", "text", "char", "enum", "longtext", "mediumtext"].includes(c.data_type),
-          );
-        if (searchable.length > 0) {
-          const conditions = searchable.map((c) => `CAST(\`${c.column_name}\` AS CHAR) LIKE ?`);
-          where = `WHERE ${conditions.join(" OR ")}`;
-          searchable.forEach(() => values.push(`%${search}%`));
-        }
+      const tableName = searchParams.get("table") || "";
+      if (!isAllowedBrowserTable(tableName) || !isSafeSqlIdentifier(tableName)) {
+        return NextResponse.json({ error: "Table is not allowed." }, { status: 400 });
       }
 
-      // Inline LIMIT/OFFSET as safe integers (avoids prepared-statement edge cases).
-      const safeLimit = Math.floor(pageSize);
-      const safeOffset = Math.floor(offset);
+      // Reject arbitrary client ORDER BY SQL fragments unless validated by builder.
+      const orderBy = searchParams.get("orderBy");
+      const orderDir = searchParams.get("orderDir");
+
+      const meta = await loadTableColumnMeta(tableName);
+      const allNames = meta.map((c) => c.column_name).filter(Boolean);
+      const safeColumns = filterSafeBrowserColumns(allNames);
+      const searchableColumns = meta
+        .filter((c) =>
+          ["varchar", "text", "char", "enum", "longtext", "mediumtext"].includes(
+            c.data_type.toLowerCase(),
+          ),
+        )
+        .map((c) => c.column_name);
+
+      const built = buildDatabaseBrowserRowsQuery({
+        tableName,
+        safeColumns,
+        searchableColumns,
+        search: searchParams.get("search"),
+        page: searchParams.get("page"),
+        pageSize: searchParams.get("pageSize"),
+        orderBy,
+        orderDir,
+      });
+      if (built.ok === false) {
+        return NextResponse.json({ error: built.error }, { status: built.status });
+      }
 
       const [countResult, rows] = await Promise.all([
-        query<{ total: number }>(`SELECT COUNT(*) AS total FROM \`${tableName}\` ${where}`, values),
-        query<Record<string, unknown>>(
-          `SELECT * FROM \`${tableName}\` ${where} LIMIT ${safeLimit} OFFSET ${safeOffset}`,
-          values,
-        ),
+        query<{ total: number }>(built.countSql, built.values),
+        query<Record<string, unknown>>(built.rowsSql, built.values),
       ]);
 
+      // Defense in depth: never return sensitive keys even if schema drifts.
+      const safeRows = rows.map((row) => redactSensitiveRowFields(row));
+
       const total = Number(countResult[0]?.total || 0);
+      const { page, pageSize } = built.pagination;
       return NextResponse.json({
-        rows,
-        pagination: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) },
+        rows: safeRows,
+        columns: built.selectColumns,
+        pagination: {
+          page,
+          pageSize,
+          total,
+          totalPages: Math.max(1, Math.ceil(total / pageSize)),
+        },
       });
     }
 
@@ -172,7 +168,7 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     console.error("[master-admin/database GET]", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Database manager failed." },
+      { error: "Database manager failed." },
       { status: 500 },
     );
   }
@@ -184,7 +180,7 @@ export async function POST(req: NextRequest) {
 
   await ensureAppSchema();
 
-  const body = await req.json() as { sql?: string };
+  const body = (await req.json()) as { sql?: string };
   const sql = (body.sql || "").trim();
 
   if (!sql) {
@@ -202,8 +198,18 @@ export async function POST(req: NextRequest) {
 
   const upper = sql.replace(/\s+/g, " ").trim().toUpperCase();
 
-  if (!upper.startsWith("SELECT ") && !upper.startsWith("(SELECT ") && !upper.startsWith("SHOW ") && !upper.startsWith("DESCRIBE ") && !upper.startsWith("DESC ") && !upper.startsWith("EXPLAIN ")) {
-    return NextResponse.json({ error: "Only read-only SELECT/SHOW/DESCRIBE/EXPLAIN queries are permitted." }, { status: 403 });
+  if (
+    !upper.startsWith("SELECT ") &&
+    !upper.startsWith("(SELECT ") &&
+    !upper.startsWith("SHOW ") &&
+    !upper.startsWith("DESCRIBE ") &&
+    !upper.startsWith("DESC ") &&
+    !upper.startsWith("EXPLAIN ")
+  ) {
+    return NextResponse.json(
+      { error: "Only read-only SELECT/SHOW/DESCRIBE/EXPLAIN queries are permitted." },
+      { status: 403 },
+    );
   }
 
   const blocked = [
@@ -239,13 +245,15 @@ export async function POST(req: NextRequest) {
     const rows = await query<Record<string, unknown>>(limitedSql);
     const elapsed = Date.now() - startTime;
 
-    const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
+    // Redact secret-bearing columns from ad-hoc query results (server-side).
+    const safeRows = rows.map((row) => redactSensitiveRowFields(row));
+    const columns = safeRows.length > 0 ? Object.keys(safeRows[0]!) : [];
     await logAdminAudit(auth.admin, "database.query", "database", null, {
-      rowCount: rows.length,
+      rowCount: safeRows.length,
       elapsed,
       preview: sql.slice(0, 200),
     });
-    return NextResponse.json({ rows, columns, rowCount: rows.length, elapsed });
+    return NextResponse.json({ rows: safeRows, columns, rowCount: safeRows.length, elapsed });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Query failed";
     return NextResponse.json({ error: message }, { status: 400 });

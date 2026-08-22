@@ -4,11 +4,22 @@ import { absoluteUrl } from "@/lib/url";
 import { assertCan } from "@/lib/billing/permissions";
 import {
   AR360_QR_CENTER_LOGO_PATH,
-  AR360_QR_CENTER_LOGO_SIZE,
-  CUSTOM_QR_CENTER_LOGO_SIZE,
   isAr360QrLogoUrl,
   resolveQrCenterLogo,
 } from "@/lib/growth/qr-logo-shared";
+import {
+  isSafeStoredQrLogoPath,
+  normalizeQrLogoPublicPath,
+  resolveContainedQrLogoFile,
+} from "@/lib/growth/qr-logo-path";
+import {
+  SAFE_IMAGE_MAX_BYTES,
+  bufferLooksLikeAllowedImage,
+  fetchSafeOutboundImage,
+  isAllowedImageContentType,
+  type DnsLookupFn,
+  type FetchFn,
+} from "@/lib/security/ssrf";
 
 export {
   AR360_QR_CENTER_LOGO_PATH,
@@ -17,6 +28,12 @@ export {
   isAr360QrLogoUrl,
   resolveQrCenterLogo,
 } from "@/lib/growth/qr-logo-shared";
+
+export {
+  isSafeStoredQrLogoPath,
+  normalizeQrLogoPublicPath,
+  resolveContainedQrLogoFile,
+} from "@/lib/growth/qr-logo-path";
 
 export function ar360QrCenterLogoUrl(origin?: string) {
   if (origin) {
@@ -50,46 +67,94 @@ export async function resolveQrCenterLogoForCustomer(input: {
   });
 }
 
-async function loadLogoBuffer(logoUrl: string): Promise<Buffer | null> {
-  const trimmed = logoUrl.trim();
+const DATA_URL_RE =
+  /^data:(image\/(?:png|jpeg|jpg|webp|gif));base64,([A-Za-z0-9+/=\s]+)$/i;
+
+export type LoadQrLogoOptions = {
+  /** Test seam for SSRF DNS checks. */
+  lookupFn?: DnsLookupFn;
+  /** Test seam for outbound fetch. */
+  fetchFn?: FetchFn;
+};
+
+function decodeDataUrlLogo(trimmed: string): Buffer | null {
+  const match = DATA_URL_RE.exec(trimmed);
+  if (!match) return null;
+  const mime = match[1]!.toLowerCase().replace("image/jpg", "image/jpeg");
+  if (!isAllowedImageContentType(mime)) return null;
+  let buffer: Buffer;
+  try {
+    buffer = Buffer.from(match[2]!, "base64");
+  } catch {
+    return null;
+  }
+  if (!buffer.length || buffer.length > SAFE_IMAGE_MAX_BYTES) return null;
+  if (!bufferLooksLikeAllowedImage(buffer)) return null;
+  return buffer;
+}
+
+/**
+ * Load QR center-logo bytes. Fail closed (null) on unsafe input.
+ * Allowed: validated data URLs, contained public brand/upload paths, SSRF-safe remote images.
+ */
+export async function loadQrLogoBuffer(
+  logoUrl: string,
+  options?: LoadQrLogoOptions,
+): Promise<Buffer | null> {
+  const trimmed = String(logoUrl || "").trim();
   if (!trimmed) return null;
 
   if (trimmed.startsWith("data:")) {
-    const match = /^data:[^;]+;base64,(.+)$/i.exec(trimmed);
-    if (!match) return null;
-    return Buffer.from(match[1], "base64");
+    return decodeDataUrlLogo(trimmed);
   }
 
-  if (isAr360QrLogoUrl(trimmed) || trimmed.startsWith("/brand/")) {
-    const rel = trimmed.includes("/brand/")
-      ? trimmed.slice(trimmed.indexOf("/brand/") + 1)
-      : "brand/qr-center-logo.png";
-    try {
-      return await fs.readFile(path.join(process.cwd(), "public", rel.replace(/^\//, "")));
-    } catch {
-      return fs.readFile(ar360QrCenterLogoDiskPath()).catch(() => null);
+  // Prefer local public files (brand + persisted uploads) over network fetch.
+  const localPath = normalizeQrLogoPublicPath(trimmed);
+  if (localPath) {
+    const resolved = await resolveContainedQrLogoFile(localPath);
+    if (resolved.ok === false) {
+      // Known AR360 brand URL may be missing on disk in some checkouts — soft-fallback.
+      if (isAr360QrLogoUrl(trimmed)) {
+        try {
+          const fallback = await fs.readFile(ar360QrCenterLogoDiskPath());
+          if (fallback.length && fallback.length <= SAFE_IMAGE_MAX_BYTES) return fallback;
+        } catch {
+          return null;
+        }
+      }
+      return null;
     }
-  }
-
-  if (trimmed.startsWith("/") && !trimmed.startsWith("//")) {
     try {
-      return await fs.readFile(path.join(process.cwd(), "public", trimmed.replace(/^\//, "")));
+      const buf = await fs.readFile(resolved.absolutePath);
+      if (!buf.length || buf.length > SAFE_IMAGE_MAX_BYTES) return null;
+      const ext = path.extname(resolved.absolutePath).toLowerCase();
+      // SVG brand marks are allowed on disk; raster custom uploads must sniff as images.
+      if (ext !== ".svg" && !bufferLooksLikeAllowedImage(buf)) return null;
+      return buf;
     } catch {
       return null;
     }
   }
 
   if (/^https?:\/\//i.test(trimmed)) {
-    try {
-      const response = await fetch(trimmed, { signal: AbortSignal.timeout(8000) });
-      if (!response.ok) return null;
-      return Buffer.from(await response.arrayBuffer());
-    } catch {
-      return null;
-    }
+    const fetched = await fetchSafeOutboundImage(trimmed, {
+      lookupFn: options?.lookupFn,
+      fetchFn: options?.fetchFn,
+      maxBytes: SAFE_IMAGE_MAX_BYTES,
+      timeoutMs: 8_000,
+      maxRedirects: 3,
+    });
+    if (fetched.ok === false) return null;
+    return fetched.buffer;
   }
 
+  // Absolute / relative paths outside allowlist — reject (closes prior public/ LFI).
   return null;
+}
+
+/** @deprecated internal alias — use loadQrLogoBuffer */
+async function loadLogoBuffer(logoUrl: string): Promise<Buffer | null> {
+  return loadQrLogoBuffer(logoUrl);
 }
 
 /**
@@ -150,8 +215,9 @@ export async function stampQrCenterLogo(input: {
 }
 
 /**
- * Persist data-URL / oversized logos to disk so MySQL only stores a short path
- * (avoids max_allowed_packet failures on large base64 payloads).
+ * Persist data-URL / remote logos to disk under public/uploads/qr-logos/{customer}/.
+ * Unsafe remote URLs and path traversal inputs fail closed (null) — callers must not
+ * fall back to storing the raw attacker-controlled URL.
  */
 export async function persistQrLogoAsset(input: {
   customerUid: string;
@@ -161,16 +227,21 @@ export async function persistQrLogoAsset(input: {
   const raw = String(input.logoUrl || "").trim();
   if (!raw) return null;
 
-  // Short path / platform logo — keep as-is.
-  if (isAr360QrLogoUrl(raw)) return raw;
-  if (raw.startsWith("/") && !raw.startsWith("//") && raw.length < 2048 && !raw.startsWith("/data:")) {
-    return raw;
-  }
-  if (/^https?:\/\//i.test(raw) && raw.length < 2048 && !raw.includes(";base64,")) {
-    return raw;
+  // Canonical platform logo — keep short path.
+  if (isAr360QrLogoUrl(raw)) return AR360_QR_CENTER_LOGO_PATH;
+
+  // Already a contained public path — keep as-is after normalization.
+  if (isSafeStoredQrLogoPath(raw)) {
+    const normalized = normalizeQrLogoPublicPath(raw);
+    if (!normalized) return null;
+    const resolved = await resolveContainedQrLogoFile(normalized);
+    // Allow storing the normalized path even if the file is about to be written elsewhere;
+    // if it claims to exist under allowlist but is missing, still accept normalized path
+    // only when it already resolves, otherwise re-load via buffer path.
+    if (resolved.ok) return resolved.publicUrlPath;
   }
 
-  const buffer = await loadLogoBuffer(raw);
+  const buffer = await loadQrLogoBuffer(raw);
   if (!buffer) return null;
 
   try {
@@ -181,11 +252,14 @@ export async function persistQrLogoAsset(input: {
       .png({ compressionLevel: 9 })
       .toBuffer();
 
+    if (optimized.length > SAFE_IMAGE_MAX_BYTES) return null;
+
     const safeCustomer = input.customerUid.replace(/[^a-zA-Z0-9_-]/g, "");
+    if (!safeCustomer) return null;
     const filename = `qr-logo-${input.qrId}-${Date.now()}.png`;
-    const relativeDirectory = path.join("uploads", "qr-logos", safeCustomer);
+    const relativeDirectory = path.posix.join("uploads", "qr-logos", safeCustomer);
     const roots = new Set(
-      ["./", process.env.AR360_PROJECT_ROOT].filter(
+      ["./", process.env["AR360_PROJECT_ROOT"]].filter(
         (value): value is string => Boolean(value?.trim()),
       ),
     );
@@ -198,7 +272,7 @@ export async function persistQrLogoAsset(input: {
       }),
     );
 
-    return `/${relativeDirectory.replace(/\\/g, "/")}/${filename}`;
+    return `/${relativeDirectory}/${filename}`;
   } catch (error) {
     console.warn("[qr-logo] persist failed", error);
     return null;
