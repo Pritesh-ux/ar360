@@ -8,6 +8,7 @@ import {
 } from "@/lib/auth";
 import { logAdminAudit } from "@/lib/permissions/admin-rbac";
 import { enforceRateLimitForKey } from "@/lib/rate-limit";
+import { checkEmailLoginLockout } from "@/lib/auth/login-lockout";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,6 +49,25 @@ export async function POST(request: NextRequest) {
 
     if (!email || !password) {
       return NextResponse.json({ error: "Please enter email and password." }, { status: 400 });
+    }
+
+    const lockout = await checkEmailLoginLockout({ email, actorType: "master_admin" });
+    if (lockout.locked) {
+      await writeLoginLog({
+        actorType: "master_admin",
+        email,
+        status: "blocked",
+        reason: "account_lockout",
+        ip: clientIp(request),
+        userAgent: request.headers.get("user-agent") || "",
+      }).catch(() => {});
+      return NextResponse.json(
+        { error: "Too many failed login attempts. Please try again later." },
+        {
+          status: 429,
+          headers: { "Retry-After": String(lockout.retryAfterSec || 60) },
+        },
+      );
     }
 
     const user = await findMasterAdminByEmail(email);

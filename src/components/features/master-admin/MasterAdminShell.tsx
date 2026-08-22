@@ -196,22 +196,31 @@ function SidebarContent({
       </nav>
 
       <div className="mt-auto shrink-0 border-t border-slate-200/80 bg-white px-2 py-3">
-        <Link
-          href="/master-admin/logout"
-          prefetch={false}
-          onClick={(event) => {
-            event.preventDefault();
-            hardNavigate("/master-admin/logout", onNavigate);
-          }}
+        <button
+          type="button"
           title="Logout"
           className={[
-            "flex h-10 items-center rounded-[6px] text-[12px] font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900",
+            "flex h-10 w-full items-center rounded-[6px] text-[12px] font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900",
             collapsed ? "justify-center px-2" : "gap-3 px-3",
           ].join(" ")}
+          onClick={() => {
+            void (async () => {
+              try {
+                await fetch("/master-admin/logout", {
+                  method: "POST",
+                  credentials: "same-origin",
+                  headers: { "content-type": "application/json" },
+                });
+              } catch {
+                // still navigate to login
+              }
+              hardNavigate("/master-admin/login", onNavigate);
+            })();
+          }}
         >
           <LogOut size={17} />
           {!collapsed && <span>Logout</span>}
-        </Link>
+        </button>
       </div>
     </div>
   );

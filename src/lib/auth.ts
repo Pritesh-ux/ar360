@@ -593,6 +593,11 @@ function clearedSessionCookieOptions() {
   };
 }
 
+/** Exported for impersonation stop / tests — must match attributes used at set time. */
+export function getClearedSessionCookieOptions() {
+  return clearedSessionCookieOptions();
+}
+
 export async function clearCustomerSession() {
   const cookieStore = await cookies();
   const cleared = clearedSessionCookieOptions();
@@ -686,8 +691,9 @@ export async function startCustomerImpersonation(admin: MasterAdminUser, custome
 
 export async function stopCustomerImpersonation() {
   const cookieStore = await cookies();
-  cookieStore.delete(CUSTOMER_SESSION_COOKIE);
-  cookieStore.delete(IMPERSONATION_COOKIE);
+  const cleared = clearedSessionCookieOptions();
+  cookieStore.set(CUSTOMER_SESSION_COOKIE, "", cleared);
+  cookieStore.set(IMPERSONATION_COOKIE, "", cleared);
 }
 
 export async function getImpersonationContext() {

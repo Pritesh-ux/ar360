@@ -13,6 +13,7 @@ import {
 } from "@/lib/auth";
 import { resolveCustomerPostAuthDestination } from "@/lib/onboarding/post-auth-destination";
 import { enforceRateLimitForKey } from "@/lib/rate-limit";
+import { checkEmailLoginLockout } from "@/lib/auth/login-lockout";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -67,6 +68,26 @@ export async function POST(request: NextRequest) {
 
     if (!email || !password) {
       return NextResponse.json({ error: "Please enter email and password." }, { status: 400 });
+    }
+
+    const lockout = await checkEmailLoginLockout({ email, actorType: "customer" });
+    if (lockout.locked) {
+      await writeLoginLog({
+        actorType: "customer",
+        email,
+        status: "blocked",
+        reason: "account_lockout",
+        ...meta,
+      }).catch(() => {});
+      return NextResponse.json(
+        {
+          error: "Too many failed login attempts. Please try again later.",
+        },
+        {
+          status: 429,
+          headers: { "Retry-After": String(lockout.retryAfterSec || 60) },
+        },
+      );
     }
 
     const user = await findUserByEmail(email);

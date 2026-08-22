@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { query } from "@/lib/db";
 import { assertRazorpayCapturedPayment, uid, verifyRazorpayPaymentSignature } from "@/server/billing/razorpay";
 import { getCustomerOwnerUserId } from "@/lib/billing/addons";
+import { guardBillingMutation } from "@/server/billing/billing-mutation-guard";
 
 export const runtime = "nodejs";
 
@@ -16,6 +17,9 @@ export async function POST(req: Request) {
     if (!customerUid) {
       return NextResponse.json({ error: "Customer context missing." }, { status: 400 });
     }
+
+    const denied = await guardBillingMutation(req, String(user.id || customerUid));
+    if (denied) return denied;
 
     const body = await req.json();
     const allowMock =

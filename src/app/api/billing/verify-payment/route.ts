@@ -4,6 +4,7 @@ import { query } from "@/lib/db";
 import { BillingErrorCode, billingErrorJson } from "@/lib/billing/billing-errors";
 import { assertRazorpayCapturedPayment, verifyRazorpayPaymentSignature } from "@/server/billing/razorpay";
 import { finalizeSuccessfulPayment } from "@/server/billing/payment-finalize.service";
+import { guardBillingMutation } from "@/server/billing/billing-mutation-guard";
 
 export const runtime = "nodejs";
 
@@ -11,6 +12,9 @@ export async function POST(req: Request) {
   try {
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ error: "Login required." }, { status: 401 });
+
+    const denied = await guardBillingMutation(req, String(user.id || user.customerUid || "unknown"));
+    if (denied) return denied;
 
     const body = await req.json();
     const razorpayOrderId = String(body.razorpay_order_id || "");

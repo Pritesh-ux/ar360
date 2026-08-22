@@ -587,11 +587,29 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
 
     const { id: clientUid } = await params;
 
+    // Ownership gate before any resource deletes (prevents IDOR on client_resources).
+    const owned = await query<{ client_uid: string }>(
+      `SELECT client_uid FROM clients WHERE client_uid = ? AND customer_uid = ? LIMIT 1`,
+      [clientUid, customerUid],
+    );
+    if (!owned.length) {
+      return NextResponse.json({ error: "Client not found." }, { status: 404 });
+    }
+
+    await query(
+      `DELETE FROM client_resources
+        WHERE client_uid = ?
+          AND EXISTS (
+            SELECT 1 FROM clients c
+             WHERE c.client_uid = client_resources.client_uid
+               AND c.customer_uid = ?
+          )`,
+      [clientUid, customerUid],
+    );
     await query("DELETE FROM clients WHERE client_uid = ? AND customer_uid = ?", [
       clientUid,
       customerUid,
     ]);
-    await query("DELETE FROM client_resources WHERE client_uid = ?", [clientUid]);
 
     await query(
       `INSERT INTO audit_logs (customer_uid, user_id, actor_name, actor_email, action, resource_type, resource_id)

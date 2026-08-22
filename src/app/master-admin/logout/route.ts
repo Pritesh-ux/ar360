@@ -11,17 +11,31 @@ function loginRedirect(request: Request) {
   return NextResponse.redirect(new URL("/master-admin/login", origin));
 }
 
-export async function GET(request: Request) {
-  await clearAdminSession().catch(() => {});
-
-  const response = loginRedirect(request);
+function attachClearedAdminCookies(response: NextResponse) {
   const cleared = {
     ...sessionCookieOptions(0),
     maxAge: 0,
     expires: new Date(0),
   };
-  // Attach Set-Cookie on the redirect response so browsers reliably drop the domain cookie.
   response.cookies.set(ADMIN_SESSION_COOKIE, "", cleared);
   response.cookies.set("ar360_pending_2fa", "", cleared);
   return response;
+}
+
+/**
+ * Logout mutation — POST only (CSRF-protected by middleware).
+ * Prefer this over GET to avoid cross-site logout CSRF via top-level navigation.
+ */
+export async function POST(request: Request) {
+  await clearAdminSession().catch(() => {});
+  const response = loginRedirect(request);
+  return attachClearedAdminCookies(response);
+}
+
+/**
+ * GET is intentionally non-mutating: redirect to login without clearing the session.
+ * Use POST /master-admin/logout to sign out.
+ */
+export async function GET(request: Request) {
+  return loginRedirect(request);
 }
