@@ -1,4 +1,3 @@
-import fs from "fs/promises";
 import { query } from "@/lib/db";
 import { deleteProductFolder } from "@/lib/storage";
 
@@ -14,12 +13,9 @@ export async function rollbackProductUpload(customerUid: string, productUid: str
 }
 
 export async function productFolderHasGlb(customerUid: string, productUid: string) {
-  const { getSecureProductPath } = await import("@/lib/storage");
-  try {
-    const diskPath = getSecureProductPath(customerUid, productUid, "model.glb");
-    await fs.access(diskPath);
-    return true;
-  } catch {
-    return false;
-  }
+  // Match /api/assets multi-root locate — single-root getSecureProductPath
+  // missed GLBs that lived on legacy public/Storage while writes used storage/.
+  const { locateProductAssetDiskPath } = await import("@/lib/storage/locate-asset");
+  const located = await locateProductAssetDiskPath(customerUid, productUid, "model.glb");
+  return Boolean(located);
 }

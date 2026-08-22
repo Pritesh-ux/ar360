@@ -308,7 +308,7 @@ export default function ProductEditorPage({ session: initialSession }: Props = {
   useEffect(() => {
     const warn = String(_searchParams.get("arLiteWarn") || "").trim();
     if (!warn) return;
-    showToast(warn, "err");
+    showToast(warn, "info");
     const next = new URLSearchParams(_searchParams.toString());
     next.delete("arLiteWarn");
     const qs = next.toString();
@@ -1783,7 +1783,7 @@ export default function ProductEditorPage({ session: initialSession }: Props = {
     setUseSkybox(Boolean(incoming.useSkybox));
     setBackgroundColor(
       !incoming.backgroundColor || incoming.backgroundColor === "#ffffff"
-        ? EDITOR_BG
+        ? "#ffffff"
         : incoming.backgroundColor,
     );
     setTransparent(incoming.transparent ?? false);
@@ -2326,21 +2326,21 @@ export default function ProductEditorPage({ session: initialSession }: Props = {
           ? Number((found as { settings?: { environmentSaturation?: number } }).settings?.environmentSaturation)
           : EDITOR_DEFAULT_ENV_SATURATION,
     );
-    setBackgroundColor(!found.backgroundColor || found.backgroundColor === "#ffffff" ? EDITOR_BG : found.backgroundColor);
+    setBackgroundColor(found.backgroundColor || "#ffffff");
     setTransparent(found.transparent ?? false);
-    // Untouched pure-white studio defaults → depth-friendlier lighting.
+    // Untouched pure-white studio defaults → match Upload Live Preview lighting.
     const usingLegacyWhiteStudio =
       !found.backgroundColor || found.backgroundColor === "#ffffff";
     setShadowIntensity(
       found.shadowIntensity ??
-        (usingLegacyWhiteStudio ? EDITOR_DEFAULT_SHADOW_INTENSITY : 1),
+        (usingLegacyWhiteStudio ? 0.8 : 1),
     );
     setShadowSoftness(
       found.shadowSoftness ??
         (usingLegacyWhiteStudio ? EDITOR_DEFAULT_SHADOW_SOFTNESS : 1),
     );
     if (usingLegacyWhiteStudio && (found.exposure == null || found.exposure === 1)) {
-      setExposure(EDITOR_DEFAULT_EXPOSURE);
+      setExposure(1.1);
     }
     setAutoRotate(found.autoRotate ?? false);
     setCameraControls(found.cameraControls ?? true);
@@ -2396,11 +2396,7 @@ export default function ProductEditorPage({ session: initialSession }: Props = {
     );
     setUseSkybox(Boolean(activeLoadedVariant?.useSkybox ?? (found as { useSkybox?: boolean }).useSkybox));
     if (activeLoadedVariant?.backgroundColor) {
-      setBackgroundColor(
-        activeLoadedVariant.backgroundColor === "#ffffff"
-          ? EDITOR_BG
-          : activeLoadedVariant.backgroundColor,
-      );
+      setBackgroundColor(activeLoadedVariant.backgroundColor);
     }
     const hydrateOrbit = String((found as { cameraOrbit?: string }).cameraOrbit || "").trim();
     const hydrateZoom = normalizeEditorZoom(
@@ -3127,7 +3123,8 @@ export default function ProductEditorPage({ session: initialSession }: Props = {
                 </div>
               </div>
               <p className="max-w-[140px] truncate text-[11px] font-medium text-[#737373] sm:max-w-[520px] sm:text-[12px]">
-                {product?.fileName || "Premium 3D product workspace"}
+                {((product as { originalFileName?: string } | null)?.originalFileName ||
+                  product?.fileName) || "Premium 3D product workspace"}
               </p>
             </div>
           </div>

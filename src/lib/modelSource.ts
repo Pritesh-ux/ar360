@@ -86,6 +86,39 @@ function encodeFileName(fileName: string) {
   return encodeURIComponent(fileName);
 }
 
+/**
+ * Product uploads always persist bytes as `model.glb`. Older records may still
+ * store the original client filename in modelUrl/fileName — rewrite those to
+ * the canonical on-disk name so Canvas/viewer never 404 on Chair.glb etc.
+ */
+export function canonicalizeProductGlbPath(url: string): string {
+  const raw = String(url || "").trim();
+  if (!raw || isBrowserOnlyUrl(raw)) return raw;
+
+  try {
+    const abs = isAbsoluteHttpUrl(raw)
+      ? new URL(raw)
+      : new URL(raw, "https://ar360.local");
+    const pathOnly = abs.pathname.replace(/\\/g, "/");
+    const rewritten = pathOnly.replace(
+      /(\/Products\/[^/]+)\/(?!model\.glb$)[^/]+\.gl(?:b|tf)$/i,
+      "$1/model.glb",
+    );
+    if (rewritten === pathOnly) return raw;
+
+    if (isAbsoluteHttpUrl(raw)) {
+      abs.pathname = rewritten;
+      return abs.toString();
+    }
+    return `${rewritten}${abs.search}${abs.hash}`;
+  } catch {
+    return raw.replace(
+      /(\/Products\/[^/]+)\/(?!model\.glb$)[^/]+\.gl(?:b|tf)(?=$|\?|#)/i,
+      "$1/model.glb",
+    );
+  }
+}
+
 function normalizeModelViewerSrc(src: string) {
   if (typeof window === "undefined") return src;
 
@@ -121,7 +154,8 @@ function normalizeModelViewerSrc(src: string) {
 }
 
 function resolveModelSrc(src: string) {
-  const withOrigin = toCurrentOriginUrl(src) || src;
+  const canonical = canonicalizeProductGlbPath(src);
+  const withOrigin = toCurrentOriginUrl(canonical) || canonical;
   if (isCustomerStoragePath(withOrigin)) {
     const origin = typeof window !== "undefined" ? sanitizeOrigin(window.location.origin) : "";
     return toProtectedAssetUrl(withOrigin, origin);
@@ -142,10 +176,11 @@ export function getProductModelSrc(product?: ProductModelSource | null) {
     src = resolveModelSrc(modelUrl);
   } else if (publicFolder) {
     const safeFolder = publicFolder.startsWith("/") ? publicFolder : `/${publicFolder}`;
-    src = resolveModelSrc(
-      fileName ? `${safeFolder}/${encodeFileName(fileName)}` : `${safeFolder}/model.glb`,
-    );
+    // Uploads always write `model.glb` on disk. `fileName` may still be the
+    // original client name (e.g. Chair.glb) for display — never use it here.
+    src = resolveModelSrc(`${safeFolder}/model.glb`);
   } else if (fileName) {
+    // Public `/models/*` demos keep their real filenames.
     src = resolveModelSrc(`/models/${encodeFileName(fileName)}`);
   } else {
     src = modelUrl || undefined;

@@ -84,7 +84,7 @@ const ModelViewer = forwardRef<any, any>((props, ref) => (
 ModelViewer.displayName = "ModelViewer";
 
 /** How long the transfer may stay frozen before the viewer offers a retry. */
-const MODEL_STALL_MS = 20000;
+const MODEL_STALL_MS = 120000;
 
 function viewerFontFamily(font?: string) {
   if (font === "sans") return 'var(--font-auth-body), "Instrument Sans", system-ui, sans-serif';
@@ -254,12 +254,14 @@ export default function PublicViewerPage() {
     [product, previewVariantId],
   );
   const preferMobileArLite = usePreferMobileArLite();
+  const [forceFullModel, setForceFullModel] = useState(false);
   const modelSrc = useMemo(() => {
     if (!product) return undefined;
     const full = getProductModelSrc(product);
     const arLite = String(product.arModelUrl || "").trim();
     // Prefer lite whenever present on phone/coarse viewports — don't require modelBytes.
-    if (preferMobileArLite && arLite) {
+    // If lite failed once, fall back to the full model.glb.
+    if (!forceFullModel && preferMobileArLite && arLite) {
       return getProductModelSrc({
         ...product,
         modelUrl: arLite,
@@ -267,7 +269,7 @@ export default function PublicViewerPage() {
       });
     }
     return full;
-  }, [product, preferMobileArLite]);
+  }, [product, preferMobileArLite, forceFullModel]);
   // Keep model identity stable across variant switches so materials apply live.
   const modelIdentity = `${product?.productUid || product?.id || id}`;
   const productLogo = getLogo(product);
@@ -287,6 +289,7 @@ export default function PublicViewerPage() {
     setAutoRotateOverride(null);
     setResolvedArScale(null);
     openingCameraRef.current = null;
+    setForceFullModel(false);
   }, [modelIdentity]);
 
   useEffect(() => {
@@ -550,6 +553,7 @@ export default function PublicViewerPage() {
   function retryModelLoad() {
     setModelReady(false);
     setModelError(false);
+    setForceFullModel(true);
     setModelRetryKey((value) => value + 1);
     showNotice("info", "Retrying 3D model...");
     scheduleCameraFit("retry", 650);
@@ -889,9 +893,12 @@ export default function PublicViewerPage() {
               logoDecals={product.logoDecals || []}
               hotspots={product.hotspots || []}
               onLoadProgress={(percent) => {
-                if (percent <= loadedPercentRef.current) return;
-                loadedPercentRef.current = percent;
+                // Any progress heartbeat resets the stall timer — heavy GLBs may
+                // sit at the same % for a while while bytes keep arriving.
                 lastProgressAtRef.current = Date.now();
+                if (percent > loadedPercentRef.current) {
+                  loadedPercentRef.current = percent;
+                }
               }}
               onModelReady={() => {
                 setModelReady(true);
@@ -899,6 +906,14 @@ export default function PublicViewerPage() {
                 scheduleCameraFit("ready", 80);
               }}
               onModelError={() => {
+                const arLite = String(product.arModelUrl || "").trim();
+                if (!forceFullModel && preferMobileArLite && arLite) {
+                  setForceFullModel(true);
+                  setModelReady(false);
+                  setModelError(false);
+                  setModelRetryKey((key) => key + 1);
+                  return;
+                }
                 setModelReady(false);
                 setModelError(true);
                 showNotice("error", "Model failed to load");

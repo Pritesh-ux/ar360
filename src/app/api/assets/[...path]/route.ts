@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
 import { createReadStream } from "fs";
@@ -362,6 +362,7 @@ export async function GET(
           "Cache-Control": "private, max-age=0, must-revalidate",
           "X-Content-Type-Options": "nosniff",
           "X-AR-Scale": String(arScale),
+          "Accept-Ranges": "bytes",
         },
       });
     } catch (error) {
@@ -370,6 +371,48 @@ export async function GET(
         { error: "Scaled AR model could not be built." },
         { status: 500 },
       );
+    }
+  }
+
+  // Probe-friendly partial responses so clients can verify GLB magic without
+  // downloading a multi‑hundred‑MB model (avoids GLTF parse RangeErrors on JSON 404 bodies).
+  const rangeHeader = req.headers.get("range");
+  if (
+    rangeHeader &&
+    (extension === ".glb" || extension === ".gltf" || extension === ".usdz")
+  ) {
+    const match = /^bytes=(\d+)-(\d+)?$/i.exec(rangeHeader.trim());
+    if (match) {
+      const start = Number(match[1]);
+      const end = match[2] != null ? Number(match[2]) : Math.min(start + 11, stat.size - 1);
+      if (
+        Number.isFinite(start) &&
+        Number.isFinite(end) &&
+        start >= 0 &&
+        end >= start &&
+        start < stat.size
+      ) {
+        const safeEnd = Math.min(end, stat.size - 1);
+        const chunkSize = safeEnd - start + 1;
+        const nodeStream = createReadStream(diskPath, { start, end: safeEnd });
+        const webStream = Readable.toWeb(nodeStream) as ReadableStream<Uint8Array>;
+        return new NextResponse(webStream, {
+          status: 206,
+          headers: {
+            "Content-Type": contentTypeForFile(fileName),
+            "Content-Length": String(chunkSize),
+            "Content-Range": `bytes ${start}-${safeEnd}/${stat.size}`,
+            "Accept-Ranges": "bytes",
+            "Cache-Control":
+              extension === ".glb" || extension === ".gltf" || extension === ".usdz"
+                ? "private, max-age=0, must-revalidate"
+                : "private, max-age=3600",
+            ETag: `"${stat.size}-${Math.floor(stat.mtimeMs)}"`,
+            "Last-Modified": stat.mtime.toUTCString(),
+            "X-Content-Type-Options": "nosniff",
+          },
+        });
+      }
     }
   }
 
@@ -396,6 +439,7 @@ export async function GET(
     headers: {
       "Content-Type": contentTypeForFile(fileName),
       "Content-Length": String(stat.size),
+      "Accept-Ranges": "bytes",
       // GLBs are often replaced in place (sample refresh). Short cache + ETag avoids
       // serving a stale placeholder for up to an hour after overwrite.
       "Cache-Control":
@@ -406,5 +450,25 @@ export async function GET(
       "Last-Modified": stat.mtime.toUTCString(),
       "X-Content-Type-Options": "nosniff",
     },
+  });
+}
+
+export async function HEAD(req: NextRequest, context: RouteContext) {
+  // Tiny Range via GET — never open a full multi-hundred-MB stream for HEAD probes.
+  const headers = new Headers(req.headers);
+  if (!headers.has("range")) {
+    headers.set("range", "bytes=0-0");
+  }
+  const rangedReq = new NextRequest(req.url, {
+    method: "GET",
+    headers,
+  });
+  const response = await GET(rangedReq, context);
+  if (!response.ok && response.status !== 206) {
+    return response;
+  }
+  return new NextResponse(null, {
+    status: 200,
+    headers: response.headers,
   });
 }

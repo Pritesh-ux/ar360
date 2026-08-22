@@ -7,6 +7,7 @@ export type LocalProduct = {
   folder?: string;
   modelUrl?: string;
   fileName?: string;
+  originalFileName?: string;
   usdzUrl?: string;
   usdzFileName?: string;
   poster?: string;

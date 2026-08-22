@@ -128,9 +128,11 @@ export default function ProductUploadOptimizeFlow({ onClose, mode = "modal" }: P
         title: title.trim(),
         category,
         modelUrl: data.product.modelUrl as string | undefined,
-        fileName,
+        // Keep server canonical fileName (model.glb); original name is display-only.
+        fileName: String(data.product.fileName || "model.glb"),
+        originalFileName: fileName || (data.product as { originalFileName?: string }).originalFileName,
         views: 0,
-        status: "Draft",
+        status: String(data.product.status || "published"),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });

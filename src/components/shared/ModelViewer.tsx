@@ -2,6 +2,7 @@
 
 import { sanitizeOrigin } from "@/lib/url";
 import { isProtectedAssetUrl } from "@/lib/billing/asset-url";
+import { canonicalizeProductGlbPath } from "@/lib/modelSource";
 import AppImage from "@/components/shared/AppImage";
 
 import {
@@ -14,6 +15,7 @@ import {
 } from "react";
 import {
   hasCustomMaterialTextures,
+  liveInspectorMatchesNative,
   shouldApplyMaterialOverride,
 } from "@/components/features/editor/utils";
 import { snapshotNativeMaterialsFromViewer } from "@/lib/materials/native-snapshot";
@@ -463,6 +465,65 @@ function configureModelViewerDecoders() {
 // decoding causes the recurring "Couldn't load texture blob:" error.
 const stableModelSourceCache = new Map<string, Promise<string>>();
 
+const GLB_MAGIC = 0x46546c67; // glTF
+
+async function probeProtectedGlbUrl(url: string): Promise<string> {
+  const candidates = [url];
+  const canonical = canonicalizeProductGlbPath(url);
+  if (canonical && canonical !== url) candidates.push(canonical);
+
+  let lastError: Error | null = null;
+  for (const candidate of candidates) {
+    try {
+      const response = await fetch(candidate, {
+        credentials: "include",
+        headers: { Range: "bytes=0-11" },
+        cache: "no-store",
+      });
+
+      // Auth / missing file — do not hand JSON error bodies to GLTFLoader
+      // (that produces Uncaught RangeError: Invalid typed array length).
+      if (!response.ok && response.status !== 206) {
+        lastError = new Error(`Model asset unavailable (${response.status})`);
+        continue;
+      }
+
+      const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+      if (contentType.includes("application/json") || contentType.includes("text/")) {
+        lastError = new Error("Model asset returned a non-GLB response");
+        continue;
+      }
+
+      const buf = new Uint8Array(await response.arrayBuffer());
+      // If the server ignored Range and returned the whole file, only inspect magic.
+      if (buf.byteLength < 4) {
+        lastError = new Error("Model asset is empty or truncated");
+        continue;
+      }
+      const magic = new DataView(buf.buffer, buf.byteOffset, 4).getUint32(0, true);
+      if (magic !== GLB_MAGIC) {
+        lastError = new Error("Model asset is not a valid GLB");
+        continue;
+      }
+
+      // Prefer the URL (not a blob) so model-viewer keeps embedded texture decoding stable.
+      // Only use a blob when we accidentally downloaded the entire asset via ignored Range.
+      const contentRange = response.headers.get("content-range");
+      if (!contentRange && buf.byteLength > 64 * 1024) {
+        const objectUrl = URL.createObjectURL(
+          new Blob([buf], { type: "model/gltf-binary" }),
+        );
+        return objectUrl;
+      }
+      return candidate;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error("Model probe failed");
+    }
+  }
+
+  throw lastError || new Error("Model asset could not be verified");
+}
+
 function getStableModelSource(src: string): Promise<string> {
   const normalized = toCurrentOriginAssetUrl(src);
 
@@ -489,20 +550,19 @@ function getStableModelSource(src: string): Promise<string> {
     return pending;
   }
 
-  // For protected /api/assets/... URLs: pass the URL directly to model-viewer
-  // with the `with-credentials` attribute instead of pre-fetching into a blob.
-  //
-  // Rationale: when we convert the GLB to a blob URL, model-viewer internally
-  // creates its own temporary blob: URLs for each embedded texture image.
-  // If model-viewer detects a src change (e.g. React re-render causes a new
-  // string identity even for the same URL), it revokes those internal texture
-  // blobs before the GPU finishes uploading them — causing the recurring
-  // "Couldn't load texture blob:" error and a completely grey/white model.
-  //
-  // Passing the authenticated URL directly avoids all blob lifecycle issues:
-  // model-viewer manages its own fetch with the session cookie via
-  // with-credentials, embedded textures are decoded from the GLB binary buffer
-  // (no sub-requests), and nothing is ever revoked externally.
+  // Protected product GLBs: probe magic bytes first. Feeding a 404/403 JSON body
+  // straight into model-viewer causes Uncaught RangeError during GLTF parse.
+  if (isProtectedAssetUrl(normalized) && /\.gl(?:b|tf)(\?|$)/i.test(normalized)) {
+    const cached = stableModelSourceCache.get(normalized);
+    if (cached) return cached;
+
+    const pending = probeProtectedGlbUrl(normalized);
+    stableModelSourceCache.set(normalized, pending);
+    pending.catch(() => stableModelSourceCache.delete(normalized));
+    return pending;
+  }
+
+  // Public / relative models: pass the URL directly to model-viewer.
   return Promise.resolve(normalized);
 }
 
@@ -874,6 +934,7 @@ async function createLogoBakedTexture(setting: MaterialSetting) {
 
 function buildMaterialOverrideMap(input: {
   allMaterialSettings?: Record<number, MaterialSetting>;
+  nativeMaterials?: Record<number, MaterialSetting>;
   selectedMaterialIndex?: number;
   baseColor?: string;
   metalness?: number;
@@ -981,7 +1042,16 @@ function buildMaterialOverrideMap(input: {
     if (input.reflectionTint != null) live.reflectionTint = input.reflectionTint;
     if (input.fresnelStrength != null) live.fresnelStrength = Number(input.fresnelStrength);
 
-    if (shouldApplyMaterialOverride(live) || settings[liveSlot] || hasCustomMaterialTextures(settings[liveSlot])) {
+    const native = input.nativeMaterials?.[liveSlot];
+    const mirrorsNative = liveInspectorMatchesNative(live, native);
+    // Seeding the inspector from GLB natives must NOT count as an override —
+    // that path used to re-apply every slot and wipe baked MR maps.
+    const shouldMergeLive =
+      Boolean(settings[liveSlot]) ||
+      hasCustomMaterialTextures(live) ||
+      ((shouldApplyMaterialOverride(live) || hasInspectorExtras(live)) && !mirrorsNative);
+
+    if (shouldMergeLive) {
       settings[liveSlot] = {
         ...settings[liveSlot],
         ...live,
@@ -1684,6 +1754,7 @@ async function applyMaterialSettingToSlot(
       const roughChanged = Math.abs(Number(setting.roughness ?? 0.5) - 0.5) > 0.001;
       const metalChanged = Math.abs(Number(setting.metalness ?? 0) - 0) > 0.001;
       const wantsOverrideBakedMr =
+        !force &&
         (!mrUrl || (typeof mrUrl === "string" && !mrUrl.trim())) &&
         !hasCustomMaterialTextures(setting) &&
         (roughChanged || metalChanged);
@@ -1730,7 +1801,7 @@ async function applyMaterialSettingToSlot(
     }
   }
   const whiteDepth =
-    shouldApplyMaterialOverride(setting) || hasInspectorExtras(setting)
+    force || shouldApplyMaterialOverride(setting) || hasInspectorExtras(setting)
       ? {
           metalness: effectiveMetallic,
           roughness: effectiveRough,
@@ -1885,7 +1956,10 @@ async function applyMaterialSettingToSlot(
         const metalChanged = Math.abs(Number(setting.metalness ?? 0) - 0) > 0.001;
         const mrUrl = String(setting.metallicRoughnessTexture || "");
         const wantsOverrideBakedMr =
-          !mrUrl.trim() && !hasCustomMaterialTextures(setting) && (roughChanged || metalChanged);
+          !force &&
+          !mrUrl.trim() &&
+          !hasCustomMaterialTextures(setting) &&
+          (roughChanged || metalChanged);
 
         if (wantsOverrideBakedMr) {
           threeMat.metalnessMap = null;
@@ -2651,6 +2725,8 @@ const ModelViewer = forwardRef<any, Props>(function ModelViewer(
   const readySrcRef = useRef<string | undefined>(undefined);
   const nativeMaterialsRef = useRef<Record<number, MaterialSetting>>({});
   const materialApplyGenerationRef = useRef(0);
+  /** Slots that currently have an applied override (for restore on clear/variant switch). */
+  const lastAppliedOverrideIndicesRef = useRef<Set<number>>(new Set());
 
   useEffect(() => {
     const raw = String(poster || "").trim();
@@ -2826,6 +2902,7 @@ const ModelViewer = forwardRef<any, Props>(function ModelViewer(
     lastMaterialsSignatureRef.current = "";
     readySrcRef.current = undefined;
     nativeMaterialsRef.current = {};
+    lastAppliedOverrideIndicesRef.current = new Set();
   }, [src]);
 
   useEffect(() => {
@@ -3179,6 +3256,7 @@ const ModelViewer = forwardRef<any, Props>(function ModelViewer(
     if (!viewer?.loaded || !viewer.model?.materials) return;
     const overrides = buildMaterialOverrideMap({
       allMaterialSettings,
+      nativeMaterials: nativeMaterialsRef.current,
       selectedMaterialIndex,
       baseColor,
       metalness,
@@ -3231,6 +3309,7 @@ const ModelViewer = forwardRef<any, Props>(function ModelViewer(
 
     const liveInput = {
       allMaterialSettings,
+      nativeMaterials: nativeMaterialsRef.current,
       selectedMaterialIndex,
       baseColor,
       metalness,
@@ -3261,13 +3340,13 @@ const ModelViewer = forwardRef<any, Props>(function ModelViewer(
       fresnelStrength,
     };
 
-    // Apply Fit / Scale / Rotation immediately on already-loaded maps.
+    // Apply Fit / Scale / Rotation immediately on already-loaded maps (overrides only).
     if (viewer.loaded && viewer.model?.materials) {
       const overrides = buildMaterialOverrideMap(liveInput);
-      const native = nativeMaterialsRef.current;
-      const count = viewer.model.materials.length;
-      for (let index = 0; index < count; index += 1) {
-        applyExistingMapTransforms(viewer, index, overrides[index] || native[index]);
+      for (const indexKey of Object.keys(overrides)) {
+        const index = Number(indexKey);
+        if (!Number.isFinite(index)) continue;
+        applyExistingMapTransforms(viewer, index, overrides[index]);
       }
       try {
         viewer.requestUpdate?.();
@@ -3290,16 +3369,26 @@ const ModelViewer = forwardRef<any, Props>(function ModelViewer(
 
         const overrides = buildMaterialOverrideMap(liveInput);
 
-        // Always start from GLB-native materials so switching variants cannot
-        // leave the previous variant's colors stuck on other slots.
         if (!Object.keys(nativeMaterialsRef.current).length) {
           nativeMaterialsRef.current = snapshotNativeMaterialsFromViewer(viewer);
         }
         const native = nativeMaterialsRef.current;
-        const materialCount = viewer.model.materials.length;
+        const previous = lastAppliedOverrideIndicesRef.current;
+        const nextIndices = new Set(
+          Object.keys(overrides)
+            .map((key) => Number(key))
+            .filter((index) => Number.isFinite(index)),
+        );
+        const toRestore = [...previous].filter((index) => !nextIndices.has(index));
 
-        for (let index = 0; index < materialCount; index += 1) {
-          applyExistingMapTransforms(viewer, index, overrides[index] || native[index]);
+        // Leave the GLB exactly as loaded when there is nothing to apply or restore.
+        if (nextIndices.size === 0 && toRestore.length === 0) {
+          lastAppliedOverrideIndicesRef.current = nextIndices;
+          return;
+        }
+
+        for (const index of nextIndices) {
+          applyExistingMapTransforms(viewer, index, overrides[index]);
         }
         try {
           viewer.requestUpdate?.();
@@ -3307,23 +3396,33 @@ const ModelViewer = forwardRef<any, Props>(function ModelViewer(
           // Optional
         }
 
-        for (let index = 0; index < materialCount; index += 1) {
+        // Restore slots that lost their override (variant switch / clear) back to
+        // the GLB-native snapshot — never invent a generic material.
+        for (const index of toRestore) {
+          if (cancelled || applyGeneration !== materialApplyGenerationRef.current) return;
+          const setting = native[index];
+          if (!setting) continue;
+          await applyMaterialSettingToSlot(viewer, index, setting, true, true, setting);
+          if (cancelled || applyGeneration !== materialApplyGenerationRef.current) return;
+        }
+
+        for (const index of nextIndices) {
           if (cancelled || applyGeneration !== materialApplyGenerationRef.current) return;
           const override = overrides[index];
-          const setting = override || native[index];
-          if (!setting) continue;
-          // Always apply metal/rough factors for explicit overrides (viewer + editor).
-          // Texture wipe is gated separately inside applyFactors.
+          if (!override) continue;
           await applyMaterialSettingToSlot(
             viewer,
             index,
-            setting,
+            override,
             true,
-            !override,
+            false,
             native[index],
           );
           if (cancelled || applyGeneration !== materialApplyGenerationRef.current) return;
         }
+
+        lastAppliedOverrideIndicesRef.current = nextIndices;
+
         try {
           viewer.requestUpdate?.();
         } catch {

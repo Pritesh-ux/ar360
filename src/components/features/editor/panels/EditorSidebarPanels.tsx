@@ -129,9 +129,15 @@ export default function EditorSidebarPanels({
                 <p className="shrink-0 text-[12px] font-medium text-[#737373]">File</p>
                 <h3
                   className="min-w-0 truncate text-right text-[13px] font-semibold text-[#111111]"
-                  title={product?.fileName || "No GLB loaded"}
+                  title={
+                    (product as { originalFileName?: string } | undefined)?.originalFileName ||
+                    product?.fileName ||
+                    "No GLB loaded"
+                  }
                 >
-                  {product?.fileName || "No GLB loaded"}
+                  {(product as { originalFileName?: string } | undefined)?.originalFileName ||
+                    product?.fileName ||
+                    "No GLB loaded"}
                 </h3>
               </div>
             </div>

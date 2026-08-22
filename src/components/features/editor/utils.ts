@@ -129,6 +129,42 @@ export function shouldApplyMaterialOverride(setting?: Partial<MaterialSetting>) 
   return hasCustomMaterialTextures(setting) || !isDefaultMaterialSetting(setting);
 }
 
+/** True when live inspector factors still match the GLB-native snapshot. */
+export function liveInspectorMatchesNative(
+  live?: Partial<MaterialSetting> | null,
+  native?: Partial<MaterialSetting> | null,
+) {
+  if (!live || !native) return false;
+  if (hasCustomMaterialTextures(live)) return false;
+  if (live.type === "gemstone" || native.type === "gemstone") {
+    return materialSettingsMatch(live, native);
+  }
+
+  return (
+    normalizeHex(live.baseColor, "#ffffff") === normalizeHex(native.baseColor, "#ffffff") &&
+    isNearNumber(live.metalness, Number(native.metalness ?? 0)) &&
+    isNearNumber(live.roughness, Number(native.roughness ?? 0.5)) &&
+    normalizeHex(live.emissiveColor, "#000000") ===
+      normalizeHex(native.emissiveColor, "#000000") &&
+    isNearNumber(live.occlusionStrength ?? 1, Number(native.occlusionStrength ?? 1)) &&
+    isNearNumber(live.opacity ?? 1, Number(native.opacity ?? 1)) &&
+    isNearNumber(live.transmission ?? 0, Number(native.transmission ?? 0)) &&
+    isNearNumber(live.ior ?? 1.5, Number(native.ior ?? 1.5)) &&
+    isNearNumber(live.thickness ?? 0, Number(native.thickness ?? 0)) &&
+    isNearNumber(live.clearcoat ?? 0, Number(native.clearcoat ?? 0)) &&
+    isNearNumber(live.clearcoatRoughness ?? 0, Number(native.clearcoatRoughness ?? 0)) &&
+    isNearNumber(live.specularIntensity ?? 1, Number(native.specularIntensity ?? 1)) &&
+    normalizeHex(live.specularColor, "#ffffff") ===
+      normalizeHex(native.specularColor, "#ffffff") &&
+    isNearNumber(live.envMapIntensity ?? 1, Number(native.envMapIntensity ?? 1)) &&
+    isNearNumber(live.reflectionIntensity ?? 1, Number(native.reflectionIntensity ?? 1)) &&
+    isNearNumber(live.reflectionBlur ?? 0, Number(native.reflectionBlur ?? 0)) &&
+    isNearNumber(live.fresnelStrength ?? 1, Number(native.fresnelStrength ?? 1)) &&
+    String(live.alphaMode || "OPAQUE").toUpperCase() ===
+      String(native.alphaMode || "OPAQUE").toUpperCase()
+  );
+}
+
 export function materialSettingsMatch(
   a?: Partial<MaterialSetting>,
   b?: Partial<MaterialSetting>,

@@ -54,7 +54,13 @@ export async function locateProductAssetDiskPath(
   const safeName = path.basename(fileName);
   const namesToTry = new Set<string>([safeName]);
 
-  if (safeName === "model.glb") {
+  // Canonical on-disk name for product meshes. DB/display `fileName` may still
+  // be the original upload name (Chair.glb) while bytes live at model.glb.
+  if (/\.gl(b|tf)$/i.test(safeName)) {
+    namesToTry.add("model.glb");
+  }
+
+  if (safeName === "model.glb" || /\.gl(b|tf)$/i.test(safeName)) {
     for (const root of uniqueRoots()) {
       const altName = await readProductJsonFileName(root, customerUid, productUid);
       if (altName) namesToTry.add(path.basename(altName));
