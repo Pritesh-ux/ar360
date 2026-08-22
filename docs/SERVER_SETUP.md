@@ -2,6 +2,8 @@
 
 Guide for deploying AR360 Studio with **Node.js, PM2, Nginx, MySQL, and optional Redis**.
 
+For an isolated preview environment, see **[STAGING.md](STAGING.md)** (`/var/www/ar360-staging`, PM2 `ar360-staging-web`, port `3001`). Do not use this production guide’s paths for staging.
+
 ## 1. Server requirements
 
 | Resource | Minimum | Recommended |

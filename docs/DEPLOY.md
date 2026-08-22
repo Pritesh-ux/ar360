@@ -1,6 +1,6 @@
 # AR360 Studio — Production Deploy Guide
 
-> See also: [README.md](../README.md) · [ENVIRONMENT.md](ENVIRONMENT.md) · [SERVER_SETUP.md](SERVER_SETUP.md) · [PRODUCTION_CHECKLIST.md](PRODUCTION_CHECKLIST.md)
+> See also: [README.md](../README.md) · [ENVIRONMENT.md](ENVIRONMENT.md) · [SERVER_SETUP.md](SERVER_SETUP.md) · [STAGING.md](STAGING.md) · [PRODUCTION_CHECKLIST.md](PRODUCTION_CHECKLIST.md)
 
 ## One-command deploy (VPS / build machine)
 

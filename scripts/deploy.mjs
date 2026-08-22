@@ -141,10 +141,13 @@ function packDeploy() {
   fs.mkdirSync(path.join(deploy, "storage", "private", "object-capture"), { recursive: true });
 
   copyFileIfExists(path.join(root, ".env.example"), path.join(deploy, ".env.example"));
+  copyFileIfExists(path.join(root, ".env.staging.example"), path.join(deploy, ".env.staging.example"));
   copyFileIfExists(path.join(root, "package-lock.json"), path.join(deploy, "package-lock.json"));
   copyFileIfExists(path.join(root, "ecosystem.config.js"), path.join(deploy, "ecosystem.config.js"));
+  copyFileIfExists(path.join(root, "ecosystem.staging.config.js"), path.join(deploy, "ecosystem.staging.config.js"));
   copyFileIfExists(path.join(root, "docs", "ENVIRONMENT.md"), path.join(deploy, "docs", "ENVIRONMENT.md"));
   copyFileIfExists(path.join(root, "docs", "SERVER_SETUP.md"), path.join(deploy, "docs", "SERVER_SETUP.md"));
+  copyFileIfExists(path.join(root, "docs", "STAGING.md"), path.join(deploy, "docs", "STAGING.md"));
 
   const standalonePkgPath = path.join(standalone, "package.json");
   const fallbackPkgPath = path.join(root, "package.json");
