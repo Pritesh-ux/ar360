@@ -366,7 +366,7 @@ export async function frameObjects(
     ? [beforeTarget.x, beforeTarget.y, beforeTarget.z]
     : null;
 
-  let box = targets.length ? worldBoxForObjects(targets) : new Box3();
+  const box = targets.length ? worldBoxForObjects(targets) : new Box3();
   if (box.isEmpty() && hint && Number.isFinite(hint.x)) {
     const pad = 0.22;
     box.min.set(hint.x - pad, hint.y - pad, hint.z - pad);

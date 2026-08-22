@@ -78,10 +78,10 @@ async function logoContentUv(src: string) {
 }
 
 export default function BaseColorMapPlacement({ setting, onChange }: Props) {
+  const drag = useRef<{ x: number; y: number; ou: number; ov: number } | null>(null);
   const src = String(setting.baseColorTexture || "").trim();
   if (!src || isClearedMaterialTexture(src)) return null;
 
-  const drag = useRef<{ x: number; y: number; ou: number; ov: number } | null>(null);
   const scaleU = n(setting.baseColorTexScaleU, 1);
   const scaleV = n(setting.baseColorTexScaleV, 1);
   const offU = n(setting.baseColorTexOffsetU, 0);

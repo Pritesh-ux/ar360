@@ -1726,6 +1726,8 @@ export default function ProductEditorPage({ session: initialSession }: Props = {
     const incoming = cloneVariant(
       switching ? nextList.find((item) => item.id === v.id) || v : outgoing,
     );
+    // Ref sync for loadVariant — keep mutable mirror outside React state.
+    // eslint-disable-next-line react-hooks/immutability -- intentional ref write
     variantsRef.current = nextList.map((item) => (item.id === incoming.id ? incoming : item));
     setVariants(variantsRef.current);
 
@@ -2541,11 +2543,18 @@ export default function ProductEditorPage({ session: initialSession }: Props = {
   }, [selectedMaterialIndex, activeVariantId, materialSettings]);
 
   useEffect(() => {
+    // Keep latest function identities for async/keyboard handlers without re-subscribing.
+    // eslint-disable-next-line react-hooks/immutability -- intentional ref write
     hydrateProductRef.current = hydrateProduct;
+    // eslint-disable-next-line react-hooks/immutability -- intentional ref write
     undoEditorChangeRef.current = undoEditorChange;
+    // eslint-disable-next-line react-hooks/immutability -- intentional ref write
     redoEditorChangeRef.current = redoEditorChange;
+    // eslint-disable-next-line react-hooks/immutability -- intentional ref write
     pushHistorySnapshotRef.current = pushHistorySnapshot;
+    // eslint-disable-next-line react-hooks/immutability -- intentional ref write
     getLatestMaterialSettingsRef.current = getLatestMaterialSettings;
+    // eslint-disable-next-line react-hooks/immutability -- intentional ref write
     getCurrentVariantStateRef.current = getCurrentVariantState;
   });
 
@@ -2700,6 +2709,7 @@ export default function ProductEditorPage({ session: initialSession }: Props = {
         ? getCurrentVariantStateRef.current(v.name, latestMaterialSettings)
         : cloneVariant(v),
     );
+    // eslint-disable-next-line react-hooks/immutability -- intentional ref write
     variantsRef.current = latestVariants;
     committedVariantsRef.current[activeVariantIdRef.current] = cloneVariant(
       latestVariants.find((item) => item.id === activeVariantIdRef.current) || latestVariants[0],
