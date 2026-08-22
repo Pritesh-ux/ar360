@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, LogOut, Zap, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, LogOut, Zap, X } from "lucide-react";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import AdminQuickActionsDrawer from "./AdminQuickActionsDrawer";
 import AdminComposeMailModal, { type ComposeMailDefaults } from "./AdminComposeMailModal";
@@ -12,11 +12,16 @@ import {
   MasterAdminNotificationsProvider,
   useMasterAdminNotifications,
 } from "./MasterAdminNotificationsContext";
+import { MasterAdminToastProvider } from "./MasterAdminToastContext";
 import {
+  defaultOpenNavGroupIds,
   filterQuickActionsByPermissions,
   isNavActive,
   masterAdminNav,
+  masterAdminNavGroups,
 } from "./nav";
+import "@/components/dashboard/dashboard-premium.css";
+import ViewportPortal from "@/components/shared/ViewportPortal";
 
 type AdminSession = {
   name: string;
@@ -30,6 +35,14 @@ function formatRoleLabel(roleCode: string) {
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+/** Full document navigation — avoids Next RSC/prefetch cookie races that look like logout on VPS. */
+function hardNavigate(href: string, onNavigate?: () => void) {
+  onNavigate?.();
+  if (typeof window !== "undefined") {
+    window.location.assign(href);
+  }
 }
 
 function SidebarContent({
@@ -47,6 +60,21 @@ function SidebarContent({
   customerUnreadCount: number;
   onCustomerNotificationsRead?: () => void;
 }) {
+  const [openGroups, setOpenGroups] = useState<string[]>(() => defaultOpenNavGroupIds(pathname));
+
+  useEffect(() => {
+    setOpenGroups((prev) => {
+      const required = defaultOpenNavGroupIds(pathname);
+      const next = new Set(prev);
+      for (const id of required) next.add(id);
+      return [...next];
+    });
+  }, [pathname]);
+
+  function toggleGroup(id: string) {
+    setOpenGroups((prev) => (prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id]));
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-white">
       <div
@@ -54,16 +82,20 @@ function SidebarContent({
       >
         <Link
           href="/master-admin"
-          onClick={onNavigate}
+          prefetch={false}
+          onClick={(event) => {
+            event.preventDefault();
+            hardNavigate("/master-admin", onNavigate);
+          }}
           className={`flex min-w-0 items-center ${collapsed ? "justify-center" : ""}`}
           aria-label="AR360 Master Admin overview"
         >
           {collapsed ? (
-            <BrandLogo tone="light" variant="mark" href={null} size={36} />
+            <BrandLogo tone="light" variant="mark" href={null} size={34} />
           ) : (
-            <span className="flex min-w-0 flex-col justify-center gap-1">
-              <BrandLogo tone="light" variant="wordmark" href={null} size={36} />
-              <span className="pl-[42px] text-[9px] font-semibold uppercase tracking-[0.14em] text-[#6B7280]">
+            <span className="flex min-w-0 flex-col justify-center gap-0.5">
+              <BrandLogo tone="light" variant="wordmark" href={null} size={40} />
+              <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-[#6B7280]">
                 Master Admin
               </span>
             </span>
@@ -72,68 +104,93 @@ function SidebarContent({
       </div>
 
       <nav
-        className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-1.5 py-4 [scrollbar-width:thin]"
+        className="min-h-0 flex-1 space-y-2 overflow-y-auto px-1.5 py-4 [scrollbar-width:thin]"
         aria-label="Master Admin navigation"
       >
-        {masterAdminNav.map((item) => {
-          const Icon = item.icon;
-          const active = isNavActive(pathname, item.href);
-          const itemUnreadCount =
-            item.href === "/master-admin/notifications"
-              ? unreadCount
-              : item.href === "/master-admin/customers"
-                ? customerUnreadCount
-                : 0;
-
+        {masterAdminNavGroups.map((group) => {
+          const isOpen = collapsed || openGroups.includes(group.id);
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              title={item.name}
-              onClick={() => {
-                if (item.href === "/master-admin/customers" && itemUnreadCount > 0) {
-                  onCustomerNotificationsRead?.();
-                }
-                onNavigate?.();
-              }}
-              aria-current={active ? "page" : undefined}
-              aria-label={collapsed ? item.name : undefined}
-              className={[
-                "group flex h-10 items-center rounded-[5px] text-[12px] font-medium transition-colors duration-150",
-                collapsed ? "justify-center px-2" : "gap-3 px-3",
-                active
-                  ? "bg-[#EAF5D8] text-[#18210D]"
-                  : "text-[#1F2937] hover:bg-slate-100",
-              ].join(" ")}
-            >
-              <span className="relative shrink-0">
-                <Icon
-                  size={18}
-                  strokeWidth={1.8}
-                  className={active ? "text-[#5AA700]" : "text-[#111827]"}
-                />
-                {itemUnreadCount > 0 && collapsed ? (
-                  <span className="absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
-                    {itemUnreadCount > 99 ? "99+" : itemUnreadCount}
-                  </span>
-                ) : null}
-              </span>
-              {!collapsed && (
-                <>
-                  <span className="truncate">{item.name}</span>
-                  {itemUnreadCount > 0 ? (
-                    <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
-                      {itemUnreadCount > 99 ? "99+" : itemUnreadCount}
-                    </span>
-                  ) : null}
-                  {item.badge ? (
-                    <span className="ml-auto rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-slate-500">
-                      {item.badge}
-                    </span>
-                  ) : null}
-                </>
-              )}
-            </Link>
+            <div key={group.id} className="space-y-0.5">
+              {!collapsed ? (
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group.id)}
+                  className="flex h-8 w-full items-center justify-between rounded-[5px] px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[#9CA3AF] transition hover:bg-[#F3F4F6] hover:text-[#6B7280]"
+                  aria-expanded={isOpen}
+                >
+                  <span>{group.label}</span>
+                  <ChevronDown
+                    size={14}
+                    className={`transition-transform ${isOpen ? "rotate-0" : "-rotate-90"}`}
+                  />
+                </button>
+              ) : null}
+              {isOpen
+                ? group.items.map((item) => {
+                    const Icon = item.icon;
+                    const active = isNavActive(pathname, item.href);
+                    const itemUnreadCount =
+                      item.href === "/master-admin/notifications"
+                        ? unreadCount
+                        : item.href === "/master-admin/customers"
+                          ? customerUnreadCount
+                          : 0;
+
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        prefetch={false}
+                        title={item.name}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          if (item.href === "/master-admin/customers" && itemUnreadCount > 0) {
+                            onCustomerNotificationsRead?.();
+                          }
+                          hardNavigate(item.href, onNavigate);
+                        }}
+                        aria-current={active ? "page" : undefined}
+                        aria-label={collapsed ? item.name : undefined}
+                        className={[
+                          "group flex h-10 items-center rounded-[5px] text-[12px] font-medium transition-colors duration-150",
+                          collapsed ? "justify-center px-2" : "gap-3 px-3",
+                          active
+                            ? "bg-[rgba(182,255,56,0.16)] text-[#18210D]"
+                            : "text-[#1F2937] hover:bg-[#F3F4F6]",
+                        ].join(" ")}
+                      >
+                        <span className="relative shrink-0">
+                          <Icon
+                            size={18}
+                            strokeWidth={1.8}
+                            className={active ? "text-[#5AA700]" : "text-[#111827]"}
+                          />
+                          {itemUnreadCount > 0 && collapsed ? (
+                            <span className="absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+                              {itemUnreadCount > 99 ? "99+" : itemUnreadCount}
+                            </span>
+                          ) : null}
+                        </span>
+                        {!collapsed && (
+                          <>
+                            <span className="truncate">{item.name}</span>
+                            {itemUnreadCount > 0 ? (
+                              <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
+                                {itemUnreadCount > 99 ? "99+" : itemUnreadCount}
+                              </span>
+                            ) : null}
+                            {item.badge ? (
+                              <span className="ml-auto rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-slate-500">
+                                {item.badge}
+                              </span>
+                            ) : null}
+                          </>
+                        )}
+                      </Link>
+                    );
+                  })
+                : null}
+            </div>
           );
         })}
       </nav>
@@ -141,7 +198,11 @@ function SidebarContent({
       <div className="mt-auto shrink-0 border-t border-slate-200/80 bg-white px-2 py-3">
         <Link
           href="/master-admin/logout"
-          onClick={onNavigate}
+          prefetch={false}
+          onClick={(event) => {
+            event.preventDefault();
+            hardNavigate("/master-admin/logout", onNavigate);
+          }}
           title="Logout"
           className={[
             "flex h-10 items-center rounded-[6px] text-[12px] font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900",
@@ -242,9 +303,9 @@ function MasterAdminShellContent({ children }: { children: React.ReactNode }) {
   const sidebarWidth = collapsed ? "w-[84px]" : "w-[260px]";
 
   return (
-    <div className="master-admin-shell flex h-screen w-full overflow-hidden bg-[#F7F9F8] text-slate-900">
+    <div className="master-admin-shell dash-premium flex h-screen w-full overflow-hidden bg-[#F8F9FA] text-[#111827]">
       <aside
-        className={`hidden h-full shrink-0 flex-col overflow-hidden border-r border-slate-200/80 bg-white lg:flex ${sidebarWidth} transition-[width] duration-200`}
+        className={`hidden h-full shrink-0 flex-col overflow-hidden border-r border-[#ECECEC] bg-white lg:flex ${sidebarWidth} transition-[width] duration-200`}
       >
         <div className="min-h-0 flex-1">
           <SidebarContent
@@ -266,7 +327,8 @@ function MasterAdminShellContent({ children }: { children: React.ReactNode }) {
       </aside>
 
       {mobileOpen ? (
-        <div className="fixed inset-0 z-50 lg:hidden">
+        <ViewportPortal>
+        <div className="fixed inset-0 z-[99999] lg:hidden">
           <button
             type="button"
             className="absolute inset-0 bg-black/35"
@@ -292,6 +354,7 @@ function MasterAdminShellContent({ children }: { children: React.ReactNode }) {
             />
           </aside>
         </div>
+        </ViewportPortal>
       ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -307,7 +370,7 @@ function MasterAdminShellContent({ children }: { children: React.ReactNode }) {
           }}
           unreadCount={unreadCount}
         />
-        <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-24 lg:pb-0">
+        <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[#F8F9FA] pb-24 lg:pb-0">
           {children}
         </main>
       </div>
@@ -323,6 +386,11 @@ function MasterAdminShellContent({ children }: { children: React.ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch={false}
+                onClick={(event) => {
+                  event.preventDefault();
+                  hardNavigate(item.href);
+                }}
                 className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-1 py-1 ${
                   active ? "text-[#5AA700]" : "text-slate-400"
                 }`}
@@ -363,7 +431,9 @@ function MasterAdminShellContent({ children }: { children: React.ReactNode }) {
 export default function MasterAdminShell({ children }: { children: React.ReactNode }) {
   return (
     <MasterAdminNotificationsProvider>
-      <MasterAdminShellContent>{children}</MasterAdminShellContent>
+      <MasterAdminToastProvider>
+        <MasterAdminShellContent>{children}</MasterAdminShellContent>
+      </MasterAdminToastProvider>
     </MasterAdminNotificationsProvider>
   );
 }

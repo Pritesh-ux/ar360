@@ -24,7 +24,9 @@ const request: EnterpriseRequestInput = {
   businessEmail: " ADA@EXAMPLE.COM ",
   phone: " +91 99999 99999 ",
   companyWebsite: "https://example.com/enterprise",
+  address: "  12 MG Road, Bangalore  ",
   country: " India ",
+  state: " Karnataka ",
   industry: " Retail ",
   expectedProducts: 12,
 };
@@ -34,6 +36,8 @@ describe("public Enterprise request validation", () => {
     const value = validateEnterpriseRequest(request);
     assert.equal(value.companyName, "Acme Ltd");
     assert.equal(value.businessEmail, "ada@example.com");
+    assert.equal(value.address, "12 MG Road, Bangalore");
+    assert.equal(value.state, "Karnataka");
     assert.equal(value.source, "pricing");
     assert.equal(value.needsSla, false);
     assert.equal(
@@ -127,7 +131,9 @@ describe("payment validation and state transitions", () => {
   it("allows only the documented request status graph, including no-op replay", () => {
     const allowed: Array<[EnterpriseStatus, EnterpriseStatus]> = [
       ["new", "contacted"],
+      ["new", "quoted"],
       ["contacted", "negotiating"],
+      ["contacted", "quoted"],
       ["negotiating", "quoted"],
       ["quoted", "waiting_payment"],
       ["waiting_payment", "active"],

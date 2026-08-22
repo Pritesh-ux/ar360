@@ -13,9 +13,12 @@ import {
   linkEnterprisePaymentInvoice,
   listEnterpriseCustomPlans,
   listEnterpriseRequests,
+  isCustomPlanLinkedToRequest,
   setEnterprisePaymentStatus,
   setEnterpriseCustomPlanActive,
   setEnterpriseRequestStatus,
+  updateEnterpriseCustomPlanRow,
+  updateEnterpriseRequestRequirements,
 } from "./repository";
 import {
   activatePaidEnterprisePayment,
@@ -30,6 +33,7 @@ import type {
   EnterpriseQuoteInput,
   EnterpriseRequestInput,
   EnterpriseRequestListFilters,
+  EnterpriseRequestRequirementsPatch,
   EnterpriseStatus,
   PaymentStatus,
 } from "./types";
@@ -40,13 +44,30 @@ import {
   validateContract,
   validateCustomPlan,
   validateEnterpriseRequest,
+  validateEnterpriseRequestRequirements,
   validatePayment,
   validateQuote,
 } from "./validation";
 
 export async function createPublicEnterpriseRequest(input: EnterpriseRequestInput): Promise<{ requestUid: string }> {
   const normalized = validateEnterpriseRequest(input);
-  return { requestUid: await insertEnterpriseRequest(normalized) };
+  const requestUid = await insertEnterpriseRequest(normalized);
+
+  await import("@/lib/master-admin/notifications")
+    .then(({ createAdminNotification }) =>
+      createAdminNotification({
+        notificationUid: `enterprise-request:${requestUid}`,
+        category: "customer",
+        title: "New Enterprise quote request",
+        body: `${normalized.companyName} · ${normalized.contactName} (${normalized.businessEmail}) · ${normalized.country}${normalized.state ? `, ${normalized.state}` : ""}`,
+        href: `/master-admin/enterprise-requests/${requestUid}`,
+      }),
+    )
+    .catch((error) => {
+      console.error("[enterprise] admin notification failed", error);
+    });
+
+  return { requestUid };
 }
 
 export async function listEnterpriseSalesRequests(filters: EnterpriseRequestListFilters = {}) {
@@ -56,6 +77,15 @@ export async function listEnterpriseSalesRequests(filters: EnterpriseRequestList
 export async function getEnterpriseSalesRequest(requestUid: string) {
   return getEnterpriseRequestDetail(requestUid.trim());
 }
+
+const STATUS_RANK: Partial<Record<EnterpriseStatus, number>> = {
+  new: 0,
+  contacted: 1,
+  negotiating: 2,
+  quoted: 3,
+  waiting_payment: 4,
+  active: 5,
+};
 
 export async function changeEnterpriseRequestStatus(
   requestUid: string,
@@ -74,6 +104,28 @@ export async function changeEnterpriseRequestStatus(
   });
 }
 
+/** Advance pipeline forward only (never regresses or touches rejected/closed). */
+export async function advanceEnterpriseRequestStatus(
+  requestUid: string,
+  targetStatus: EnterpriseStatus,
+  adminId?: number | null,
+): Promise<boolean> {
+  const current = await getEnterpriseRequest(requestUid);
+  if (!current) return false;
+  const fromRank = STATUS_RANK[current.status];
+  const toRank = STATUS_RANK[targetStatus];
+  if (fromRank == null || toRank == null || fromRank >= toRank) return false;
+  assertStatusTransition(current.status, targetStatus);
+  await setEnterpriseRequestStatus(requestUid, targetStatus);
+  await insertEnterpriseNote({
+    requestUid,
+    adminId,
+    eventType: "status_change",
+    body: `Status advanced from ${current.statusLabel} to ${targetStatus.replace(/_/g, " ")}`,
+  });
+  return true;
+}
+
 export async function assignEnterpriseSalesRequest(
   requestUid: string,
   assignedAdminId: number | null,
@@ -86,6 +138,22 @@ export async function assignEnterpriseSalesRequest(
     adminId: actorAdminId,
     eventType: "assignment",
     body: assignedAdminId == null ? "Sales assignment cleared" : `Assigned to administrator ${assignedAdminId}`,
+  });
+}
+
+export async function updateEnterpriseSalesRequestRequirements(
+  requestUid: string,
+  patch: EnterpriseRequestRequirementsPatch,
+  actorAdminId?: number | null,
+): Promise<void> {
+  if (!(await getEnterpriseRequest(requestUid))) throw new Error("Enterprise request not found");
+  const normalized = validateEnterpriseRequestRequirements(patch);
+  await updateEnterpriseRequestRequirements(requestUid, normalized);
+  await insertEnterpriseNote({
+    requestUid,
+    adminId: actorAdminId,
+    eventType: "note",
+    body: "Capacity & requirements updated by sales admin.",
   });
 }
 
@@ -111,6 +179,36 @@ export async function changeEnterpriseCustomPlanAvailability(customPlanUid: stri
   if (!(await setEnterpriseCustomPlanActive(customPlanUid, isActive))) {
     throw new Error("Reusable custom plan not found");
   }
+}
+
+/**
+ * Patch limits + feature gates on a custom plan already linked to this request
+ * (quote or contract). Used when admin forgot toggles before Mark Paid.
+ */
+export async function updateEnterpriseCustomPlanForRequest(
+  requestUid: string,
+  customPlanUid: string,
+  input: EnterpriseCustomPlanInput,
+  adminId?: number | null,
+): Promise<{ customPlanUid: string }> {
+  if (!/^[A-Za-z0-9_-]{3,64}$/.test(customPlanUid)) {
+    throw new EnterpriseSalesValidationError("Custom plan ID is invalid");
+  }
+  if (!(await isCustomPlanLinkedToRequest(requestUid, customPlanUid))) {
+    throw new EnterpriseSalesValidationError(
+      "Custom plan is not linked to this Enterprise request",
+    );
+  }
+  const validated = validateCustomPlan(input);
+  const ok = await updateEnterpriseCustomPlanRow(customPlanUid, validated);
+  if (!ok) throw new Error("Custom plan not found");
+  await insertEnterpriseNote({
+    requestUid,
+    adminId: adminId ?? null,
+    eventType: "note",
+    body: `Live plan features updated on ${customPlanUid} (${validated.name}).`,
+  });
+  return { customPlanUid };
 }
 
 export async function createEnterpriseQuote(input: EnterpriseQuoteInput): Promise<{ quoteUid: string }> {

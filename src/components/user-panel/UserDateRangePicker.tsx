@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useCallback, useMemo, useRef, useState } from "react";
+import { useDeferredEffect } from "@/lib/react/use-deferred-effect";
 import { createPortal } from "react-dom";
 import { Calendar, Check, ChevronDown } from "lucide-react";
 
-export type DateRangePreset = "7d" | "30d" | "90d" | "month" | "all" | "custom";
+export type DateRangePreset = "today" | "yesterday" | "7d" | "30d" | "90d" | "month" | "all" | "custom";
 
 export type DateRangeValue = {
   preset: DateRangePreset;
@@ -16,9 +17,13 @@ type Props = {
   value: DateRangeValue;
   onChange: (next: DateRangeValue) => void;
   className?: string;
+  /** Shorter trigger label for tight mobile toolbars. */
+  compact?: boolean;
 };
 
 const PRESETS: Array<{ id: DateRangePreset; label: string }> = [
+  { id: "today", label: "Today" },
+  { id: "yesterday", label: "Yesterday" },
   { id: "7d", label: "Last 7 days" },
   { id: "30d", label: "Last 30 days" },
   { id: "90d", label: "Last 90 days" },
@@ -46,9 +51,12 @@ function endOfDay(date: Date) {
   return next;
 }
 
-function formatLabelDate(iso: string) {
+function formatLabelDate(iso: string, compact = false) {
   const date = new Date(`${iso}T00:00:00`);
   if (Number.isNaN(date.getTime())) return iso;
+  if (compact) {
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
@@ -73,6 +81,16 @@ export function resolveDateBounds(value: DateRangeValue): { from: Date | null; t
     };
   }
 
+  if (value.preset === "today") {
+    return { from: startOfDay(new Date()), to: today };
+  }
+
+  if (value.preset === "yesterday") {
+    const y = startOfDay(new Date());
+    y.setDate(y.getDate() - 1);
+    return { from: y, to: endOfDay(new Date(y)) };
+  }
+
   if (value.preset === "month") {
     const start = startOfDay(new Date(today.getFullYear(), today.getMonth(), 1));
     return { from: start, to: today };
@@ -84,11 +102,22 @@ export function resolveDateBounds(value: DateRangeValue): { from: Date | null; t
   return { from: start, to: today };
 }
 
-export function formatDateRangeLabel(value: DateRangeValue) {
+export function formatDateRangeLabel(value: DateRangeValue, compact = false) {
   if (value.preset === "all") return "All time";
+  if (compact && value.preset !== "custom") {
+    const short: Record<"today" | "yesterday" | "7d" | "30d" | "90d" | "month", string> = {
+      today: "Today",
+      yesterday: "Yesterday",
+      "7d": "7 days",
+      "30d": "30 days",
+      "90d": "90 days",
+      month: "This month",
+    };
+    return short[value.preset as keyof typeof short] || "Select dates";
+  }
   const bounds = resolveDateBounds(value);
   if (!bounds.from || !bounds.to) return "Select dates";
-  return `${formatLabelDate(toInputDate(bounds.from))} – ${formatLabelDate(toInputDate(bounds.to))}`;
+  return `${formatLabelDate(toInputDate(bounds.from), compact)} – ${formatLabelDate(toInputDate(bounds.to), compact)}`;
 }
 
 export function isDateInRange(iso: string | null | undefined, value: DateRangeValue) {
@@ -101,7 +130,7 @@ export function isDateInRange(iso: string | null | undefined, value: DateRangeVa
   return true;
 }
 
-export default function UserDateRangePicker({ value, onChange, className = "" }: Props) {
+export default function UserDateRangePicker({ value, onChange, className = "", compact = false }: Props) {
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState({ top: 0, left: 0 });
   const [draftFrom, setDraftFrom] = useState(value.from || "");
@@ -109,12 +138,12 @@ export default function UserDateRangePicker({ value, onChange, className = "" }:
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     setDraftFrom(value.from || "");
     setDraftTo(value.to || "");
   }, [value.from, value.to]);
 
-  const label = useMemo(() => formatDateRangeLabel(value), [value]);
+  const label = useMemo(() => formatDateRangeLabel(value, compact), [value, compact]);
 
   const updatePosition = useCallback(() => {
     const trigger = triggerRef.current;
@@ -183,13 +212,13 @@ export default function UserDateRangePicker({ value, onChange, className = "" }:
           updatePosition();
           setOpen(true);
         }}
-        className={`mb-2 inline-flex h-10 items-center gap-2 rounded-[12px] border border-[#ECECEC] bg-white px-3 text-[13px] font-medium text-[#525252] transition hover:bg-[#FAFAFA] ${className}`.trim()}
+        className={`mb-0 inline-flex h-9 w-full max-w-full shrink-0 items-center gap-1.5 rounded-full border border-[#ECECEC] bg-white px-3 text-[12px] font-medium text-[#374151] transition-all duration-[250ms] hover:bg-[#FAFAFB] hover:shadow-sm sm:h-10 sm:w-auto sm:gap-2 sm:px-4 sm:text-[13px] ${className}`.trim()}
         aria-haspopup="dialog"
         aria-expanded={open}
       >
-        <Calendar size={15} className="text-[#737373]" />
-        <span className="whitespace-nowrap">{label}</span>
-        <ChevronDown size={15} className="text-[#A3A3A3]" />
+        <Calendar size={14} className="shrink-0 text-[#737373] sm:size-[15px]" />
+        <span className="min-w-0 truncate">{label}</span>
+        <ChevronDown size={14} className="ml-auto shrink-0 text-[#A3A3A3] sm:ml-0 sm:size-[15px]" />
       </button>
 
       {open && typeof document !== "undefined"

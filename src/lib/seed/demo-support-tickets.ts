@@ -29,6 +29,18 @@ type SeedTicket = {
   updatedAt: string;
 };
 
+/** Synthetic UIDs — never attach demo tickets to real customer accounts. */
+export const DEMO_SUPPORT_CUSTOMER_UID_PREFIX = "demo_support_";
+
+export function demoSupportCustomerUid(index: number) {
+  const slot = (index % 8) + 1;
+  return `${DEMO_SUPPORT_CUSTOMER_UID_PREFIX}customer_${String(slot).padStart(2, "0")}`;
+}
+
+export function isDemoSupportCustomerUid(customerUid: string | null | undefined) {
+  return Boolean(customerUid?.startsWith(DEMO_SUPPORT_CUSTOMER_UID_PREFIX));
+}
+
 export const DEMO_SUPPORT_TICKETS: SeedTicket[] = [
   { ticketNumber: "TK-2025-00128", customerName: "Rahul Sharma", customerEmail: "rahul@example.com", subject: "Unable to upload 3D model", description: "GLB upload fails at 85% with timeout error.", category: "technical", priority: "high", status: "open", assignedTo: "Jane Cooper", createdAt: "2025-05-18 09:12:00", updatedAt: "2025-05-18 11:45:00" },
   { ticketNumber: "TK-2025-00127", customerName: "Ananya Verma", customerEmail: "ananya@example.com", subject: "Invoice not received for May", description: "Paid subscription renewal but GST invoice missing.", category: "billing", priority: "medium", status: "pending", assignedTo: "Wade Warren", createdAt: "2025-05-17 14:20:00", updatedAt: "2025-05-18 08:30:00" },
@@ -61,6 +73,10 @@ export const DEMO_SUPPORT_TICKETS: SeedTicket[] = [
   { ticketNumber: "TK-2025-00100", customerName: "Abhishek Tiwari", customerEmail: "abhishek@example.com", subject: "Hotspot editor bug", description: "Hotspots disappear after publishing product.", category: "technical", priority: "high", status: "resolved", assignedTo: "Jane Cooper", createdAt: "2025-05-03 14:50:00", updatedAt: "2025-05-04 16:30:00" },
 ];
 
+export const DEMO_SUPPORT_TICKET_NUMBERS = new Set(
+  DEMO_SUPPORT_TICKETS.map((ticket) => ticket.ticketNumber),
+);
+
 function ticketUid() {
   return `tkt_${Date.now()}_${crypto.randomBytes(6).toString("hex")}`;
 }
@@ -72,14 +88,69 @@ async function countTickets(exec: ExecFn) {
   return Number(rows[0]?.count || 0);
 }
 
-async function loadCustomers(exec: ExecFn) {
-  const [rows]: any = await exec.execute(
-    "SELECT customer_uid, contact_name, email FROM customers ORDER BY created_at DESC LIMIT 30",
-  );
-  return rows as { customer_uid: string; contact_name: string; email: string }[];
+/** Re-assign demo seed tickets that were wrongly linked to real customer accounts. */
+export async function repairMisassignedDemoSupportTickets(exec?: ExecFn) {
+  let repaired = 0;
+
+  for (let index = 0; index < DEMO_SUPPORT_TICKETS.length; index++) {
+    const ticket = DEMO_SUPPORT_TICKETS[index];
+    const demoCustomerUid = demoSupportCustomerUid(index);
+
+    if (exec) {
+      const [result]: any = await exec.execute(
+        `UPDATE support_tickets
+         SET customer_uid = ?, customer_name = ?, customer_email = ?
+         WHERE ticket_number = ?
+           AND customer_uid NOT LIKE ?`,
+        [
+          demoCustomerUid,
+          ticket.customerName,
+          ticket.customerEmail,
+          ticket.ticketNumber,
+          `${DEMO_SUPPORT_CUSTOMER_UID_PREFIX}%`,
+        ],
+      );
+      repaired += Number(result?.affectedRows || 0);
+      continue;
+    }
+
+    const pool = await (await import("@/lib/db")).getPool();
+    const [result]: any = await pool.execute(
+      `UPDATE support_tickets
+       SET customer_uid = ?, customer_name = ?, customer_email = ?
+       WHERE ticket_number = ?
+         AND customer_uid NOT LIKE ?`,
+      [
+        demoCustomerUid,
+        ticket.customerName,
+        ticket.customerEmail,
+        ticket.ticketNumber,
+        `${DEMO_SUPPORT_CUSTOMER_UID_PREFIX}%`,
+      ],
+    );
+    repaired += Number(result?.affectedRows || 0);
+  }
+
+  if (repaired > 0) {
+    console.log(`Repaired ${repaired} misassigned demo support ticket(s).`);
+  }
+
+  return { repaired };
+}
+
+let repairPromise: Promise<{ repaired: number }> | null = null;
+
+/** Runs once per server process — fixes legacy demo tickets on first support API hit. */
+export function ensureDemoSupportTicketsRepaired() {
+  if (!repairPromise) {
+    repairPromise = repairMisassignedDemoSupportTickets().catch(() => ({ repaired: 0 }));
+  }
+  return repairPromise;
 }
 
 export async function seedDemoSupportTickets(exec?: ExecFn) {
+  await repairMisassignedDemoSupportTickets(exec);
+
   if (!isDemoSeedEnabled()) {
     console.log("Skipping demo support ticket seed (SEED_DEMO_DATA disabled).");
     return { inserted: 0, skipped: true };
@@ -92,10 +163,8 @@ export async function seedDemoSupportTickets(exec?: ExecFn) {
       return { inserted: 0, skipped: true };
     }
 
-    const customers = await loadCustomers(exec);
     for (let index = 0; index < DEMO_SUPPORT_TICKETS.length; index++) {
       const ticket = DEMO_SUPPORT_TICKETS[index];
-      const customer = customers[index % Math.max(customers.length, 1)];
       await exec.execute(
         `INSERT INTO support_tickets (
           ticket_uid, ticket_number, customer_uid, customer_name, customer_email,
@@ -104,9 +173,9 @@ export async function seedDemoSupportTickets(exec?: ExecFn) {
         [
           ticketUid(),
           ticket.ticketNumber,
-          customer?.customer_uid || "",
-          customer?.contact_name || ticket.customerName,
-          customer?.email || ticket.customerEmail,
+          demoSupportCustomerUid(index),
+          ticket.customerName,
+          ticket.customerEmail,
           ticket.subject,
           ticket.description,
           ticket.category,
@@ -127,13 +196,8 @@ export async function seedDemoSupportTickets(exec?: ExecFn) {
     return { inserted: 0, skipped: true };
   }
 
-  const customers = await query<{ customer_uid: string; contact_name: string; email: string }>(
-    "SELECT customer_uid, contact_name, email FROM customers ORDER BY created_at DESC LIMIT 30",
-  ).catch(() => []);
-
   for (let index = 0; index < DEMO_SUPPORT_TICKETS.length; index++) {
     const ticket = DEMO_SUPPORT_TICKETS[index];
-    const customer = customers[index % Math.max(customers.length, 1)];
     await query(
       `INSERT INTO support_tickets (
         ticket_uid, ticket_number, customer_uid, customer_name, customer_email,
@@ -142,9 +206,9 @@ export async function seedDemoSupportTickets(exec?: ExecFn) {
       [
         ticketUid(),
         ticket.ticketNumber,
-        customer?.customer_uid || "",
-        customer?.contact_name || ticket.customerName,
-        customer?.email || ticket.customerEmail,
+        demoSupportCustomerUid(index),
+        ticket.customerName,
+        ticket.customerEmail,
         ticket.subject,
         ticket.description,
         ticket.category,

@@ -34,6 +34,23 @@ export function loadRazorpayScript(): Promise<boolean> {
   });
 }
 
+/** Prefetch Checkout.js early so Pay click opens the gateway faster. */
+export function prefetchRazorpayScript(): void {
+  void loadRazorpayScript();
+}
+
+export function formatRazorpayFailure(response: unknown): string {
+  const error =
+    response && typeof response === "object" && "error" in response
+      ? (response as { error?: { description?: string; reason?: string; code?: string } }).error
+      : null;
+  const description = String(error?.description || "").trim();
+  if (description) return description;
+  const reason = String(error?.reason || "").trim().replaceAll("_", " ");
+  if (reason) return `Payment ${reason}. Try another method or retry.`;
+  return "Payment failed. Please retry or use another method.";
+}
+
 declare global {
   interface Window {
     Razorpay?: new (options: Record<string, unknown>) => {

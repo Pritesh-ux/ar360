@@ -30,6 +30,7 @@ export type MaterialSetting = {
   normalTexture?: string;
   emissiveTexture?: string;
   occlusionTexture?: string;
+  occlusionStrength?: number;
 };
 
 export type VariantConfig = {

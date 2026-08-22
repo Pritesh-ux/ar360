@@ -19,14 +19,24 @@ function detectMode(keyId: string | null): RazorpayRuntimeConfig["mode"] {
 export async function getRazorpayRuntimeConfig(): Promise<RazorpayRuntimeConfig> {
   const keys = await getRazorpayKeys();
   const envPublic = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || null;
+  // Platform settings win; env is fallback only when panel keys are empty.
   const keyId = keys.keyId || envPublic;
 
+  // Key prefix wins when present so stale razorpayMode cannot disagree with the active key.
+  const detected = detectMode(keyId);
+  const mode =
+    detected === "live" || detected === "test"
+      ? detected
+      : keys.mode === "live" || keys.mode === "test"
+        ? keys.mode
+        : "unknown";
+
   return {
-    keyId: keys.keyId || null,
-    hasKeySecret: Boolean(keys.keySecret || process.env.RAZORPAY_KEY_SECRET),
+    keyId: keyId || null,
+    hasKeySecret: Boolean(keys.keySecret),
     hasWebhookSecret: Boolean(keys.webhookSecret),
-    publicKeyId: envPublic || keys.keyId || null,
-    mode: detectMode(keyId),
+    publicKeyId: keyId || null,
+    mode,
   };
 }
 

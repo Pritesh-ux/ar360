@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS products (
   thumbnail_url TEXT NULL,
   qr_url TEXT NULL,
   product_folder TEXT NULL,
-  status ENUM('Draft', 'draft', 'published') NOT NULL DEFAULT 'Draft',
+  status ENUM('Draft', 'published') NOT NULL DEFAULT 'Draft',
   views INT NOT NULL DEFAULT 0,
   settings JSON NULL,
   material_settings JSON NULL,

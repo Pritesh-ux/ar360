@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { useDeferredEffect } from "@/lib/react/use-deferred-effect";
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -13,12 +14,16 @@ import {
   Lock as LockIcon,
   ShieldCheck,
   Sparkles,
+  Tag,
   Wifi,
+  X,
   Zap,
 } from "lucide-react";
-import { loadRazorpayScript } from "@/lib/billing/load-razorpay";
+import { formatRazorpayFailure, loadRazorpayScript, prefetchRazorpayScript } from "@/lib/billing/load-razorpay";
 import { resolveYearlyDiscountPercent, type BillingCycle, type BillingPlan, type PlanId } from "@/lib/billing/plans";
 import { getPlanCheckoutPath } from "@/lib/billing/plan-links";
+import { buildPricingChecklist } from "@/lib/billing/pricing-features";
+import { useUserPanelSessionActions } from "@/components/user-panel/UserPanelContext";
 
 function normalizePlanId(value?: string | null): PlanId | null {
   const clean = String(value || "").toLowerCase();
@@ -33,14 +38,6 @@ function normalizePlanId(value?: string | null): PlanId | null {
 function formatInr(amount: number | null | undefined) {
   if (amount == null) return "—";
   return `₹${amount.toLocaleString("en-IN")}`;
-}
-
-function featureText(feature: unknown) {
-  if (typeof feature === "string") return feature.replace(/^[*!]\s*/, "");
-  if (feature && typeof feature === "object" && "label" in feature) {
-    return String((feature as { label?: unknown }).label ?? "").replace(/^[*!]\s*/, "");
-  }
-  return "";
 }
 
 const PLAN_RANK: Record<string, number> = {
@@ -69,6 +66,19 @@ export default function CheckoutClient() {
     gst: number;
     total: number;
   } | null>(null);
+  const [couponCode, setCouponCode] = useState("");
+  const [couponResult, setCouponResult] = useState<{
+    valid: boolean;
+    code?: string;
+    discountType?: "percentage" | "fixed";
+    discountValue?: number;
+    discountLabel?: string;
+    discountPaise?: number;
+    error?: string;
+  } | null>(null);
+  const [couponLoading, setCouponLoading] = useState(false);
+  const outcomeRef = useRef<"idle" | "success" | "failed" | "verifying">("idle");
+  const { refreshSession } = useUserPanelSessionActions();
 
   const planId = normalizePlanId(search.get("plan"));
   const period = (search.get("period") === "yearly" ? "yearly" : "monthly") as BillingCycle;
@@ -98,7 +108,8 @@ export default function CheckoutClient() {
     }
   }, []);
 
-  useEffect(() => {
+  useDeferredEffect(() => {
+    prefetchRazorpayScript();
     void load();
   }, [load]);
 
@@ -113,13 +124,25 @@ export default function CheckoutClient() {
     return { subtotal, gst, total: priceInr };
   }, [priceInr]);
 
-  const displayedBreakdown = checkoutAmounts
-    ? {
-        subtotal: checkoutAmounts.subtotal / 100,
-        gst: checkoutAmounts.gst / 100,
-        total: checkoutAmounts.total / 100,
-      }
-    : gstBreakdown;
+  const displayedBreakdown = (() => {
+    const base = checkoutAmounts
+      ? {
+          subtotal: checkoutAmounts.subtotal / 100,
+          gst: checkoutAmounts.gst / 100,
+          total: checkoutAmounts.total / 100,
+        }
+      : gstBreakdown;
+    if (!base) return null;
+    const discount = (couponResult?.valid && couponResult.discountPaise) ? couponResult.discountPaise / 100 : 0;
+    const discountedSubtotal = Math.max(0, base.subtotal - discount);
+    const discountedGst = Math.round(discountedSubtotal * 0.18);
+    return {
+      subtotal: base.subtotal,
+      discount,
+      gst: discountedGst,
+      total: discountedSubtotal + discountedGst,
+    };
+  })();
 
   const isCurrentPlan = planId === normalizePlanId(currentPlanId);
   const currentRank = PLAN_RANK[currentPlanId] ?? 0;
@@ -133,11 +156,43 @@ export default function CheckoutClient() {
     priceInr > 0 &&
     !isDowngradeOrSame;
 
-  const features = (plan?.features || []).map(featureText).filter(Boolean);
+  const features = plan
+    ? buildPricingChecklist({ limits: plan.limits }).map((line) => line.label)
+    : [];
 
   function setPeriod(next: BillingCycle) {
     if (!planId || next === period) return;
     router.replace(`${getPlanCheckoutPath(planId, next)}${renewalFlow ? "&renewal=1" : ""}`);
+  }
+
+  async function validateCoupon() {
+    const code = couponCode.trim();
+    if (!code) return;
+    setCouponLoading(true);
+    setCouponResult(null);
+    try {
+      const subtotalPaise = priceInr != null ? Math.round((priceInr / 1.18) * 100) : 0;
+      const res = await fetch("/api/billing/validate-coupon", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, amountPaise: subtotalPaise }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.valid) {
+        setCouponResult({ valid: false, error: data.error || "Invalid coupon." });
+      } else {
+        setCouponResult(data);
+      }
+    } catch {
+      setCouponResult({ valid: false, error: "Could not validate coupon." });
+    } finally {
+      setCouponLoading(false);
+    }
+  }
+
+  function removeCoupon() {
+    setCouponCode("");
+    setCouponResult(null);
   }
 
   async function startPayment() {
@@ -146,25 +201,30 @@ export default function CheckoutClient() {
     setMessage("");
     setMessageTone("error");
     setMandateState("pending");
+    outcomeRef.current = "idle";
 
     try {
-      const scriptReady = await loadRazorpayScript();
+      const checkoutUrl = renewalFlow ? "/api/billing/renewal-mandate" : "/api/billing/checkout";
+      const [scriptReady, res] = await Promise.all([
+        loadRazorpayScript(),
+        fetch(checkoutUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": checkoutIdempotencyKey,
+          },
+          body: JSON.stringify({
+            planId,
+            period,
+            ...(couponResult?.valid && couponResult.code ? { couponCode: couponResult.code } : {}),
+            ...(renewalFlow ? { explicitConsent: true, termsVersion: "legacy-renewal-v1" } : {}),
+          }),
+        }),
+      ]);
+
       if (!scriptReady || !window.Razorpay) {
         throw new Error("Razorpay checkout could not load. Check your network or ad blocker.");
       }
-
-      const res = await fetch(renewalFlow ? "/api/billing/renewal-mandate" : "/api/billing/checkout", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Idempotency-Key": checkoutIdempotencyKey,
-        },
-        body: JSON.stringify({
-          planId,
-          period,
-          ...(renewalFlow ? { explicitConsent: true, termsVersion: "legacy-renewal-v1" } : {}),
-        }),
-      });
 
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Checkout failed.");
@@ -189,6 +249,9 @@ export default function CheckoutClient() {
         },
         theme: { color: "#84D400" },
         handler: async (response: Record<string, string>) => {
+          outcomeRef.current = "verifying";
+          setMessageTone("success");
+          setMessage("Payment received. Confirming…");
           try {
             const verifyRes = await fetch(
               subscriptionFlow ? "/api/billing/verify-subscription" : "/api/billing/verify-payment",
@@ -207,44 +270,69 @@ export default function CheckoutClient() {
             if (subscriptionFlow) {
               const state = verifyData.mandateState as "authorized" | "pending" | "failed";
               setMandateState(state);
-              setMessageTone(state === "failed" ? "error" : "success");
+              if (state === "failed") {
+                outcomeRef.current = "failed";
+                setMessageTone("error");
+                setMessage("Mandate authorization failed. Please retry or use another payment method.");
+                setLoading(false);
+                return;
+              }
+              outcomeRef.current = "success";
+              setMessageTone("success");
               setMessage(
                 state === "authorized"
                   ? renewalFlow
-                    ? "Mandate authorized. Your current paid access is unchanged; recurring billing starts only when this term ends."
-                    : "Mandate authorized. Your plan will activate after Razorpay confirms payment by webhook."
-                  : state === "pending"
-                    ? "Mandate authorization is pending. Keep this page open or check Subscription shortly."
-                    : "Mandate authorization failed. No subscription access was activated.",
+                    ? "Mandate authorized. Your current paid access is unchanged; recurring billing starts when this term ends."
+                    : "Payment successful. Your plan will activate shortly."
+                  : "Payment received. Mandate pending — check Subscription shortly.",
               );
               setLoading(false);
+              if (!renewalFlow) {
+                await refreshSession();
+                router.refresh();
+                window.setTimeout(() => router.push("/dashboard/subscription?payment=success"), 250);
+              }
             } else {
+              outcomeRef.current = "success";
+              await refreshSession();
+              router.refresh();
               router.push("/dashboard/subscription?payment=success");
             }
           } catch (error) {
+            outcomeRef.current = "failed";
             setMandateState("failed");
             setMessageTone("error");
-            setMessage(error instanceof Error ? error.message : "Payment verification failed.");
+            setMessage(
+              error instanceof Error
+                ? `${error.message} If money was deducted, support can help reconcile it.`
+                : "Payment verification failed.",
+            );
             setLoading(false);
           }
         },
         modal: {
           ondismiss: () => {
-            setMandateState("idle");
             setLoading(false);
+            if (outcomeRef.current === "idle") {
+              setMandateState("idle");
+              setMessageTone("error");
+              setMessage("Checkout closed before payment completed. You can retry anytime.");
+            }
           },
         },
       };
       const razorpay = new window.Razorpay(options);
-      razorpay.on("payment.failed", () => {
+      razorpay.on("payment.failed", (response: unknown) => {
+        outcomeRef.current = "failed";
         setMandateState("failed");
         setMessageTone("error");
-        setMessage("Mandate authorization failed. Please retry or use another payment method.");
+        setMessage(`${formatRazorpayFailure(response)} Tap Pay again to retry.`);
         setLoading(false);
       });
 
       razorpay.open();
     } catch (error) {
+      outcomeRef.current = "failed";
       setMandateState("failed");
       setMessageTone("error");
       setMessage(error instanceof Error ? error.message : "Payment failed.");
@@ -419,7 +507,7 @@ export default function CheckoutClient() {
                       <span
                         className={`absolute -top-2 right-2 rounded-full px-2 py-0.5 text-[9px] font-black ${
                           period === "yearly"
-                            ? "bg-[#84D400] text-[#102000]"
+                            ? "bg-[#B6FF38] text-[#102000]"
                             : "bg-[#111] text-[#B8FF3C]"
                         }`}
                       >
@@ -534,6 +622,15 @@ export default function CheckoutClient() {
                   <span className="text-[#A3A3A3]">Subtotal</span>
                   <span className="text-lg font-bold">{formatInr(displayedBreakdown?.subtotal)}</span>
                 </div>
+                {displayedBreakdown && displayedBreakdown.discount > 0 ? (
+                  <div className="flex justify-between gap-3">
+                    <span className="flex items-center gap-1.5 text-[#84D400]">
+                      <Tag size={13} />
+                      Coupon ({couponResult?.code})
+                    </span>
+                    <span className="text-lg font-bold text-[#84D400]">-{formatInr(displayedBreakdown.discount)}</span>
+                  </div>
+                ) : null}
                 <div className="flex justify-between gap-3">
                   <span className="text-[#A3A3A3]">GST (18%)</span>
                   <span className="text-lg font-bold">{formatInr(displayedBreakdown?.gst)}</span>
@@ -542,6 +639,52 @@ export default function CheckoutClient() {
                   <span className="text-[#A3A3A3]">Billing</span>
                   <span className="text-lg font-bold capitalize">{period}</span>
                 </div>
+              </div>
+
+              {/* Coupon input */}
+              <div className="mt-4">
+                {couponResult?.valid ? (
+                  <div className="flex items-center justify-between rounded-xl border border-[#84D400]/40 bg-[#84D400]/10 px-3 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <Tag size={14} className="text-[#84D400]" />
+                      <div>
+                        <span className="text-sm font-bold text-[#B8FF3C]">{couponResult.code}</span>
+                        <span className="ml-2 text-xs font-semibold text-[#8A8A8A]">{couponResult.discountLabel}</span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={removeCoupon}
+                      className="grid h-6 w-6 place-items-center rounded-full text-[#8A8A8A] transition hover:bg-white/10 hover:text-white"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={couponCode}
+                        onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void validateCoupon(); } }}
+                        placeholder="Have a coupon code?"
+                        className="flex-1 rounded-xl border border-white/15 bg-white/5 px-3.5 py-2.5 text-sm font-medium text-white placeholder-[#5A5A5A] outline-none focus:border-[#84D400]/60"
+                      />
+                      <button
+                        type="button"
+                        disabled={couponLoading || !couponCode.trim()}
+                        onClick={() => void validateCoupon()}
+                        className="shrink-0 rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-xs font-bold text-[#B8FF3C] transition hover:bg-white/15 disabled:opacity-50"
+                      >
+                        {couponLoading ? "..." : "Apply"}
+                      </button>
+                    </div>
+                    {couponResult && !couponResult.valid && couponResult.error ? (
+                      <p className="mt-1.5 text-xs font-semibold text-red-400">{couponResult.error}</p>
+                    ) : null}
+                  </div>
+                )}
               </div>
 
               <div className="mt-6 rounded-3xl border border-[#84D400]/35 bg-[#84D400]/10 px-5 py-6">

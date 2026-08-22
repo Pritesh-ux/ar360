@@ -13,6 +13,9 @@ import {
 import fs from "fs/promises";
 import path from "path";
 import { checkEnterpriseArExperienceLimit } from "@/lib/billing/limit-enforcement";
+import { resolveLogicalProductFolder } from "@/lib/products/logical-folder";
+import { urlColumnValue } from "@/lib/products/asset-url-column";
+import { sanitizeEnvironmentImage } from "@/lib/products/environment-image";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,9 +38,13 @@ type ProductRow = {
   product_folder: string | null;
   status: string;
   views: number;
+  version?: number | null;
+  public_id?: string | null;
+  viewer_slug?: string | null;
   published_at: string | null;
   created_at: string;
   updated_at: string;
+  deleted_at?: string | null;
 };
 
 async function readProductJson(customerUid: string, productUid: string) {
@@ -91,13 +98,13 @@ async function syncJsonToMysql(json: any, userId: number, customerUid: string) {
         userId,
         String(json.title || "Untitled"),
         String(json.category || "Uncategorized"),
-        String(json.modelUrl || ""),
+        urlColumnValue(json.modelUrl),
         String(json.fileName || ""),
-        String(json.poster || ""),
-        String(json.thumbnailUrl || ""),
-        String(json.qrUrl || ""),
-        String(json.publicFolder || ""),
-        String(json.status || "Draft"),
+        urlColumnValue(json.poster),
+        urlColumnValue(json.thumbnailUrl),
+        urlColumnValue(json.qrUrl),
+        resolveLogicalProductFolder(json, "All"),
+        String(json.status || "published"),
         Number(json.views || 0),
         json.settings ? JSON.stringify(json.settings) : null,
         json.materialSettings ? JSON.stringify(json.materialSettings) : null,
@@ -135,13 +142,20 @@ export async function GET(_req: Request, context: RouteContext) {
     await ensureProductSchema();
     const rows = await query<ProductRow>(
       `SELECT id, customer_uid, user_id, title, category, model_url, file_name,
-              poster, thumbnail_url, qr_url, product_folder, status, views,
-              settings, material_settings, variants, hotspots, published_at, created_at, updated_at
+              poster, thumbnail_url, qr_url, product_folder, status, views, version,
+              public_id, viewer_slug,
+              settings, material_settings, variants, hotspots, published_at, created_at, updated_at,
+              deleted_at
        FROM products
        WHERE id = ? AND customer_uid = ? AND (user_id = ? OR user_id IS NULL)
        LIMIT 1`,
       [productId, customerUid, user.id],
     ).catch(() => [] as ProductRow[]);
+
+    if (rows[0]?.deleted_at) {
+      // Soft-deleted — never heal from disk.
+      return NextResponse.json({ error: "Product not found." }, { status: 404 });
+    }
 
     if (rows[0]) {
       const row = rows[0];
@@ -157,6 +171,14 @@ export async function GET(_req: Request, context: RouteContext) {
           ...(mysqlSettings && typeof mysqlSettings === "object" ? mysqlSettings : {}),
           id: row.id,
           productUid: row.id,
+          publicId:
+            row.public_id ||
+            (typeof disk?.publicId === "string" ? disk.publicId : "") ||
+            undefined,
+          viewerSlug:
+            row.viewer_slug ||
+            (typeof disk?.viewerSlug === "string" ? disk.viewerSlug : "") ||
+            undefined,
           customerUid: row.customer_uid ?? customerUid,
           title: row.title || (disk?.title as string) || "Untitled",
           category: row.category ?? (disk?.category as string) ?? "Uncategorized",
@@ -165,37 +187,66 @@ export async function GET(_req: Request, context: RouteContext) {
           poster: row.poster ?? (disk?.poster as string) ?? "",
           thumbnailUrl: row.thumbnail_url ?? (disk?.thumbnailUrl as string) ?? "",
           qrUrl: row.qr_url ?? (disk?.qrUrl as string) ?? "",
-          publicFolder: row.product_folder ?? (disk?.publicFolder as string) ?? "",
+          publicFolder: String(disk?.publicFolder || ""),
           status: row.status || (disk?.status as string) || "Draft",
           views: row.views ?? (disk?.views as number) ?? 0,
+          version: Number(row.version ?? disk?.version ?? 1) || 1,
           materialSettings: disk?.materialSettings ?? mysqlMaterialSettings,
           nativeMaterialSettings: disk?.nativeMaterialSettings,
           variants: mysqlVariants ?? disk?.variants,
           hotspots: mysqlHotspots ?? disk?.hotspots,
+          environmentImage: sanitizeEnvironmentImage(
+            (disk as any)?.environmentImage ||
+              (mysqlSettings as any)?.environmentImage ||
+              "default",
+          ),
           createdAt: row.created_at,
           updatedAt: row.updated_at,
-          folder: String(disk?.folder || disk?.productFolder || "All"),
-          productFolder: String(disk?.folder || disk?.productFolder || "All"),
+          folder: resolveLogicalProductFolder(
+            { folder: disk?.folder, productFolder: disk?.productFolder || row.product_folder },
+            "All",
+          ),
+          productFolder: resolveLogicalProductFolder(
+            { folder: disk?.folder, productFolder: disk?.productFolder || row.product_folder },
+            "All",
+          ),
         },
       });
     }
 
-    // 2. Fallback: load product.json from disk and sync to MySQL
-    if (customerUid) {
-      const json = await readProductJson(customerUid, productId);
-      if (json) {
-        await syncJsonToMysql(json, user.id, customerUid);
-        return NextResponse.json({
-          product: {
-            ...json,
-            id: String(json.productUid || json.id || productId),
-            productUid: String(json.productUid || json.id || productId),
-            customerUid,
-            folder: String(json.folder || json.productFolder || "All"),
-            productFolder: String(json.folder || json.productFolder || "All"),
-          },
-        });
-      }
+    // Heal only when MySQL has no row at all (e.g. upload disk wrote but sync failed).
+    // Never revive soft-deleted products.
+    const disk = await readProductJson(customerUid, productId);
+    if (disk && (disk.modelUrl || disk.fileName || disk.title)) {
+      await syncJsonToMysql(
+        { ...disk, productUid: productId, id: productId, customerUid },
+        user.id,
+        customerUid,
+      );
+      return NextResponse.json({
+        product: {
+          ...disk,
+          id: productId,
+          productUid: productId,
+          customerUid,
+          title: String(disk.title || "Untitled"),
+          category: String(disk.category || "Uncategorized"),
+          modelUrl: String(disk.modelUrl || ""),
+          fileName: String(disk.fileName || ""),
+          poster: String(disk.poster || ""),
+          thumbnailUrl: String(disk.thumbnailUrl || ""),
+          qrUrl: String(disk.qrUrl || ""),
+          publicFolder: String(disk.publicFolder || ""),
+          status: String(disk.status || "Draft"),
+          views: Number(disk.views || 0),
+          version: Number(disk.version || 1) || 1,
+          environmentImage: sanitizeEnvironmentImage(
+            (disk as { environmentImage?: string }).environmentImage || "default",
+          ),
+          folder: resolveLogicalProductFolder(disk, "All"),
+          productFolder: resolveLogicalProductFolder(disk, "All"),
+        },
+      });
     }
 
     return NextResponse.json({ error: "Product not found." }, { status: 404 });
@@ -233,28 +284,25 @@ export async function DELETE(_req: Request, context: RouteContext) {
     const rows = await query<{ id: string; customer_uid: string | null }>(
       "SELECT id, customer_uid FROM products WHERE id = ? AND customer_uid = ? AND (user_id = ? OR user_id IS NULL) LIMIT 1",
       [productId, customerUid, user.id],
-    ).catch(() => [] as { id: string; customer_uid: string | null }[]);
+    );
 
-    const confirmedCustomerUid = rows[0]?.customer_uid ?? customerUid;
-
-    // Delete from MySQL
-    if (rows.length > 0) {
-      await query(
-        "DELETE FROM products WHERE id = ? AND customer_uid = ?",
-        [productId, confirmedCustomerUid],
-      ).catch(() => {});
+    if (!rows[0]) {
+      return NextResponse.json({ error: "Product not found." }, { status: 404 });
     }
+
+    const confirmedCustomerUid = rows[0].customer_uid || customerUid;
+
+    await query("DELETE FROM products WHERE id = ? AND customer_uid = ?", [
+      productId,
+      confirmedCustomerUid,
+    ]);
 
     // SECURITY: deleteProductFolder validates the path through getSecureProductFolder()
     // before calling fs.rm — prevents any path traversal on delete.
-    if (confirmedCustomerUid) {
-      await deleteProductFolder(confirmedCustomerUid, productId);
-
-      // Recalculate storage quota after deletion
-      recalculateCustomerStorage(confirmedCustomerUid).catch((err) =>
-        console.warn("[products/[id] DELETE] Storage recalculation failed:", err)
-      );
-    }
+    await deleteProductFolder(confirmedCustomerUid, productId);
+    void recalculateCustomerStorage(confirmedCustomerUid).catch((err) =>
+      console.warn("[products/[id] DELETE] Storage recalculation failed:", err),
+    );
 
     return NextResponse.json({ success: true });
   } catch (error) {

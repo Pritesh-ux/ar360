@@ -13,6 +13,7 @@ import {
   ClipboardList,
   CreditCard,
   Download,
+  Edit3,
   FileSignature,
   FileText,
   Mail,
@@ -22,17 +23,26 @@ import {
   Plus,
   Play,
   UserRound,
+  X,
 } from "lucide-react";
 import AdminPageHeader from "@/components/features/master-admin/AdminPageHeader";
 import AdminComposeMailModal, { type ComposeMailDefaults } from "@/components/features/master-admin/AdminComposeMailModal";
+import EnterpriseFulfillWizard from "@/components/features/master-admin/EnterpriseFulfillWizard";
+import AdminMetricCard from "@/components/ui/admin/AdminMetricCard";
+import {
+  buildEnterpriseComposeMailSubject,
+  buildEnterpriseComposeMailText,
+} from "@/lib/enterprise-sales/compose-mail";
 import { formatQuoteDate } from "@/lib/enterprise-sales/quote-dates";
+import { DEFAULT_ENTERPRISE_QUOTE_TERMS } from "@/lib/enterprise-sales/quote-terms";
 import {
   AdminActionMessage,
   AdminButton,
   AdminInput,
   AdminLoadingState,
-  AdminSelect,
 } from "@/components/ui/admin";
+import UserFilterDropdown from "@/components/user-panel/UserFilterDropdown";
+import "@/components/dashboard/dashboard-premium.css";
 import {
   ENTERPRISE_STATUS_LABELS,
   type EnterpriseCustomPlan,
@@ -42,15 +52,61 @@ import {
 } from "@/lib/enterprise-sales/types";
 
 const NEXT_STATUSES: Record<EnterpriseStatus, EnterpriseStatus[]> = {
-  new: ["contacted", "rejected", "closed"],
-  contacted: ["negotiating", "rejected", "closed"],
-  negotiating: ["quoted", "rejected", "closed"],
+  new: ["contacted", "negotiating", "quoted", "rejected", "closed"],
+  contacted: ["negotiating", "quoted", "waiting_payment", "rejected", "closed"],
+  negotiating: ["quoted", "waiting_payment", "rejected", "closed"],
   quoted: ["waiting_payment", "negotiating", "rejected", "closed"],
-  waiting_payment: ["active", "negotiating", "rejected", "closed"],
+  waiting_payment: ["active", "negotiating", "quoted", "rejected", "closed"],
   active: ["closed"],
   rejected: [],
   closed: [],
 };
+
+const REQUIREMENT_FLAGS = [
+  { key: "needsMoreStorage", label: "More storage" },
+  { key: "needsMoreBandwidth", label: "More bandwidth" },
+  { key: "needsMoreProducts", label: "More products" },
+  { key: "needsQr", label: "QR Codes" },
+  { key: "needsEmbed", label: "Embed Viewer" },
+  { key: "needsShare", label: "Share Links" },
+  { key: "needsAr", label: "AR Experience" },
+  { key: "needsCustomBranding", label: "Custom branding" },
+  { key: "needsAnalytics", label: "Advanced analytics" },
+  { key: "needsTeamMembers", label: "Team members" },
+  { key: "needsDedicatedInfrastructure", label: "Dedicated infrastructure" },
+  { key: "needsPrioritySupport", label: "Priority support" },
+  { key: "needsSla", label: "SLA" },
+] as const;
+
+type RequirementsFormState = {
+  expectedProducts: string;
+  expectedStorageGb: string;
+  expectedMonthlyBandwidthGb: string;
+  additionalRequirements: string;
+} & Record<(typeof REQUIREMENT_FLAGS)[number]["key"], boolean>;
+
+function requirementsFormFromRequest(request: EnterpriseRequestDetail): RequirementsFormState {
+  return {
+    expectedProducts: request.expectedProducts == null ? "" : String(request.expectedProducts),
+    expectedStorageGb: request.expectedStorageGb == null ? "" : String(request.expectedStorageGb),
+    expectedMonthlyBandwidthGb:
+      request.expectedMonthlyBandwidthGb == null ? "" : String(request.expectedMonthlyBandwidthGb),
+    additionalRequirements: request.additionalRequirements || "",
+    needsMoreStorage: request.needsMoreStorage,
+    needsMoreBandwidth: request.needsMoreBandwidth,
+    needsMoreProducts: request.needsMoreProducts,
+    needsQr: request.needsQr,
+    needsEmbed: request.needsEmbed,
+    needsShare: request.needsShare,
+    needsAr: request.needsAr,
+    needsCustomBranding: request.needsCustomBranding,
+    needsAnalytics: request.needsAnalytics,
+    needsTeamMembers: request.needsTeamMembers,
+    needsDedicatedInfrastructure: request.needsDedicatedInfrastructure,
+    needsPrioritySupport: request.needsPrioritySupport,
+    needsSla: request.needsSla,
+  };
+}
 
 type Assignee = { id: number; name: string };
 
@@ -82,8 +138,8 @@ function gbFromBytes(value: number | null) {
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
-      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
-      <div className="mt-1 text-[13px] font-semibold text-slate-800">{value || "—"}</div>
+      <p className="text-[10px] font-bold uppercase tracking-wide text-[#9CA3AF]">{label}</p>
+      <div className="mt-1 text-[13px] font-semibold text-[#111827]">{value || "—"}</div>
     </div>
   );
 }
@@ -93,19 +149,24 @@ function Section({
   icon: Icon,
   children,
   id,
+  action,
 }: {
   title: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
   children: React.ReactNode;
   id?: string;
+  action?: React.ReactNode;
 }) {
   return (
-    <section id={id} className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
-      <div className="mb-4 flex items-center gap-2">
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#F0FBD9] text-[#579D00]">
-          <Icon size={16} />
-        </span>
-        <h2 className="text-[14px] font-black text-slate-900">{title}</h2>
+    <section id={id} className="dash-premium-card p-4 md:p-5">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-lime-50 text-[#5AA700]">
+            <Icon size={16} />
+          </span>
+          <h2 className="text-[14px] font-bold text-[#111827]">{title}</h2>
+        </div>
+        {action ? <div className="flex shrink-0 items-center gap-2">{action}</div> : null}
       </div>
       {children}
     </section>
@@ -159,7 +220,7 @@ function PaymentEditor({
   const isPending = payment.status === "pending";
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white">
+    <div className="dash-activity-row rounded-[14px] border border-[#ECECEC] bg-[#FAFAFB]">
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
@@ -190,7 +251,7 @@ function PaymentEditor({
           <a
             href={`/api/master-admin/enterprise-requests/${encodeURIComponent(requestUid)}/payments/${encodeURIComponent(payment.paymentUid)}/invoice/download`}
             onClick={(event) => event.stopPropagation()}
-            className="inline-flex h-9 items-center gap-1 rounded-lg border border-slate-200 px-3 text-[11px] font-bold text-slate-700"
+            className="dash-premium-btn-secondary inline-flex h-9 items-center gap-1 px-3 text-[11px]"
           >
             <Download size={13} /> PDF
           </a>
@@ -198,7 +259,7 @@ function PaymentEditor({
       </button>
 
       {open && isPending ? (
-        <div className="border-t border-slate-100 px-4 py-3">
+        <div className="border-t border-[#ECECEC] px-4 py-3">
           {payment.paymentLink ? (
             <a href={payment.paymentLink} target="_blank" rel="noreferrer" className="mb-3 block truncate text-[11px] font-bold text-[#4D8C00]">
               Open payment link
@@ -242,7 +303,6 @@ export default function EnterpriseRequestDetailPage() {
   const [customPlans, setCustomPlans] = useState<EnterpriseCustomPlan[]>([]);
   const [canManage, setCanManage] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState("");
-  const [selectedAssignee, setSelectedAssignee] = useState("");
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -259,7 +319,12 @@ export default function EnterpriseRequestDetailPage() {
     ocCapturesPerMonth: "", ocComputeSecondsPerMonth: "", ocConcurrentJobs: "", ocMaxRetries: "",
   });
   const [quoteForm, setQuoteForm] = useState({
-    customPlanUid: "", billingCycle: "monthly", price: "", validUntil: "", terms: "", emailProspect: false,
+    customPlanUid: "",
+    billingCycle: "monthly",
+    price: "",
+    validUntil: "",
+    terms: DEFAULT_ENTERPRISE_QUOTE_TERMS,
+    emailProspect: false,
   });
   const [paymentForm, setPaymentForm] = useState({
     quoteUid: "", amount: "", paymentLink: "", transactionId: "", paymentMethod: "cash",
@@ -271,9 +336,12 @@ export default function EnterpriseRequestDetailPage() {
   const [showPlanForm, setShowPlanForm] = useState(false);
   const [showQuoteForm, setShowQuoteForm] = useState(false);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [showAdvancedFulfill, setShowAdvancedFulfill] = useState(false);
   const [composeOpen, setComposeOpen] = useState(false);
   const [lifecycleAction, setLifecycleAction] = useState<"pause" | "resume" | null>(null);
   const [lifecycleReason, setLifecycleReason] = useState("");
+  const [editingRequirements, setEditingRequirements] = useState(false);
+  const [requirementsForm, setRequirementsForm] = useState<RequirementsFormState | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -286,7 +354,6 @@ export default function EnterpriseRequestDetailPage() {
       setAssignees(data.assignees || []);
       setCustomPlans(data.customPlans || []);
       setCanManage(Boolean(data.canManage));
-      setSelectedAssignee(data.request.assignedAdminId ? String(data.request.assignedAdminId) : "");
       setSelectedStatus("");
       const latestQuote = (data.request.quotes || [])[0];
       if (latestQuote) {
@@ -326,7 +393,6 @@ export default function EnterpriseRequestDetailPage() {
       if (!response.ok) throw new Error(data.error || "Update failed");
       setRequest(data.request);
       if (data.customPlans) setCustomPlans(data.customPlans);
-      setSelectedAssignee(data.request.assignedAdminId ? String(data.request.assignedAdminId) : "");
       setSelectedStatus("");
       const emailBits: string[] = [];
       if (data.email?.attempted) {
@@ -401,7 +467,13 @@ export default function EnterpriseRequestDetailPage() {
       ...quoteForm,
       pricePaise: paise(quoteForm.price),
     }, quoteForm.emailProspect ? "Quote created; email delivery attempted." : "Quote created.");
-    if (ok) setQuoteForm((current) => ({ ...current, terms: "", emailProspect: false }));
+    if (ok) {
+      setQuoteForm((current) => ({
+        ...current,
+        terms: DEFAULT_ENTERPRISE_QUOTE_TERMS,
+        emailProspect: false,
+      }));
+    }
   }
 
   async function createPayment() {
@@ -479,22 +551,51 @@ export default function EnterpriseRequestDetailPage() {
 
   const requirements = useMemo(() => {
     if (!request) return [];
-    return [
-      ["More storage", request.needsMoreStorage],
-      ["More bandwidth", request.needsMoreBandwidth],
-      ["More products", request.needsMoreProducts],
-      ["QR Codes", request.needsQr],
-      ["Embed Viewer", request.needsEmbed],
-      ["Share Links", request.needsShare],
-      ["AR Experience", request.needsAr],
-      ["Custom branding", request.needsCustomBranding],
-      ["Advanced analytics", request.needsAnalytics],
-      ["Team members", request.needsTeamMembers],
-      ["Dedicated infrastructure", request.needsDedicatedInfrastructure],
-      ["Priority support", request.needsPrioritySupport],
-      ["SLA", request.needsSla],
-    ] as const;
+    return REQUIREMENT_FLAGS.map((item) => [item.label, request[item.key]] as const);
   }, [request]);
+
+  function beginEditRequirements() {
+    if (!request) return;
+    setRequirementsForm(requirementsFormFromRequest(request));
+    setEditingRequirements(true);
+  }
+
+  function cancelEditRequirements() {
+    setEditingRequirements(false);
+    setRequirementsForm(null);
+  }
+
+  async function saveRequirements() {
+    if (!requirementsForm) return;
+    const ok = await mutate(
+      "requirements",
+      "PATCH",
+      {
+        expectedProducts: requirementsForm.expectedProducts.trim() || null,
+        expectedStorageGb: requirementsForm.expectedStorageGb.trim() || null,
+        expectedMonthlyBandwidthGb: requirementsForm.expectedMonthlyBandwidthGb.trim() || null,
+        additionalRequirements: requirementsForm.additionalRequirements.trim() || null,
+        needsMoreStorage: requirementsForm.needsMoreStorage,
+        needsMoreBandwidth: requirementsForm.needsMoreBandwidth,
+        needsMoreProducts: requirementsForm.needsMoreProducts,
+        needsQr: requirementsForm.needsQr,
+        needsEmbed: requirementsForm.needsEmbed,
+        needsShare: requirementsForm.needsShare,
+        needsAr: requirementsForm.needsAr,
+        needsCustomBranding: requirementsForm.needsCustomBranding,
+        needsAnalytics: requirementsForm.needsAnalytics,
+        needsTeamMembers: requirementsForm.needsTeamMembers,
+        needsDedicatedInfrastructure: requirementsForm.needsDedicatedInfrastructure,
+        needsPrioritySupport: requirementsForm.needsPrioritySupport,
+        needsSla: requirementsForm.needsSla,
+      },
+      "Capacity & requirements updated.",
+    );
+    if (ok) {
+      setEditingRequirements(false);
+      setRequirementsForm(null);
+    }
+  }
 
   const finalQuote = useMemo(() => {
     if (!request?.quotes?.length) return null;
@@ -522,34 +623,32 @@ export default function EnterpriseRequestDetailPage() {
   const composeDefaults = useMemo<ComposeMailDefaults | null>(() => {
     if (!request) return null;
     const pendingLink = request.payments.find((payment) => payment.paymentLink && payment.status === "pending");
+    const quoteAttachments = request.quotes.map((quote) => ({
+      id: `quote:${quote.quoteUid}`,
+      kind: "quote" as const,
+      label: `${quote.quoteNumber} v${quote.version} · ${formatMoney(quote.pricePaise)}`,
+      requestUid: request.requestUid,
+      quoteUid: quote.quoteUid,
+    }));
+    const invoiceAttachments = request.payments
+      .filter((payment) => payment.invoiceUid)
+      .map((payment) => ({
+        id: `invoice:${payment.paymentUid}`,
+        kind: "invoice" as const,
+        label: `Invoice ${payment.invoiceNumber || payment.invoiceUid} · ${formatMoney(payment.amountPaise)}`,
+        requestUid: request.requestUid,
+        paymentUid: payment.paymentUid,
+      }));
     return {
       to: request.businessEmail,
       phone: request.phone,
       requestUid: request.requestUid,
       customerUid: request.billSummary?.customerUid || null,
-      subject: finalQuote
-        ? `AR360 Enterprise — ${finalQuote.quoteNumber}`
-        : `AR360 Enterprise — ${request.companyName}`,
-      text: `Hello ${request.contactName},\n\nSharing an update on your AR360 Enterprise plan for ${request.companyName}.\n\nRegards,\nAR360 Team`,
+      subject: buildEnterpriseComposeMailSubject(request, finalQuote),
+      text: buildEnterpriseComposeMailText(request, finalQuote),
       paymentLink: pendingLink?.paymentLink || "",
-      attachments: [
-        ...request.quotes.map((quote) => ({
-          id: `quote:${quote.quoteUid}`,
-          kind: "quote" as const,
-          label: `${quote.quoteNumber} v${quote.version} · ${formatMoney(quote.pricePaise)}`,
-          requestUid: request.requestUid,
-          quoteUid: quote.quoteUid,
-        })),
-        ...request.payments
-          .filter((payment) => payment.invoiceUid)
-          .map((payment) => ({
-            id: `invoice:${payment.paymentUid}`,
-            kind: "invoice" as const,
-            label: `Invoice ${payment.invoiceNumber || payment.invoiceUid} · ${formatMoney(payment.amountPaise)}`,
-            requestUid: request.requestUid,
-            paymentUid: payment.paymentUid,
-          })),
-      ],
+      selectedAttachmentIds: finalQuote ? [`quote:${finalQuote.quoteUid}`] : [],
+      attachments: [...quoteAttachments, ...invoiceAttachments],
     };
   }, [request, finalQuote]);
 
@@ -557,82 +656,102 @@ export default function EnterpriseRequestDetailPage() {
 
   if (!request) {
     return (
-      <div className="master-admin-panel">
+      <div className="master-admin-panel dash-premium animate-dash-fade-in">
         <AdminActionMessage message={error || "Enterprise request not found"} variant="error" />
       </div>
     );
   }
 
   return (
-    <div className="master-admin-panel space-y-5">
+    <div className="master-admin-panel dash-premium animate-dash-fade-in flex min-h-0 flex-1 flex-col gap-3 pb-10">
+      <div className="flex flex-wrap items-center gap-2">
+        <Link
+          href="/master-admin/enterprise-requests"
+          className="inline-flex h-9 items-center gap-1.5 rounded-[12px] border border-[#ECECEC] bg-white px-3 text-[12px] font-semibold text-[#374151] transition hover:border-[#D4D4D4]"
+        >
+          <ArrowLeft size={14} />
+          Back to queue
+        </Link>
+        <nav className="flex items-center gap-1.5 text-[12px] font-semibold text-[#9CA3AF]">
+          <Link href="/master-admin/enterprise-requests" className="hover:text-[#6B7280]">
+            Enterprise
+          </Link>
+          <span>/</span>
+          <span className="text-[#374151]">{request.companyName}</span>
+        </nav>
+      </div>
+
       <AdminPageHeader
         title={request.companyName}
         subtitle={`${request.requestUid} · Submitted ${formatDate(request.createdAt)}`}
-        actions={
-          <Link
-            href="/master-admin/enterprise-requests"
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-[13px] font-bold text-slate-700"
-          >
-            <ArrowLeft size={16} />
-            Back to queue
-          </Link>
-        }
       />
 
       {error ? <AdminActionMessage message={error} variant="error" /> : null}
       {message ? <AdminActionMessage message={message} variant="success" /> : null}
 
-      <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
+      <EnterpriseFulfillWizard
+        request={request}
+        assignees={assignees}
+        customPlans={customPlans}
+        canManage={canManage}
+        saving={saving}
+        onMutate={mutate}
+        onRefresh={async () => {
+          await load();
+        }}
+        onError={(text) => {
+          setError(text);
+          setMessage("");
+        }}
+        onSuccess={(text) => {
+          setMessage(text);
+          setError("");
+        }}
+        onComposeMail={() => setComposeOpen(true)}
+        lifecycleAction={lifecycleAction}
+        lifecycleReason={lifecycleReason}
+        onLifecycleActionChange={(action) => {
+          setLifecycleAction(action);
+          setLifecycleReason("");
+          setError("");
+        }}
+        onLifecycleReasonChange={setLifecycleReason}
+        onConfirmLifecycle={() => void confirmLifecycleAction()}
+      />
+
+      <section className="dash-premium-card p-4 md:p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <span className="inline-flex rounded-full bg-[#F0FBD9] px-3 py-1 text-[11px] font-black text-[#4D8C00]">
+            <span className="inline-flex rounded-full bg-lime-50 px-3 py-1 text-[11px] font-bold text-[#5AA700]">
               {request.statusLabel}
             </span>
-            <p className="mt-2 text-[12px] font-semibold text-slate-500">
+            <p className="mt-2 text-[12px] font-semibold text-[#6B7280]">
               Assigned to {request.assignedAdminName || "nobody"}
+              <span className="text-[#9CA3AF]"> · change owner in Contact step above</span>
             </p>
           </div>
           {canManage ? (
             <div className="flex flex-wrap items-end gap-3">
-              <label className="text-[11px] font-bold text-slate-500">
-                Assignment
-                <AdminSelect
-                  value={selectedAssignee}
-                  onChange={(event) => setSelectedAssignee(event.target.value)}
-                  className="mt-1 block min-w-[190px]"
-                >
-                  <option value="">Unassigned</option>
-                  {assignees.map((admin) => (
-                    <option key={admin.id} value={admin.id}>{admin.name}</option>
-                  ))}
-                </AdminSelect>
-              </label>
-              <AdminButton
-                disabled={saving}
-                onClick={() =>
-                  void mutate(
-                    "assignment",
-                    "PATCH",
-                    { assignedAdminId: selectedAssignee || null },
-                    "Assignment updated.",
-                  )
+              <UserFilterDropdown
+                compact
+                className="min-w-[170px]"
+                menuWidth={200}
+                label="Next status"
+                menuTitle="Next status"
+                value={selectedStatus || "none"}
+                options={["none", ...NEXT_STATUSES[request.status]]}
+                onChange={(value) => setSelectedStatus(value === "none" ? "" : value)}
+                renderOption={(value) =>
+                  value === "none"
+                    ? "Select status"
+                    : ENTERPRISE_STATUS_LABELS[value as keyof typeof ENTERPRISE_STATUS_LABELS] || value
                 }
-              >
-                Save assignment
-              </AdminButton>
-              <label className="text-[11px] font-bold text-slate-500">
-                Next status
-                <AdminSelect
-                  value={selectedStatus}
-                  onChange={(event) => setSelectedStatus(event.target.value)}
-                  className="mt-1 block min-w-[170px]"
-                >
-                  <option value="">Select status</option>
-                  {NEXT_STATUSES[request.status].map((status) => (
-                    <option key={status} value={status}>{ENTERPRISE_STATUS_LABELS[status]}</option>
-                  ))}
-                </AdminSelect>
-              </label>
+                renderValue={(value) =>
+                  value === "none"
+                    ? "Select status"
+                    : ENTERPRISE_STATUS_LABELS[value as keyof typeof ENTERPRISE_STATUS_LABELS] || value
+                }
+              />
               <AdminButton
                 variant="primary"
                 disabled={saving || !selectedStatus}
@@ -652,10 +771,10 @@ export default function EnterpriseRequestDetailPage() {
         </div>
       </section>
 
-      <div className="grid gap-5 xl:grid-cols-3">
-        <div className="space-y-5 xl:col-span-2">
+      <div className="grid gap-3 xl:grid-cols-3">
+        <div className="space-y-3 xl:col-span-2">
           <Section id="billing-snapshot" title="Deal billing snapshot" icon={CreditCard}>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+            <div className="rounded-[14px] border border-[#ECECEC] bg-[#FAFAFB] p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Final quote</p>
@@ -675,7 +794,7 @@ export default function EnterpriseRequestDetailPage() {
                       </p>
                     </>
                   ) : (
-                    <p className="mt-1 text-sm font-semibold text-slate-500">No quote yet — create one from the sidebar.</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-500">No quote yet — use the Fulfill wizard Quote step.</p>
                   )}
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -692,34 +811,39 @@ export default function EnterpriseRequestDetailPage() {
               </div>
 
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-xl bg-white p-3 shadow-sm">
-                  <p className="text-[10px] font-bold uppercase text-slate-400">Bill total</p>
-                  <p className="mt-1 text-xl font-black text-slate-950">{formatMoney(request.billSummary?.totalPaise || 0)}</p>
-                </div>
-                <div className="rounded-xl bg-white p-3 shadow-sm">
-                  <p className="text-[10px] font-bold uppercase text-slate-400">Paid aaya</p>
-                  <p className="mt-1 text-xl font-black text-emerald-700">{formatMoney(request.billSummary?.paidPaise || 0)}</p>
-                  <p className="text-[11px] font-semibold text-slate-500">{invoiceStats.paidCount} installment(s) paid</p>
-                </div>
-                <div className="rounded-xl bg-white p-3 shadow-sm">
-                  <p className="text-[10px] font-bold uppercase text-slate-400">Pending / remaining</p>
-                  <p className="mt-1 text-xl font-black text-amber-700">{formatMoney(request.billSummary?.remainingPaise || 0)}</p>
-                  <p className="text-[11px] font-semibold text-slate-500">{invoiceStats.pendingCount} pending installment(s)</p>
-                </div>
+                <AdminMetricCard
+                  title="Bill total"
+                  value={formatMoney(request.billSummary?.totalPaise || 0)}
+                  layout="compact"
+                />
+                <AdminMetricCard
+                  title="Paid aaya"
+                  value={formatMoney(request.billSummary?.paidPaise || 0)}
+                  note={`${invoiceStats.paidCount} installment(s) paid`}
+                  layout="compact"
+                  changeTone="positive"
+                />
+                <AdminMetricCard
+                  title="Pending / remaining"
+                  value={formatMoney(request.billSummary?.remainingPaise || 0)}
+                  note={`${invoiceStats.pendingCount} pending installment(s)`}
+                  layout="compact"
+                  changeTone="negative"
+                />
               </div>
 
               <div className="mt-4">
-                <div className="mb-1 flex items-center justify-between text-[11px] font-bold text-slate-500">
+                <div className="mb-1 flex items-center justify-between text-[11px] font-bold text-[#6B7280]">
                   <span>Collection progress</span>
                   <span>{paidPercent}%</span>
                 </div>
-                <div className="h-3 overflow-hidden rounded-full bg-slate-200">
-                  <div className="h-full rounded-full bg-[#7BC800] transition-all" style={{ width: `${paidPercent}%` }} />
+                <div className="h-2 overflow-hidden rounded-full bg-[#F3F4F6]">
+                  <div className="dash-progress-bar h-full rounded-full bg-[#84D400]" style={{ width: `${paidPercent}%` }} />
                 </div>
               </div>
 
               <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] font-semibold text-slate-700">
+                <div className="rounded-[14px] border border-[#ECECEC] bg-white px-3 py-2 text-[12px] font-semibold text-[#374151]">
                   Invoices: <span className="font-black text-slate-950">{invoiceStats.withInvoice}</span> ban chuke
                   {invoiceStats.missingInvoice > 0 ? (
                     <span className="text-amber-700"> · {invoiceStats.missingInvoice} pending</span>
@@ -727,7 +851,7 @@ export default function EnterpriseRequestDetailPage() {
                     <span className="text-emerald-700"> · sab ready</span>
                   )}
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] font-semibold text-slate-700">
+                <div className="rounded-[14px] border border-[#ECECEC] bg-white px-3 py-2 text-[12px] font-semibold text-[#374151]">
                   Quotes diya: <span className="font-black text-slate-950">{request.quotes.length}</span>
                   {finalQuote ? (
                     <span> · last final = <span className="font-black">v{finalQuote.version}</span></span>
@@ -765,7 +889,7 @@ export default function EnterpriseRequestDetailPage() {
                     )}
                     <Link
                       href={`/master-admin/customers/${encodeURIComponent(request.billSummary.customerUid)}/billing`}
-                      className="inline-flex h-10 items-center rounded-xl border border-slate-200 bg-white px-3 text-[11px] font-bold"
+                      className="dash-premium-btn-secondary inline-flex h-10 items-center px-3 text-[11px]"
                     >
                       Customer billing
                     </Link>
@@ -847,7 +971,14 @@ export default function EnterpriseRequestDetailPage() {
                       {request.quotes.map((quote) => {
                         const isFinal = finalQuote?.quoteUid === quote.quoteUid;
                         return (
-                          <tr key={quote.quoteUid} className={`border-t border-slate-100 ${isFinal ? "bg-[#F7FCE8]" : "bg-white"}`}>
+                          <tr
+                            key={quote.quoteUid}
+                            className={`border-t border-slate-100 transition ${
+                              isFinal
+                                ? "admin-table-row--accent bg-[#F7FCE8]"
+                                : "bg-white"
+                            }`}
+                          >
                             <td className="px-3 py-2.5">
                               <p className="font-black text-slate-900">
                                 {quote.quoteNumber} · v{quote.version}
@@ -954,17 +1085,19 @@ export default function EnterpriseRequestDetailPage() {
                   ) : "—"
                 }
               />
+              <Field label="Address" value={request.address || "—"} />
               <Field label="Country" value={request.country} />
+              <Field label="State" value={request.state || "—"} />
               <Field label="Industry" value={request.industry} />
               <Field label="Source" value={request.source} />
               <Field
-                label="Customer ID"
-                value={request.customerId ? (
+                label="Customer"
+                value={request.billSummary?.customerUid ? (
                   <Link
-                    href={`/master-admin/customers/${encodeURIComponent(request.customerId)}`}
+                    href={`/master-admin/customers/${encodeURIComponent(request.billSummary.customerUid)}`}
                     className="font-bold text-[#4D8C00] hover:underline"
                   >
-                    {request.customerId}
+                    {request.billSummary.customerUid}
                   </Link>
                 ) : canManage ? (
                     <button
@@ -988,36 +1121,171 @@ export default function EnterpriseRequestDetailPage() {
             </div>
           </Section>
 
-          <Section title="Capacity & requirements" icon={ClipboardList}>
-            <div className="grid gap-4 sm:grid-cols-3">
-              <Field label="Expected products" value={request.expectedProducts} />
-              <Field label="Expected storage" value={request.expectedStorageGb == null ? "—" : `${request.expectedStorageGb} GB`} />
-              <Field
-                label="Monthly bandwidth"
-                value={request.expectedMonthlyBandwidthGb == null ? "—" : `${request.expectedMonthlyBandwidthGb} GB`}
-              />
-            </div>
-            <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              {requirements.map(([label, enabled]) => (
-                <div
-                  key={label}
-                  className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-[12px] font-bold ${
-                    enabled
-                      ? "border-lime-200 bg-lime-50 text-lime-800"
-                      : "border-slate-100 bg-slate-50 text-slate-400"
-                  }`}
-                >
-                  <Check size={14} className={enabled ? "" : "opacity-30"} />
-                  {label}
+          <Section
+            title="Capacity & requirements"
+            icon={ClipboardList}
+            action={
+              canManage ? (
+                editingRequirements ? (
+                  <>
+                    <AdminButton disabled={saving} onClick={cancelEditRequirements}>
+                      <span className="inline-flex items-center gap-1.5"><X size={14} /> Cancel</span>
+                    </AdminButton>
+                    <AdminButton
+                      variant="primary"
+                      disabled={saving || !requirementsForm}
+                      onClick={() => void saveRequirements()}
+                    >
+                      {saving ? "Saving…" : "Save changes"}
+                    </AdminButton>
+                  </>
+                ) : (
+                  <AdminButton disabled={saving} onClick={beginEditRequirements}>
+                    <span className="inline-flex items-center gap-1.5"><Edit3 size={14} /> Edit</span>
+                  </AdminButton>
+                )
+              ) : null
+            }
+          >
+            {editingRequirements && requirementsForm ? (
+              <div className="space-y-5">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                    Expected products
+                    <AdminInput
+                      className="mt-1.5 w-full"
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={requirementsForm.expectedProducts}
+                      onChange={(event) =>
+                        setRequirementsForm((current) =>
+                          current ? { ...current, expectedProducts: event.target.value } : current,
+                        )
+                      }
+                      placeholder="e.g. 500"
+                    />
+                  </label>
+                  <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                    Expected storage (GB)
+                    <AdminInput
+                      className="mt-1.5 w-full"
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={requirementsForm.expectedStorageGb}
+                      onChange={(event) =>
+                        setRequirementsForm((current) =>
+                          current ? { ...current, expectedStorageGb: event.target.value } : current,
+                        )
+                      }
+                      placeholder="e.g. 200"
+                    />
+                  </label>
+                  <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                    Monthly bandwidth (GB)
+                    <AdminInput
+                      className="mt-1.5 w-full"
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={requirementsForm.expectedMonthlyBandwidthGb}
+                      onChange={(event) =>
+                        setRequirementsForm((current) =>
+                          current
+                            ? { ...current, expectedMonthlyBandwidthGb: event.target.value }
+                            : current,
+                        )
+                      }
+                      placeholder="e.g. 1000"
+                    />
+                  </label>
                 </div>
-              ))}
-            </div>
-            <div className="mt-5 rounded-xl bg-slate-50 p-4">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Additional requirements</p>
-              <p className="mt-2 whitespace-pre-wrap text-[13px] leading-6 text-slate-700">
-                {request.additionalRequirements || "No additional requirements supplied."}
-              </p>
-            </div>
+
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  {REQUIREMENT_FLAGS.map((item) => {
+                    const enabled = requirementsForm[item.key];
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() =>
+                          setRequirementsForm((current) =>
+                            current ? { ...current, [item.key]: !current[item.key] } : current,
+                          )
+                        }
+                        className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-left text-[12px] font-bold transition ${
+                          enabled
+                            ? "border-lime-200 bg-lime-50 text-lime-800"
+                            : "border-slate-100 bg-slate-50 text-slate-400 hover:border-slate-200"
+                        }`}
+                      >
+                        <Check size={14} className={enabled ? "" : "opacity-30"} />
+                        {item.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                  Additional requirements
+                  <textarea
+                    className="mt-1.5 min-h-[100px] w-full resize-y rounded-xl border border-slate-200 bg-white p-3 text-[13px] font-semibold text-slate-800 outline-none focus:border-[#84D400]"
+                    value={requirementsForm.additionalRequirements}
+                    onChange={(event) =>
+                      setRequirementsForm((current) =>
+                        current
+                          ? { ...current, additionalRequirements: event.target.value }
+                          : current,
+                      )
+                    }
+                    placeholder="Security, SSO, timeline, deployment…"
+                    maxLength={10000}
+                  />
+                </label>
+              </div>
+            ) : (
+              <>
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <Field label="Expected products" value={request.expectedProducts} />
+                  <Field
+                    label="Expected storage"
+                    value={request.expectedStorageGb == null ? "—" : `${request.expectedStorageGb} GB`}
+                  />
+                  <Field
+                    label="Monthly bandwidth"
+                    value={
+                      request.expectedMonthlyBandwidthGb == null
+                        ? "—"
+                        : `${request.expectedMonthlyBandwidthGb} GB`
+                    }
+                  />
+                </div>
+                <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  {requirements.map(([label, enabled]) => (
+                    <div
+                      key={label}
+                      className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-[12px] font-bold ${
+                        enabled
+                          ? "border-lime-200 bg-lime-50 text-lime-800"
+                          : "border-slate-100 bg-slate-50 text-slate-400"
+                      }`}
+                    >
+                      <Check size={14} className={enabled ? "" : "opacity-30"} />
+                      {label}
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-5 rounded-xl bg-slate-50 p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                    Additional requirements
+                  </p>
+                  <p className="mt-2 whitespace-pre-wrap text-[13px] leading-6 text-slate-700">
+                    {request.additionalRequirements || "No additional requirements supplied."}
+                  </p>
+                </div>
+              </>
+            )}
           </Section>
 
           <Section title="Internal notes & timeline" icon={CalendarDays}>
@@ -1048,16 +1316,19 @@ export default function EnterpriseRequestDetailPage() {
                 <p className="text-[12px] font-semibold text-slate-400">No timeline entries yet.</p>
               ) : (
                 request.notes.map((entry) => (
-                  <div key={entry.noteUid} className="border-l-2 border-lime-300 pl-4">
+                  <div
+                    key={entry.noteUid}
+                    className="dash-activity-row rounded-[14px] border border-[#ECECEC] bg-[#FAFAFB] px-3 py-2.5"
+                  >
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-500">
+                      <span className="rounded bg-white px-2 py-0.5 text-[10px] font-bold uppercase text-[#6B7280]">
                         {entry.eventType.replace("_", " ")}
                       </span>
-                      <span className="text-[11px] font-semibold text-slate-400">
+                      <span className="text-[11px] font-semibold text-[#9CA3AF]">
                         {entry.adminName || "System"} · {formatDate(entry.createdAt)}
                       </span>
                     </div>
-                    <p className="mt-1 whitespace-pre-wrap text-[13px] text-slate-700">{entry.body}</p>
+                    <p className="mt-1 whitespace-pre-wrap text-[13px] text-[#374151]">{entry.body}</p>
                   </div>
                 ))
               )}
@@ -1074,10 +1345,10 @@ export default function EnterpriseRequestDetailPage() {
               >
                 <span className="inline-flex items-center gap-2"><Mail size={15} /> Compose mail / attach quote</span>
               </AdminButton>
-              <a href={`mailto:${request.businessEmail}`} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-[12px] font-bold text-slate-700">
+              <a href={`mailto:${request.businessEmail}`} className="dash-activity-row flex items-center gap-2 rounded-[14px] border border-[#ECECEC] bg-[#FAFAFB] px-3 py-2.5 text-[12px] font-semibold text-[#111827]">
                 <Mail size={15} /> Open mail app
               </a>
-              <a href={`tel:${request.phone}`} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-[12px] font-bold text-slate-700">
+              <a href={`tel:${request.phone}`} className="dash-activity-row flex items-center gap-2 rounded-[14px] border border-[#ECECEC] bg-[#FAFAFB] px-3 py-2.5 text-[12px] font-semibold text-[#111827]">
                 <Phone size={15} /> Call contact
               </a>
               {request.phone ? (
@@ -1085,7 +1356,7 @@ export default function EnterpriseRequestDetailPage() {
                   href={`https://wa.me/${String(request.phone).replace(/\D/g, "").length === 10 ? "91" : ""}${String(request.phone).replace(/\D/g, "")}?text=${encodeURIComponent(`Hello ${request.contactName}, regarding your AR360 Enterprise plan.`)}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-[12px] font-bold text-slate-700"
+                  className="dash-activity-row flex items-center gap-2 rounded-[14px] border border-[#ECECEC] bg-[#FAFAFB] px-3 py-2.5 text-[12px] font-semibold text-[#111827]"
                 >
                   WhatsApp contact
                 </a>
@@ -1093,6 +1364,40 @@ export default function EnterpriseRequestDetailPage() {
             </div>
           </Section>
 
+          <Section id="contracts" title={`Contracts (${request.contracts.length})`} icon={FileSignature}>
+            {request.contracts.length === 0 ? (
+              <p className="text-[12px] leading-5 text-slate-500">
+                Pehli paid installment ke baad contract yahan dikhega.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {request.contracts.map((contract) => (
+                  <div key={contract.contractUid} className="rounded-xl border border-slate-200 p-3">
+                    <p className="text-[12px] font-black">{contract.contractUid}</p>
+                    <p className="text-[11px] text-slate-500">{contract.startsOn} → {contract.expiresOn}</p>
+                    <div className="mt-2"><StatusPill label={contract.status} tone={contract.status === "active" ? "good" : "neutral"} /></div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Section>
+
+          <section className="dash-premium-card p-4 md:p-5">
+            <button
+              type="button"
+              onClick={() => setShowAdvancedFulfill((value) => !value)}
+              className="flex w-full items-center justify-between gap-2 text-left"
+            >
+              <div>
+                <h2 className="text-[14px] font-bold text-[#111827]">Advanced</h2>
+                <p className="mt-0.5 text-[11px] font-semibold text-slate-500">
+                  Legacy plan templates, quote versions, and raw installment form
+                </p>
+              </div>
+              {showAdvancedFulfill ? <ChevronDown size={18} className="text-slate-400" /> : <ChevronRight size={18} className="text-slate-400" />}
+            </button>
+            {showAdvancedFulfill ? (
+              <div className="mt-4 space-y-5 border-t border-[#ECECEC] pt-4">
           <Section title="Plan templates" icon={Plus}>
             <p className="mb-3 text-[12px] leading-5 text-slate-500">
               <strong>Reusable custom plans</strong> = saved templates (price + limits + features) jo aap multiple Enterprise deals pe dubara use kar sakte ho.
@@ -1126,9 +1431,19 @@ export default function EnterpriseRequestDetailPage() {
               <div className="mt-4 grid gap-2">
                 <AdminInput placeholder="Plan name" value={planForm.name} onChange={(event) => setPlanForm({ ...planForm, name: event.target.value })} />
                 <div className="grid grid-cols-2 gap-2">
-                  <AdminSelect value={planForm.billingCycle} onChange={(event) => setPlanForm({ ...planForm, billingCycle: event.target.value })}>
-                    <option value="monthly">Monthly</option><option value="yearly">Yearly</option>
-                  </AdminSelect>
+                  <UserFilterDropdown
+                    hideLabel
+                    compact
+                    className="w-full"
+                    menuWidth={180}
+                    label="Billing cycle"
+                    menuTitle="Billing cycle"
+                    value={planForm.billingCycle}
+                    options={["monthly", "yearly"]}
+                    onChange={(value) => setPlanForm({ ...planForm, billingCycle: value })}
+                    renderOption={(value) => (value === "yearly" ? "Yearly" : "Monthly")}
+                    renderValue={(value) => (value === "yearly" ? "Yearly" : "Monthly")}
+                  />
                   <AdminInput type="number" min="0.01" step="0.01" placeholder="Price (₹)" value={planForm.price} onChange={(event) => setPlanForm({ ...planForm, price: event.target.value })} />
                   <AdminInput type="number" min="0" placeholder="Storage (GB)" value={planForm.storageGb} onChange={(event) => setPlanForm({ ...planForm, storageGb: event.target.value })} />
                   <AdminInput type="number" min="0" placeholder="Bandwidth (GB)" value={planForm.bandwidthGb} onChange={(event) => setPlanForm({ ...planForm, bandwidthGb: event.target.value })} />
@@ -1193,12 +1508,41 @@ export default function EnterpriseRequestDetailPage() {
                 </AdminButton>
                 {showQuoteForm ? (
               <div className="mt-4 grid gap-2">
-                <AdminSelect value={quoteForm.customPlanUid} onChange={(event) => choosePlan(event.target.value)}>
-                  <option value="">Select active custom plan</option>
-                  {customPlans.filter((plan) => plan.isActive).map((plan) => <option key={plan.customPlanUid} value={plan.customPlanUid}>{plan.name}</option>)}
-                </AdminSelect>
+                <UserFilterDropdown
+                  hideLabel
+                  compact
+                  className="w-full"
+                  menuWidth={280}
+                  label="Custom plan"
+                  menuTitle="Custom plan"
+                  value={quoteForm.customPlanUid || "none"}
+                  options={["none", ...customPlans.filter((plan) => plan.isActive).map((plan) => plan.customPlanUid)]}
+                  onChange={(value) => choosePlan(value === "none" ? "" : value)}
+                  renderOption={(value) =>
+                    value === "none"
+                      ? "Select active custom plan"
+                      : customPlans.find((plan) => plan.customPlanUid === value)?.name || value
+                  }
+                  renderValue={(value) =>
+                    value === "none"
+                      ? "Select active custom plan"
+                      : customPlans.find((plan) => plan.customPlanUid === value)?.name || value
+                  }
+                />
                 <div className="grid grid-cols-2 gap-2">
-                  <AdminSelect value={quoteForm.billingCycle} onChange={(event) => setQuoteForm({ ...quoteForm, billingCycle: event.target.value })}><option value="monthly">Monthly</option><option value="yearly">Yearly</option></AdminSelect>
+                  <UserFilterDropdown
+                    hideLabel
+                    compact
+                    className="w-full"
+                    menuWidth={180}
+                    label="Billing cycle"
+                    menuTitle="Billing cycle"
+                    value={quoteForm.billingCycle}
+                    options={["monthly", "yearly"]}
+                    onChange={(value) => setQuoteForm({ ...quoteForm, billingCycle: value })}
+                    renderOption={(value) => (value === "yearly" ? "Yearly" : "Monthly")}
+                    renderValue={(value) => (value === "yearly" ? "Yearly" : "Monthly")}
+                  />
                   <AdminInput type="number" min="0.01" step="0.01" placeholder="Quote price (₹)" value={quoteForm.price} onChange={(event) => setQuoteForm({ ...quoteForm, price: event.target.value })} />
                 </div>
                 <AdminInput type="date" value={quoteForm.validUntil} onChange={(event) => setQuoteForm({ ...quoteForm, validUntil: event.target.value })} />
@@ -1269,14 +1613,38 @@ export default function EnterpriseRequestDetailPage() {
                     </label>
                   ))}
                 </div>
-                <AdminSelect value={paymentForm.quoteUid} onChange={(event) => {
-                  const quote = request.quotes.find((item) => item.quoteUid === event.target.value);
-                  const remaining = quote?.remainingPaise ?? quote?.pricePaise ?? 0;
-                  setPaymentForm({ ...paymentForm, quoteUid: event.target.value, amount: remaining ? String(remaining / 100) : "" });
-                }}>
-                  <option value="">Select quote (prefer FINAL)</option>
-                  {request.quotes.map((quote) => <option key={quote.quoteUid} value={quote.quoteUid}>{quote.quoteNumber} v{quote.version}{finalQuote?.quoteUid === quote.quoteUid ? " · FINAL" : ""} · rem {formatMoney(quote.remainingPaise)}</option>)}
-                </AdminSelect>
+                <UserFilterDropdown
+                  hideLabel
+                  compact
+                  className="w-full"
+                  menuWidth={320}
+                  label="Quote"
+                  menuTitle="Quote"
+                  value={paymentForm.quoteUid || "none"}
+                  options={["none", ...request.quotes.map((quote) => quote.quoteUid)]}
+                  onChange={(value) => {
+                    const nextUid = value === "none" ? "" : value;
+                    const quote = request.quotes.find((item) => item.quoteUid === nextUid);
+                    const remaining = quote?.remainingPaise ?? quote?.pricePaise ?? 0;
+                    setPaymentForm({
+                      ...paymentForm,
+                      quoteUid: nextUid,
+                      amount: remaining ? String(remaining / 100) : "",
+                    });
+                  }}
+                  renderOption={(value) => {
+                    if (value === "none") return "Select quote (prefer FINAL)";
+                    const quote = request.quotes.find((item) => item.quoteUid === value);
+                    if (!quote) return value;
+                    return `${quote.quoteNumber} v${quote.version}${finalQuote?.quoteUid === quote.quoteUid ? " · FINAL" : ""} · rem ${formatMoney(quote.remainingPaise)}`;
+                  }}
+                  renderValue={(value) => {
+                    if (value === "none") return "Select quote (prefer FINAL)";
+                    const quote = request.quotes.find((item) => item.quoteUid === value);
+                    if (!quote) return value;
+                    return `${quote.quoteNumber} v${quote.version}${finalQuote?.quoteUid === quote.quoteUid ? " · FINAL" : ""}`;
+                  }}
+                />
                 <div className="grid grid-cols-2 gap-2">
                   <AdminInput type="number" min="0.01" step="0.01" placeholder="Installment amount (₹)" value={paymentForm.amount} onChange={(event) => setPaymentForm({ ...paymentForm, amount: event.target.value })} />
                   <AdminInput type="date" placeholder="Due date" value={paymentForm.dueAt} onChange={(event) => setPaymentForm({ ...paymentForm, dueAt: event.target.value })} />
@@ -1331,24 +1699,9 @@ export default function EnterpriseRequestDetailPage() {
               <p className="text-[12px] text-slate-500">You do not have permission to record payments.</p>
             )}
           </Section>
-
-          <Section id="contracts" title={`Contracts (${request.contracts.length})`} icon={FileSignature}>
-            {request.contracts.length === 0 ? (
-              <p className="text-[12px] leading-5 text-slate-500">
-                Pehli paid installment ke baad contract yahan dikhega.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {request.contracts.map((contract) => (
-                  <div key={contract.contractUid} className="rounded-xl border border-slate-200 p-3">
-                    <p className="text-[12px] font-black">{contract.contractUid}</p>
-                    <p className="text-[11px] text-slate-500">{contract.startsOn} → {contract.expiresOn}</p>
-                    <div className="mt-2"><StatusPill label={contract.status} tone={contract.status === "active" ? "good" : "neutral"} /></div>
-                  </div>
-                ))}
               </div>
-            )}
-          </Section>
+            ) : null}
+          </section>
         </div>
       </div>
 

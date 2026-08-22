@@ -25,8 +25,6 @@ import OrphanScanModal, { type OrphanFolder } from "@/components/features/master
 import { AdminActionMessage, AdminPagination } from "@/components/ui/admin";
 import { type PaginationMeta } from "@/lib/master-admin/pagination";
 import {
-  PLATFORM_BANDWIDTH_TB,
-  PLATFORM_STORAGE_TB,
   fmtDateShort,
   fmtFileSize,
   fmtStorageFromMb,
@@ -60,6 +58,14 @@ type Summary = {
   storageTrend?: string;
   bandwidthTrend?: string;
   growthDays?: number;
+  liveSource?: "hostinger_api" | "vps_disk" | "unavailable";
+  liveHostname?: string | null;
+  liveVmId?: string | null;
+  livePlan?: string | null;
+  liveSampledAt?: string | null;
+  liveNotes?: string[];
+  customerStorageTb?: number;
+  customerBandwidthTb?: number;
 };
 
 type TopUser = {
@@ -387,7 +393,7 @@ export default function StoragePage() {
         <div className="min-w-0 flex-1 space-y-5">
           <AdminPageHeader
             title="Storage Manager"
-            subtitle="Monitor and manage storage usage, files and bandwidth."
+            subtitle="Live Hostinger/VPS disk & bandwidth, plus per-customer storage usage."
             actions={
               <>
                 <div className="flex max-w-full items-stretch gap-2">
@@ -438,15 +444,50 @@ export default function StoragePage() {
           />
 
           {message ? (
-            <AdminActionMessage message={message} variant={message.toLowerCase().includes("fail") ? "error" : "success"} />
+            <AdminActionMessage
+              message={message}
+              variant={
+                message.toLowerCase().includes("fail") && !message.toLowerCase().includes("showing live")
+                  ? "error"
+                  : message.toLowerCase().includes("showing live") || message.toLowerCase().includes("partial")
+                    ? "success"
+                    : message.toLowerCase().includes("unable")
+                      ? "error"
+                      : "success"
+              }
+            />
+          ) : null}
+
+          {summary ? (
+            <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-emerald-200/80 bg-emerald-50/70 px-4 py-3 text-[12px] font-semibold text-emerald-900">
+              <span className="inline-flex items-center rounded-full bg-[#A6FF2E] px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-slate-950">
+                {summary.liveSource === "hostinger_api"
+                  ? "Hostinger API live"
+                  : summary.liveSource === "vps_disk"
+                    ? "VPS disk live"
+                    : "Live unavailable"}
+              </span>
+              <span>
+                {summary.liveHostname ? `${summary.liveHostname}` : "Server"}
+                {summary.livePlan ? ` · ${summary.livePlan}` : ""}
+                {summary.liveSampledAt
+                  ? ` · updated ${new Date(summary.liveSampledAt).toLocaleString("en-IN")}`
+                  : ""}
+              </span>
+              {summary.liveNotes?.[0] ? (
+                <span className="w-full text-[11px] font-medium text-emerald-800/80 sm:w-auto">
+                  {summary.liveNotes[0]}
+                </span>
+              ) : null}
+            </div>
           ) : null}
 
           <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
             {[
               {
                 title: "Total Storage",
-                value: `${fmtStorageTb(summary?.usedStorageTb ?? 0)} of ${PLATFORM_STORAGE_TB} TB`,
-                sub: `${summary?.usedPct ?? 0}% Used`,
+                value: `${fmtStorageTb(summary?.usedStorageTb ?? 0)} of ${fmtStorageTb(summary?.totalStorageTb ?? 0)}`,
+                sub: `${summary?.usedPct ?? 0}% Used · Hostinger/VPS`,
                 pct: summary?.usedPct ?? 0,
                 color: "bg-[#A6FF2E]",
                 icon: HardDrive,
@@ -455,14 +496,14 @@ export default function StoragePage() {
               {
                 title: "Used Storage",
                 value: fmtStorageTb(summary?.usedStorageTb ?? 0),
-                sub: summary?.storageTrend || "From customer totals",
+                sub: summary?.storageTrend || "Live Hostinger/VPS disk",
                 icon: TrendingUp,
                 iconBg: "bg-sky-50 text-sky-600",
               },
               {
                 title: "Free Storage",
-                value: `${fmtStorageTb(summary?.freeStorageTb ?? 0)} of ${PLATFORM_STORAGE_TB} TB`,
-                sub: `${summary?.freePct ?? 0}% Available`,
+                value: `${fmtStorageTb(summary?.freeStorageTb ?? 0)} of ${fmtStorageTb(summary?.totalStorageTb ?? 0)}`,
+                sub: `${summary?.freePct ?? 0}% Available · live disk`,
                 pct: summary?.freePct ?? 0,
                 color: "bg-slate-300",
                 icon: Package,
@@ -471,13 +512,16 @@ export default function StoragePage() {
               {
                 title: "Bandwidth Used",
                 value: fmtStorageTb(summary?.bandwidthUsedTb ?? 0),
-                sub: summary?.bandwidthTrend || "Estimated from customer totals",
+                sub:
+                  summary?.liveSource === "hostinger_api"
+                    ? "Live Hostinger bandwidth"
+                    : summary?.bandwidthTrend || "Customer totals (set Hostinger API for panel parity)",
                 icon: Upload,
                 iconBg: "bg-amber-50 text-amber-600",
               },
               {
                 title: "Bandwidth Limit",
-                value: `${PLATFORM_BANDWIDTH_TB} TB / month`,
+                value: `${fmtStorageTb(summary?.bandwidthLimitTb ?? 0)} / month`,
                 sub: `${summary?.bandwidthPct ?? 0}% Used`,
                 pct: summary?.bandwidthPct ?? 0,
                 color: "bg-amber-400",
@@ -544,7 +588,7 @@ export default function StoragePage() {
             <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm xl:col-span-1">
               <h3 className="text-[13px] font-black text-slate-900">Storage Breakdown</h3>
               <p className="mt-0.5 text-[11px] font-semibold text-slate-400">
-                Total Storage {PLATFORM_STORAGE_TB} TB
+                Total Storage {fmtStorageTb(summary?.totalStorageTb ?? 0)}
               </p>
               <div className="mt-4">
                 <DonutChart usedPct={summary?.usedPct ?? 0} freePct={summary?.freePct ?? 0} />

@@ -48,6 +48,27 @@ export async function createInvite(params: {
   return rows[0];
 }
 
+/**
+ * Build a secure email CTA for a team invite.
+ * Destination stays an accept path; the emailed URL is always /email-action/{token}.
+ */
+export async function buildSecureTeamInviteEmailUrl(input: {
+  inviteToken: string;
+  inviteeEmail: string;
+  inviteeUserId?: number | null;
+}): Promise<string> {
+  const { issueEmailActionToken } = await import("@/lib/auth/email-action-token");
+  const destinationPath = `/dashboard?invite=${encodeURIComponent(input.inviteToken)}`;
+  const issued = await issueEmailActionToken({
+    userId: input.inviteeUserId ?? null,
+    email: input.inviteeEmail,
+    action: "team_invite",
+    destinationPath,
+    singleUse: true,
+  });
+  return issued.url;
+}
+
 export async function getInviteByToken(token: string): Promise<InviteRow | null> {
   const rows = await query<InviteRow>(
     `SELECT wi.*, w.name AS workspace_name, u.name AS inviter_name

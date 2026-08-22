@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { guardAdminPermission } from "@/lib/permissions/admin-rbac";
+import { guardAdminPermission, logAdminAudit } from "@/lib/permissions/admin-rbac";
 import { ensureCouponsSchema } from "@/lib/db";
 import {
   createCoupon,
+  deleteAllCoupons,
+  deleteCoupons,
   exportCouponsCsv,
   getCouponAnalytics,
   getCouponByUid,
@@ -109,10 +111,42 @@ export async function POST(req: NextRequest) {
     );
 
     const coupon = await getCouponByUid(couponUid);
+    await logAdminAudit(admin, "coupon.create", "coupon", couponUid, { code: body.code });
     return NextResponse.json({ ok: true, coupon }, { status: 201 });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Create failed" },
+      { status: 400 },
+    );
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  const auth = await guardAdminPermission("coupons.manage");
+  if (auth instanceof NextResponse) return auth;
+  const { admin } = auth;
+
+  await ensureCouponsSchema();
+  const body = await req.json().catch(() => ({}));
+
+  try {
+    if (body.deleteAll === true) {
+      const result = await deleteAllCoupons(admin.id);
+      await logAdminAudit(admin, "coupon.delete_all", "coupon", null, { deleted: result.deleted });
+      return NextResponse.json({ ok: true, deleted: result.deleted });
+    }
+
+    const ids: string[] = Array.isArray(body.ids) ? body.ids : [];
+    if (!ids.length) {
+      return NextResponse.json({ error: "No coupons selected" }, { status: 400 });
+    }
+
+    const result = await deleteCoupons(ids, admin.id);
+    await logAdminAudit(admin, "coupon.delete", "coupon", ids.join(","), { deleted: result.deleted });
+    return NextResponse.json({ ok: true, deleted: result.deleted });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Delete failed" },
       { status: 400 },
     );
   }

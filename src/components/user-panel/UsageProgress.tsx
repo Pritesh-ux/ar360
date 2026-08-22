@@ -13,16 +13,16 @@ export default function UsageProgress({
   return (
     <div>
       <div className="mb-2 flex items-center justify-between gap-2 text-sm">
-        <span className="font-bold text-[var(--ar-text)]">{label}</span>
-        <span className="font-semibold text-[var(--ar-text-muted)]">
-          <span className="text-[var(--ar-primary-hover)]">{usedLabel}</span>
+        <span className="font-semibold text-[#111827]">{label}</span>
+        <span className="font-medium text-[#6B7280]">
+          <span className="text-[#22C55E]">{usedLabel}</span>
           {" / "}
           {limitLabel}
         </span>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-[var(--ar-border)]">
+      <div className="h-1.5 overflow-hidden rounded-full bg-[#F3F4F6]">
         <div
-          className="h-full rounded-full bg-[var(--ar-primary)] transition-all"
+          className="dash-progress-bar h-full rounded-full bg-gradient-to-r from-[#B6FF38] to-[#84D400] transition-all duration-700 ease-out"
           style={{ width: `${width}%` }}
         />
       </div>

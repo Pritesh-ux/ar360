@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import type { GlobalSearchResponse, GlobalSearchResult, SearchResultGroup } from "@/lib/master-admin/global-search";
+import ViewportPortal from "@/components/shared/ViewportPortal";
 
 type Props = {
   open: boolean;
@@ -147,7 +148,8 @@ export default function AdminGlobalSearch({ open, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-start justify-center bg-slate-950/45 p-4 pt-[10vh] backdrop-blur-[6px]">
+    <ViewportPortal>
+    <div className="fixed inset-0 z-[99999] flex items-start justify-center bg-slate-950/45 p-4 pt-[10vh] backdrop-blur-[6px]">
       <button type="button" className="absolute inset-0" aria-label="Close search" onClick={onClose} />
       <div className="relative w-full max-w-2xl overflow-hidden rounded-[24px] border border-white/80 bg-white shadow-[0_28px_90px_rgba(15,23,42,0.28)]">
         <div className="flex items-center justify-between px-5 pb-3 pt-4">
@@ -263,5 +265,6 @@ export default function AdminGlobalSearch({ open, onClose }: Props) {
         </div>
       </div>
     </div>
+    </ViewportPortal>
   );
 }

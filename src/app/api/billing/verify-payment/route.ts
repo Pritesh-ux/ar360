@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { query } from "@/lib/db";
 import { BillingErrorCode, billingErrorJson } from "@/lib/billing/billing-errors";
-import { verifyRazorpayPaymentSignature } from "@/server/billing/razorpay";
+import { assertRazorpayCapturedPayment, verifyRazorpayPaymentSignature } from "@/server/billing/razorpay";
 import { finalizeSuccessfulPayment } from "@/server/billing/payment-finalize.service";
 
 export const runtime = "nodejs";
@@ -48,6 +48,20 @@ export async function POST(req: Request) {
 
     if (user.customerUid && user.customerUid !== order.customer_uid) {
       return NextResponse.json({ error: "Unauthorized payment." }, { status: 403 });
+    }
+
+    try {
+      await assertRazorpayCapturedPayment({
+        paymentId: razorpayPaymentId,
+        orderId: razorpayOrderId,
+        expectedAmountPaise: order.amount_paise,
+      });
+    } catch (verifyErr) {
+      console.error("[verify-payment] provider fetch assert failed", verifyErr);
+      return NextResponse.json(
+        { error: verifyErr instanceof Error ? verifyErr.message : "Payment verification failed." },
+        { status: 400 },
+      );
     }
 
     const period = order.billing_period === "yearly" ? "yearly" : "monthly";

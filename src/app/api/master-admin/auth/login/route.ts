@@ -1,37 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   ADMIN_SESSION_COOKIE,
-  encodeSigned,
+  createMasterAdminSession,
   findMasterAdminByEmail,
   verifyPassword,
   writeLoginLog,
 } from "@/lib/auth";
+import { logAdminAudit } from "@/lib/permissions/admin-rbac";
+import { enforceRateLimitForKey } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const SESSION_MAX_AGE = 60 * 60 * 24 * 7;
-
-function cookieOptions() {
-  const secure =
-    process.env["AUTH_COOKIE_SECURE"] === "true"
-      ? true
-      : process.env["AUTH_COOKIE_SECURE"] === "false"
-        ? false
-        : false;
-
-  return {
-    httpOnly: true,
-    sameSite: "lax" as const,
-    secure,
-    path: "/",
-    maxAge: SESSION_MAX_AGE,
-    expires: new Date(Date.now() + SESSION_MAX_AGE * 1000),
-  };
+function clientIp(request: NextRequest) {
+  const forwardedFor = request.headers.get("x-forwarded-for") || "";
+  return forwardedFor.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "";
 }
 
+// requireApiAdmin( - exempt: this is the public admin login route
 export async function POST(request: NextRequest) {
   try {
+    const loginLimit = await enforceRateLimitForKey(clientIp(request) || "unknown", {
+      scope: "auth:admin-login",
+      limit: 10,
+      windowSec: 300,
+    });
+    if (!loginLimit.allowed) {
+      return NextResponse.json(
+        { error: "Too many login attempts. Please wait a few minutes." },
+        { status: 429 },
+      );
+    }
+
     const contentType = request.headers.get("content-type") || "";
     let email = "";
     let password = "";
@@ -73,12 +73,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const token = encodeSigned({
+    const adminUser = {
       id: user.id,
       name: user.name,
       email: user.email,
-      role: "admin",
-    });
+      role: "admin" as const,
+      status: user.status,
+    };
+
+    // Must include exp/iat — live sets ALLOW_LEGACY_ADMIN_SESSIONS=false, so
+    // tokens without exp are rejected and look like a failed login.
+    const { token, cookieOptions } = await createMasterAdminSession(adminUser);
 
     await writeLoginLog({
       actorType: "master_admin",
@@ -88,12 +93,14 @@ export async function POST(request: NextRequest) {
       reason: "password_login_api",
     }).catch(() => {});
 
+    await logAdminAudit({ id: user.id }, "admin.login", "master_admin", String(user.id), { email });
+
     const response = NextResponse.json({
       ok: true,
       admin: { id: user.id, name: user.name, email: user.email },
       redirectUrl: "/master-admin",
     });
-    response.cookies.set(ADMIN_SESSION_COOKIE, token, cookieOptions());
+    response.cookies.set(ADMIN_SESSION_COOKIE, token, cookieOptions);
     return response;
   } catch (error) {
     console.error("[master-admin/auth/login]", error);

@@ -1,3 +1,6 @@
+import { absoluteUrl } from "@/lib/url";
+import { BRAND_INK, BRAND_LIME, getAr360EmailLogoHtml } from "@/lib/brand/ar360-logo";
+
 function escapeHtml(value: string) {
   return value
     .replace(/&/g, "&amp;")
@@ -10,17 +13,13 @@ function escapeHtml(value: string) {
 export { escapeHtml };
 
 export function absoluteAppUrl(pathname: string) {
-  const base = (
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.APP_URL ||
-    "http://localhost:3000"
-  ).replace(/\/$/, "");
-  return `${base}${pathname.startsWith("/") ? pathname : `/${pathname}`}`;
+  return absoluteUrl(pathname);
 }
 
 const FONT =
   "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
 
+/** AR360-branded transactional email shell (table layout, hosted PNG logo). */
 export function renderPremiumEmail(input: {
   preheader?: string;
   bodyHtml: string;
@@ -30,53 +29,54 @@ export function renderPremiumEmail(input: {
   const year = new Date().getFullYear();
   const appUrl = absoluteAppUrl("/");
   const supportUrl = absoluteAppUrl("/contact");
+  const logo = getAr360EmailLogoHtml({ height: 32, href: appUrl, tone: "dark" });
 
   const html = `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="color-scheme" content="light" />
+  <meta name="supported-color-schemes" content="light" />
   <title>AR360</title>
 </head>
-<body style="margin:0;padding:0;background:#f4f4f5;color:#18181b;font-family:${FONT};-webkit-font-smoothing:antialiased;">
-  ${preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;">${preheader}</div>` : ""}
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f4f5;">
+<body style="margin:0;padding:0;background:#F3F4F6;color:${BRAND_INK};font-family:${FONT};-webkit-font-smoothing:antialiased;">
+  ${preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;height:0;width:0;">${preheader}</div>` : ""}
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F3F4F6;">
     <tr>
-      <td align="center" style="padding:40px 16px;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background:#ffffff;border:1px solid #ececee;">
+      <td align="center" style="padding:28px 14px 40px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:580px;background:#ffffff;border:1px solid #E5E7EB;border-radius:16px;overflow:hidden;">
           <tr>
-            <td style="padding:32px 40px 24px;">
-              <a href="${escapeHtml(appUrl)}" style="text-decoration:none;color:#0A0B14;display:inline-block;line-height:0;">
-                <img
-                  src="data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='118' height='28' viewBox='0 0 118 28' fill='none'><path d='M14 2.4C19.6 2.4 22.4 3.4 24 5C25.6 6.6 26.6 9.4 26.6 14C26.6 18.6 25.6 21.4 24 23C22.4 24.6 19.6 25.6 14 25.6C8.4 25.6 5.6 24.6 4 23C2.4 21.4 1.4 18.6 1.4 14C1.4 9.4 2.4 6.6 4 5C5.6 3.4 8.4 2.4 14 2.4Z' stroke='%23B9FF2C' stroke-width='2.4' stroke-linejoin='round'/><text x='34' y='20.5' fill='%230A0B14' font-family='system-ui,Segoe UI,Arial,sans-serif' font-size='18' font-weight='700' letter-spacing='-0.5'>AR<tspan fill='%23B9FF2C'>360</tspan></text></svg>`)}"
-                  width="118"
-                  height="28"
-                  alt="AR360"
-                  style="display:block;width:118px;height:28px;border:0;"
-                />
-              </a>
+            <td style="background:${BRAND_INK};padding:0;">
+              <div style="height:4px;line-height:4px;font-size:4px;background:${BRAND_LIME};">&nbsp;</div>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="padding:24px 28px 22px;">
+                    ${logo}
+                  </td>
+                </tr>
+              </table>
             </td>
           </tr>
           <tr>
-            <td style="padding:0 40px 36px;font-size:15px;line-height:1.7;color:#3f3f46;">
+            <td style="padding:28px 28px 8px;font-size:15px;line-height:1.7;color:#3F3F46;">
               ${input.bodyHtml}
             </td>
           </tr>
           <tr>
-            <td style="padding:0 40px;">
-              <div style="height:1px;background:#ececee;line-height:1px;font-size:1px;">&nbsp;</div>
+            <td style="padding:8px 28px 0;">
+              <div style="height:1px;line-height:1px;font-size:1px;background:#ECECEE;">&nbsp;</div>
             </td>
           </tr>
           <tr>
-            <td style="padding:24px 40px 32px;text-align:center;">
-              <p style="margin:0 0 10px;font-size:12px;line-height:1.6;color:#a1a1aa;">
-                <a href="${escapeHtml(appUrl)}" style="color:#71717a;text-decoration:underline;">Dashboard</a>
+            <td style="padding:20px 28px 28px;text-align:center;">
+              <p style="margin:0 0 10px;font-size:12px;line-height:1.6;color:#71717A;">
+                <a href="${escapeHtml(appUrl)}" style="color:#52525B;text-decoration:underline;">Home</a>
                 &nbsp;&nbsp;·&nbsp;&nbsp;
-                <a href="${escapeHtml(supportUrl)}" style="color:#71717a;text-decoration:underline;">Support</a>
+                <a href="${escapeHtml(supportUrl)}" style="color:#52525B;text-decoration:underline;">Support</a>
               </p>
-              <p style="margin:0;font-size:12px;line-height:1.6;color:#a1a1aa;">
-                © ${year} AR360 Studio<br />
-                3D and AR product experiences
+              <p style="margin:0;font-size:12px;line-height:1.6;color:#A1A1AA;">
+                © ${year} AR360 Studio · 3D · AR · QR · Embed
               </p>
             </td>
           </tr>
@@ -91,7 +91,7 @@ export function renderPremiumEmail(input: {
 }
 
 export function emailParagraph(text: string) {
-  return `<p style="margin:0 0 16px;color:#3f3f46;font-size:15px;line-height:1.7;">${escapeHtml(text)}</p>`;
+  return `<p style="margin:0 0 16px;color:#3F3F46;font-size:15px;line-height:1.7;">${escapeHtml(text)}</p>`;
 }
 
 export function emailGreeting(name: string) {
@@ -99,7 +99,7 @@ export function emailGreeting(name: string) {
 }
 
 export function emailHeading(text: string) {
-  return `<p style="margin:0 0 16px;color:#18181b;font-size:22px;line-height:1.35;font-weight:600;">${escapeHtml(text)}</p>`;
+  return `<p style="margin:0 0 14px;color:${BRAND_INK};font-size:24px;line-height:1.3;font-weight:700;letter-spacing:-0.02em;">${escapeHtml(text)}</p>`;
 }
 
 export function emailDetails(
@@ -110,28 +110,28 @@ export function emailDetails(
     .map(
       (detail, index) => `
       <tr>
-        <td style="padding:12px 0;${index < details.length - 1 ? "border-bottom:1px solid #f4f4f5;" : ""}width:40%;color:#71717a;font-size:14px;line-height:1.5;vertical-align:top;">${escapeHtml(detail.label)}</td>
-        <td style="padding:12px 0;${index < details.length - 1 ? "border-bottom:1px solid #f4f4f5;" : ""}color:#18181b;font-size:14px;line-height:1.5;font-weight:500;text-align:right;vertical-align:top;">${escapeHtml(detail.value)}</td>
+        <td style="padding:12px 14px;${index < details.length - 1 ? "border-bottom:1px solid #EEF0F2;" : ""}width:42%;color:#737373;font-size:13px;line-height:1.5;vertical-align:top;">${escapeHtml(detail.label)}</td>
+        <td style="padding:12px 14px;${index < details.length - 1 ? "border-bottom:1px solid #EEF0F2;" : ""}color:${BRAND_INK};font-size:13px;line-height:1.5;font-weight:600;text-align:right;vertical-align:top;">${escapeHtml(detail.value)}</td>
       </tr>`,
     )
     .join("");
-  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 24px;border-top:1px solid #ececee;border-bottom:1px solid #ececee;">${rows}</table>`;
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 22px;background:#F8FAF4;border:1px solid #E4E9D8;border-radius:12px;overflow:hidden;">${rows}</table>`;
 }
 
 export function emailButton(label: string, url: string) {
-  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 24px;">
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 22px;">
   <tr>
-    <td style="border-radius:8px;background:#18181b;">
-      <a href="${escapeHtml(url)}" style="display:inline-block;padding:12px 20px;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;letter-spacing:0.01em;">${escapeHtml(label)}</a>
+    <td style="border-radius:10px;background:${BRAND_LIME};">
+      <a href="${escapeHtml(url)}" style="display:inline-block;padding:13px 22px;color:${BRAND_INK};text-decoration:none;font-size:14px;font-weight:700;letter-spacing:0.01em;">${escapeHtml(label)}</a>
     </td>
   </tr>
 </table>`;
 }
 
 export function emailLink(label: string, url: string) {
-  return `<a href="${escapeHtml(url)}" style="color:#18181b;text-decoration:underline;font-weight:500;">${escapeHtml(label)}</a>`;
+  return `<a href="${escapeHtml(url)}" style="color:${BRAND_INK};text-decoration:underline;font-weight:600;">${escapeHtml(label)}</a>`;
 }
 
 export function emailSignOff() {
-  return `<p style="margin:24px 0 0;color:#3f3f46;font-size:15px;line-height:1.7;">Best,<br />AR360 Team</p>`;
+  return `<p style="margin:20px 0 0;color:#3F3F46;font-size:15px;line-height:1.7;">Best,<br /><strong style="color:${BRAND_INK};">AR360 Team</strong></p>`;
 }

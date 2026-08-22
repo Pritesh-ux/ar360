@@ -56,7 +56,9 @@ export async function POST(req: Request) {
     const amountPaise = price * 100; // stored in INR/rupees
 
     const keys = await getRazorpayKeys().catch(() => ({ keyId: null, keySecret: null }));
-    const isMockSandbox = !keys.keyId || body.sandbox === true;
+    const allowMock =
+      process.env.NODE_ENV !== "production" && process.env.ALLOW_ADDON_MOCK_CHECKOUT === "true";
+    const isMockSandbox = allowMock && (!keys.keyId || body.sandbox === true);
 
     if (isMockSandbox) {
       // Create a mock order UID

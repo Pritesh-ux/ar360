@@ -10,6 +10,8 @@ export default async function MasterAdminLoginPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
+  // Do not call clearAdminSession() here — cookie writes are only allowed in
+  // Route Handlers / Server Actions (caused production 500 / redirect loop).
   const user = await getCurrentMasterAdmin();
   if (user) redirect("/master-admin");
 

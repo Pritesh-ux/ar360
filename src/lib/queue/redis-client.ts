@@ -3,7 +3,7 @@ import { resolveJobQueueBackend } from "@/lib/queue/types";
 
 const QUEUE_KEY_PREFIX = "ar360:queue:";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 let client: any = undefined;
 
 export function getRedisQueueKey(queue: JobQueueName) {

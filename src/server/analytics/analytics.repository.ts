@@ -110,13 +110,14 @@ export async function upsertDailyStats(
   const colMap: Record<string, string> = {
     viewer_open: "views",
     open_embed: "embed_views",
+    embed_open: "embed_views",
     ar_launch_success: "ar_launches",
-    ar_button_click: "ar_launches",
     screenshot: "screenshots",
     share_native: "shares",
+    share_view: "share_views",
     copy_link: "copy_links",
-    download_qr: "qr_scans",
     qr_scan: "qr_scans",
+    download_qr: "qr_scans",
     cta_click: "cta_clicks",
   };
 
@@ -184,10 +185,14 @@ export async function getSummaryCounts(filter: AnalyticsFilter): Promise<{
   totalViews: number;
   uniqueVisitors: number;
   arLaunches: number;
+  arButtonClicks: number;
   screenshots: number;
   shares: number;
   copyLinks: number;
   qrScans: number;
+  embedViews: number;
+  shareViews: number;
+  ctaClicks: number;
 }> {
   const { clause, values } = buildWhere(filter);
 
@@ -195,19 +200,27 @@ export async function getSummaryCounts(filter: AnalyticsFilter): Promise<{
     totalViews: number;
     uniqueVisitors: number;
     arLaunches: number;
+    arButtonClicks: number;
     screenshots: number;
     shares: number;
     copyLinks: number;
     qrScans: number;
+    embedViews: number;
+    shareViews: number;
+    ctaClicks: number;
   }>(
     `SELECT
-       SUM(event IN ('viewer_open', 'open_embed')) AS totalViews,
+       SUM(event = 'viewer_open') AS totalViews,
        COUNT(DISTINCT ip_hash) AS uniqueVisitors,
-       SUM(event IN ('ar_launch_success','ar_button_click')) AS arLaunches,
+       SUM(event = 'ar_launch_success') AS arLaunches,
+       SUM(event IN ('ar_button_click', 'ar_launch_attempt')) AS arButtonClicks,
        SUM(event = 'screenshot') AS screenshots,
-       SUM(event = 'share_native') AS shares,
+       SUM(event IN ('share_native', 'share_view')) AS shares,
        SUM(event = 'copy_link') AS copyLinks,
-       SUM(event IN ('download_qr', 'qr_scan')) AS qrScans
+       SUM(event IN ('qr_scan', 'download_qr')) AS qrScans,
+       SUM(event IN ('open_embed', 'embed_open')) AS embedViews,
+       SUM(event = 'share_view') AS shareViews,
+       SUM(event = 'cta_click') AS ctaClicks
      FROM analytics_events e
      ${clause}`,
     values,
@@ -218,10 +231,14 @@ export async function getSummaryCounts(filter: AnalyticsFilter): Promise<{
     totalViews: Number(row?.totalViews ?? 0),
     uniqueVisitors: Number(row?.uniqueVisitors ?? 0),
     arLaunches: Number(row?.arLaunches ?? 0),
+    arButtonClicks: Number(row?.arButtonClicks ?? 0),
     screenshots: Number(row?.screenshots ?? 0),
     shares: Number(row?.shares ?? 0),
     copyLinks: Number(row?.copyLinks ?? 0),
     qrScans: Number(row?.qrScans ?? 0),
+    embedViews: Number(row?.embedViews ?? 0),
+    shareViews: Number(row?.shareViews ?? 0),
+    ctaClicks: Number(row?.ctaClicks ?? 0),
   };
 }
 
@@ -294,7 +311,7 @@ export async function getDailySeries(filter: AnalyticsFilter): Promise<DailyPoin
 
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
-  const rows = await query<{ date: string; views: number; ar_launches: number; screenshots: number }>(
+  const rows = await query<{ date: string | Date; views: number; ar_launches: number; screenshots: number }>(
     `SELECT date, SUM(views) AS views, SUM(ar_launches) AS ar_launches, SUM(screenshots) AS screenshots
      FROM analytics_daily ${where}
      GROUP BY date ORDER BY date ASC`,
@@ -302,7 +319,10 @@ export async function getDailySeries(filter: AnalyticsFilter): Promise<DailyPoin
   );
 
   return rows.map((r) => ({
-    date: r.date,
+    date:
+      r.date instanceof Date
+        ? r.date.toISOString().slice(0, 10)
+        : String(r.date ?? "").slice(0, 10),
     views: Number(r.views ?? 0),
     arLaunches: Number(r.ar_launches ?? 0),
     screenshots: Number(r.screenshots ?? 0),
@@ -327,13 +347,19 @@ export async function getTopProducts(filter: AnalyticsFilter, limit = 10): Promi
     views: number;
     unique_visitors: number;
     ar_launches: number;
+    title: string | null;
   }>(
     `SELECT
        e.product_uid,
-       COUNT(*) AS views,
+       SUM(e.event = 'viewer_open') AS views,
        COUNT(DISTINCT e.ip_hash) AS unique_visitors,
-       SUM(e.event IN ('ar_launch_success','ar_button_click')) AS ar_launches
+       SUM(e.event = 'ar_launch_success') AS ar_launches,
+       COALESCE(MAX(p.title), e.product_uid) AS title
      FROM analytics_events e
+     LEFT JOIN products p
+       ON p.id = e.product_uid
+       OR p.public_id = e.product_uid
+       OR p.viewer_slug = e.product_uid
      ${where}
      GROUP BY e.product_uid
      ORDER BY views DESC
@@ -341,22 +367,13 @@ export async function getTopProducts(filter: AnalyticsFilter, limit = 10): Promi
     values,
   );
 
-  // Enrich with product title from products table
-  const enriched: TopProduct[] = [];
-  for (const row of rows) {
-    const products = await query<{ title: string }>(
-      "SELECT title FROM products WHERE id = ? OR customer_uid = ? LIMIT 1",
-      [row.product_uid, row.product_uid],
-    );
-    enriched.push({
-      productUid: row.product_uid,
-      title: products[0]?.title ?? row.product_uid,
-      views: Number(row.views ?? 0),
-      uniqueVisitors: Number(row.unique_visitors ?? 0),
-      arLaunches: Number(row.ar_launches ?? 0),
-    });
-  }
-  return enriched;
+  return rows.map((row) => ({
+    productUid: row.product_uid,
+    title: row.title ?? row.product_uid,
+    views: Number(row.views ?? 0),
+    uniqueVisitors: Number(row.unique_visitors ?? 0),
+    arLaunches: Number(row.ar_launches ?? 0),
+  }));
 }
 
 // ─── Top countries ────────────────────────────────────────────────────────────
@@ -366,9 +383,9 @@ export async function getTopCountries(filter: AnalyticsFilter, limit = 10): Prom
   values.push(limit);
 
   const rows = await query<{ country: string; views: number }>(
-    `SELECT country, COUNT(*) AS views
+    `SELECT COALESCE(NULLIF(TRIM(country), ''), 'Unknown') AS country, COUNT(DISTINCT session_id) AS views
      FROM analytics_events e ${clause}
-     GROUP BY country ORDER BY views DESC LIMIT ?`,
+     GROUP BY 1 ORDER BY views DESC LIMIT ?`,
     values,
   );
 
@@ -515,13 +532,19 @@ export async function getRealtimeStats(filter: AnalyticsFilter): Promise<{
          SUM(event = 'viewer_open') AS viewsLastHour,
          SUM(event IN ('ar_launch_success','ar_button_click')) AS arLaunchesLastHour,
          SUM(event = 'screenshot') AS screenshotsLastHour,
-         SUM(event IN ('share_native','copy_link')) AS sharesLastHour
+         SUM(event IN ('share_native','share_view','copy_link')) AS sharesLastHour
        FROM analytics_events e ${hourWhere}`,
       hourValues,
     ),
     query<AnalyticsEventRow>(
-      `SELECT * FROM analytics_events e ${hourWhere} ORDER BY created_at DESC LIMIT 50`,
-      hourValues,
+      `SELECT * FROM analytics_events e
+       WHERE ${filter.customerUid ? "e.customer_uid = ? AND " : ""}e.created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+       ${filter.productUid ? "AND e.product_uid = ?" : ""}
+       ORDER BY created_at DESC LIMIT 50`,
+      [
+        ...(filter.customerUid ? [filter.customerUid] : []),
+        ...(filter.productUid ? [filter.productUid] : []),
+      ],
     ),
   ]);
 

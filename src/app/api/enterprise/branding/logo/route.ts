@@ -86,7 +86,7 @@ export async function POST(request: Request) {
   const prefix = kind === "favicon" ? "favicon" : "logo";
   const filename = `${workspaceFolder}-${prefix}-${randomUUID()}.${extension}`;
   const roots = new Set(
-    [process.cwd(), process.env.AR360_PROJECT_ROOT].filter(
+    ["./", process.env.AR360_PROJECT_ROOT].filter(
       (value): value is string => Boolean(value?.trim()),
     ),
   );

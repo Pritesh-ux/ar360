@@ -1,7 +1,14 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import QRCode from "qrcode";
+import {
+  AR360_QR_CENTER_LOGO_ASPECT,
+  AR360_QR_CENTER_LOGO_PATH,
+  AR360_QR_CENTER_LOGO_SIZE,
+  CUSTOM_QR_CENTER_LOGO_SIZE,
+  isAr360QrLogoUrl,
+} from "@/lib/growth/qr-logo-shared";
 
 export type QrPreviewItem = {
   id: number | string;
@@ -20,6 +27,35 @@ export type QrPreviewItem = {
 };
 
 type FrameStyle = "simple" | "corners" | "dotted" | "dashed" | "gradient";
+
+const logoDataUrlCache = new Map<string, Promise<string>>();
+
+async function resolveLogoDataUrl(logoUrl: string): Promise<string> {
+  const src = String(logoUrl || "").trim() || AR360_QR_CENTER_LOGO_PATH;
+  if (src.startsWith("data:")) return src;
+
+  const cached = logoDataUrlCache.get(src);
+  if (cached) return cached;
+
+  const promise = (async () => {
+    const absolute =
+      src.startsWith("http://") || src.startsWith("https://")
+        ? src
+        : new URL(src, window.location.origin).toString();
+    const response = await fetch(absolute, { cache: "force-cache" });
+    if (!response.ok) throw new Error(`logo fetch failed: ${response.status}`);
+    const blob = await response.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(reader.error || new Error("logo read failed"));
+      reader.readAsDataURL(blob);
+    });
+  })().catch(() => src);
+
+  logoDataUrlCache.set(src, promise);
+  return promise;
+}
 
 export default function QrCodePreview({
   item,
@@ -93,9 +129,37 @@ export default function QrCodePreview({
   ];
   const outer = item.cornerStyle === "circle" ? unit * 3.5 : item.cornerStyle === "rounded" ? unit * 1.4 : 0;
   const inner = item.cornerStyle === "circle" ? unit * 1.5 : item.cornerStyle === "rounded" ? unit * 0.8 : 0;
-  const logoPx = size * (item.logoSize / 100);
-  const logoX = (size - logoPx) / 2;
-  const logoY = (size - logoPx) / 2;
+
+  // Always brand the QR center: AR360 Studio by default, or the plan-allowed custom logo.
+  const centerLogoUrl = String(item.logoUrl || "").trim() || AR360_QR_CENTER_LOGO_PATH;
+  const usingBrandLogo = isAr360QrLogoUrl(centerLogoUrl);
+  const logoSizePercent = usingBrandLogo
+    ? AR360_QR_CENTER_LOGO_SIZE
+    : Number(item.logoSize) > 0
+      ? item.logoSize
+      : CUSTOM_QR_CENTER_LOGO_SIZE;
+  const logoW = size * (logoSizePercent / 100);
+  // Brand lockup is wide (~4:1 after trim); custom logos stay near square.
+  const logoH = usingBrandLogo ? logoW / AR360_QR_CENTER_LOGO_ASPECT : logoW;
+  // Keep custom marks inside the circular quiet-zone so corners are not clipped.
+  const drawScale = usingBrandLogo ? 1 : 0.72;
+  const drawW = logoW * drawScale;
+  const drawH = logoH * drawScale;
+  const logoX = (size - drawW) / 2;
+  const logoY = (size - drawH) / 2;
+  const logoPadX = unit * 0.9;
+  const logoPadY = unit * 0.55;
+
+  const [embeddedLogoUrl, setEmbeddedLogoUrl] = useState(centerLogoUrl);
+  useEffect(() => {
+    let cancelled = false;
+    void resolveLogoDataUrl(centerLogoUrl).then((url) => {
+      if (!cancelled) setEmbeddedLogoUrl(url);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [centerLogoUrl]);
 
   return (
     <svg
@@ -105,6 +169,7 @@ export default function QrCodePreview({
       height={height}
       viewBox={`0 0 ${size} ${height}`}
       xmlns="http://www.w3.org/2000/svg"
+      xmlnsXlink="http://www.w3.org/1999/xlink"
     >
       <rect width={size} height={height} rx={compact ? 10 : 24} fill={item.backgroundColor} />
       {modules}
@@ -115,17 +180,34 @@ export default function QrCodePreview({
           <rect x={x + unit * 2} y={y + unit * 2} width={unit * 3} height={unit * 3} rx={inner} fill={item.foregroundColor} />
         </g>
       ))}
-      {item.logoUrl && !compact && (
+      {!compact && (
         <g>
-          <rect
-            x={logoX - unit}
-            y={logoY - unit}
-            width={logoPx + unit * 2}
-            height={logoPx + unit * 2}
-            rx={unit * 1.5}
-            fill={item.backgroundColor}
+          {usingBrandLogo ? (
+            <rect
+              x={logoX - logoPadX}
+              y={logoY - logoPadY}
+              width={logoW + logoPadX * 2}
+              height={logoH + logoPadY * 2}
+              rx={unit * 0.8}
+              fill={item.backgroundColor}
+            />
+          ) : (
+            <circle
+              cx={size / 2}
+              cy={size / 2}
+              r={Math.max(logoW, logoH) / 2 + unit * 0.35}
+              fill={item.backgroundColor}
+            />
+          )}
+          <image
+            href={embeddedLogoUrl}
+            xlinkHref={embeddedLogoUrl}
+            x={logoX}
+            y={logoY}
+            width={drawW}
+            height={drawH}
+            preserveAspectRatio="xMidYMid meet"
           />
-          <image href={item.logoUrl} x={logoX} y={logoY} width={logoPx} height={logoPx} preserveAspectRatio="xMidYMid meet" />
         </g>
       )}
       {!compact && item.frameEnabled && (
@@ -228,14 +310,68 @@ function Frame({
   );
 }
 
-export function downloadQrSvg(item: QrPreviewItem, filename: string) {
+export async function downloadQrSvg(item: QrPreviewItem, filename: string) {
   const svg = document.querySelector(`svg[data-qr-id="${CSS.escape(String(item.id))}"]:not([data-compact])`);
   if (!svg) return;
-  const blob = new Blob([new XMLSerializer().serializeToString(svg)], { type: "image/svg+xml" });
+
+  const clone = svg.cloneNode(true) as SVGElement;
+  const centerLogoUrl = String(item.logoUrl || "").trim() || AR360_QR_CENTER_LOGO_PATH;
+  const dataUrl = await resolveLogoDataUrl(centerLogoUrl);
+  clone.querySelectorAll("image").forEach((node) => {
+    node.setAttribute("href", dataUrl);
+    node.setAttributeNS("http://www.w3.org/1999/xlink", "href", dataUrl);
+  });
+
+  const blob = new Blob([new XMLSerializer().serializeToString(clone)], {
+    type: "image/svg+xml;charset=utf-8",
+  });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+/** Export branded QR (with center logo) as PNG via the live SVG preview. */
+export async function downloadQrPng(item: QrPreviewItem, filename: string, exportSize = 1024) {
+  const svg = document.querySelector(`svg[data-qr-id="${CSS.escape(String(item.id))}"]:not([data-compact])`);
+  if (!svg) return;
+
+  const clone = svg.cloneNode(true) as SVGElement;
+  const centerLogoUrl = String(item.logoUrl || "").trim() || AR360_QR_CENTER_LOGO_PATH;
+  const dataUrl = await resolveLogoDataUrl(centerLogoUrl);
+  clone.querySelectorAll("image").forEach((node) => {
+    node.setAttribute("href", dataUrl);
+    node.setAttributeNS("http://www.w3.org/1999/xlink", "href", dataUrl);
+  });
+
+  const serializer = new XMLSerializer();
+  const svgText = serializer.serializeToString(clone);
+  const svgBlob = new Blob([svgText], { type: "image/svg+xml;charset=utf-8" });
+  const svgUrl = URL.createObjectURL(svgBlob);
+
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error("QR image load failed"));
+      img.src = svgUrl;
+    });
+    const canvas = document.createElement("canvas");
+    canvas.width = exportSize;
+    canvas.height = exportSize;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("canvas unavailable");
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, exportSize, exportSize);
+    ctx.drawImage(image, 0, 0, exportSize, exportSize);
+    const pngUrl = canvas.toDataURL("image/png");
+    const a = document.createElement("a");
+    a.href = pngUrl;
+    a.download = filename;
+    a.click();
+  } finally {
+    URL.revokeObjectURL(svgUrl);
+  }
 }

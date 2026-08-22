@@ -1,23 +1,27 @@
 import { NextResponse } from "next/server";
-import { clearAdminSession } from "@/lib/auth";
+import {
+  ADMIN_SESSION_COOKIE,
+  clearAdminSession,
+  sessionCookieOptions,
+} from "@/lib/auth";
+import { getCleanOrigin } from "@/lib/url";
 
 function loginRedirect(request: Request) {
-  const url = new URL("/master-admin/login", request.url);
-  const hostHeader = request.headers.get("x-forwarded-host") || request.headers.get("host");
-  if (hostHeader) {
-    url.host = hostHeader.split(",")[0].trim();
-  }
-  if (url.hostname === "0.0.0.0" || url.hostname === "[::]") {
-    url.hostname = "localhost";
-  }
-  const proto = request.headers.get("x-forwarded-proto");
-  if (proto === "http" || proto === "https") {
-    url.protocol = `${proto}:`;
-  }
-  return NextResponse.redirect(url);
+  const origin = getCleanOrigin(request);
+  return NextResponse.redirect(new URL("/master-admin/login", origin));
 }
 
 export async function GET(request: Request) {
-  await clearAdminSession();
-  return loginRedirect(request);
+  await clearAdminSession().catch(() => {});
+
+  const response = loginRedirect(request);
+  const cleared = {
+    ...sessionCookieOptions(0),
+    maxAge: 0,
+    expires: new Date(0),
+  };
+  // Attach Set-Cookie on the redirect response so browsers reliably drop the domain cookie.
+  response.cookies.set(ADMIN_SESSION_COOKIE, "", cleared);
+  response.cookies.set("ar360_pending_2fa", "", cleared);
+  return response;
 }

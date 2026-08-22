@@ -6,7 +6,7 @@ import {
   ensureCustomerFolder,
   updateProductJson,
 } from "@/lib/localCustomerStorage";
-import { ensureAppSchema, query } from "@/lib/db";
+import { query } from "@/lib/db";
 import {
   validateUploadedFile,
   writeProductFile,
@@ -16,11 +16,21 @@ import {
   getSecureProductPath,
 } from "@/lib/storage";
 import { validateGlbUpload } from "@/lib/products/glb-validator";
+import { optimizeGlbBuffer, describeGlbOptimizeStats, buildArLiteGlb } from "@/lib/products/glb-optimize";
+import {
+  ensureGlbBuffer,
+  isAcceptedModelExtension,
+  MAX_SOURCE_MODEL_BYTES,
+  ModelConversionError,
+  modelExtension,
+} from "@/lib/products/convert-model-to-glb";
 import { ProductErrorCode, friendlyProductError } from "@/lib/products/product-errors";
 import { rollbackProductUpload } from "@/lib/products/upload-rollback";
 import fs from "fs/promises";
 
 export const runtime = "nodejs";
+/** Large GLB uploads — keep the route handler alive for big files. */
+export const maxDuration = 300;
 
 
 async function syncProductToMysql(product: {
@@ -35,42 +45,37 @@ async function syncProductToMysql(product: {
   userId?: number;
   status?: string;
 }) {
-  try {
-    await ensureAppSchema();
-    await query(
-      `INSERT INTO products (id, customer_uid, user_id, title, category, description, model_url, file_name, product_folder, status, views)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-       ON DUPLICATE KEY UPDATE
-         customer_uid   = VALUES(customer_uid),
-         user_id        = VALUES(user_id),
-         title          = VALUES(title),
-         category       = VALUES(category),
-         description    = COALESCE(VALUES(description), description),
-         model_url      = VALUES(model_url),
-         file_name      = VALUES(file_name),
-         product_folder = VALUES(product_folder),
-         status         = VALUES(status)`,
-      [
-        product.productUid,
-        product.customerUid,
-        product.userId ?? null,
-        product.title,
-        product.category ?? "Uncategorized",
-        product.description ?? null,
-        product.modelUrl ?? null,
-        product.fileName ?? null,
-        product.publicFolder,
-        product.status ?? "processing",
-      ],
-    );
-  } catch (error) {
-    console.warn("[local-upload] MySQL sync skipped:", error);
-  }
+  // Do NOT call ensureAppSchema() here — it is very slow on every upload.
+  await query(
+    `INSERT INTO products (id, customer_uid, user_id, title, category, description, model_url, file_name, product_folder, status, views)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+     ON DUPLICATE KEY UPDATE
+       customer_uid   = VALUES(customer_uid),
+       user_id        = VALUES(user_id),
+       title          = VALUES(title),
+       category       = VALUES(category),
+       description    = COALESCE(VALUES(description), description),
+       model_url      = VALUES(model_url),
+       file_name      = VALUES(file_name),
+       product_folder = VALUES(product_folder),
+       status         = VALUES(status)`,
+    [
+      product.productUid,
+      product.customerUid,
+      product.userId ?? null,
+      product.title,
+      product.category ?? "Uncategorized",
+      product.description ?? null,
+      product.modelUrl ?? null,
+      product.fileName ?? null,
+      "All",
+      product.status ?? "processing",
+    ],
+  );
 }
 
 import { BillingErrorCode } from "@/lib/billing/billing-errors";
 import { enforcePermission } from "@/lib/billing/api-permission";
-import { getCustomerBandwidthUsedGb } from "@/lib/billing/bandwidth";
 import { checkUploadEntitlement } from "@/lib/billing/plan-enforcement";
 import {
   checkEnterpriseModelLimit,
@@ -127,28 +132,29 @@ export async function POST(req: Request) {
 
     const plan = createPermission.context.limits;
     const resolvedPlanId = String(plan.planId);
+    const modelSize = model ? model.size : 0;
+    const usdzSize = usdz ? usdz.size : 0;
+    const uploadSizeMb = (modelSize + usdzSize) / 1024 / 1024;
 
-    const productLimitCheck = await checkProductLimit(user.customerUid ?? "", resolvedPlanId);
+    // Parallel limit checks — avoid sequential DB round-trips that slow large uploads.
+    const [productLimitCheck, modelLimitCheck, storageLimitCheck] = await Promise.all([
+      checkProductLimit(user.customerUid ?? "", resolvedPlanId),
+      checkEnterpriseModelLimit(user.customerUid ?? "", plan),
+      checkStorageLimit(user.customerUid ?? "", modelSize + usdzSize, 0, resolvedPlanId),
+    ]);
+
     if (productLimitCheck.ok === false) {
       return NextResponse.json(
         { success: false, code: productLimitCheck.code, error: productLimitCheck.message },
         { status: 403 },
       );
     }
-
-    const modelLimitCheck = await checkEnterpriseModelLimit(user.customerUid ?? "", plan);
     if (modelLimitCheck.ok === false) {
       return NextResponse.json(
         { success: false, code: modelLimitCheck.code, error: modelLimitCheck.message },
         { status: 403 },
       );
     }
-
-    const modelSize = model ? model.size : 0;
-    const usdzSize = usdz ? usdz.size : 0;
-    const uploadSizeMb = (modelSize + usdzSize) / 1024 / 1024;
-
-    const storageLimitCheck = await checkStorageLimit(user.customerUid ?? "", modelSize + usdzSize, 0, resolvedPlanId);
     if (storageLimitCheck.ok === false) {
       return NextResponse.json(
         { success: false, code: storageLimitCheck.code, error: storageLimitCheck.message },
@@ -159,7 +165,7 @@ export async function POST(req: Request) {
     const usage = {
       productsUsed: Number(billing.products_used || 0),
       storageUsedMb: Number(billing.storage_used_mb || 0),
-      bandwidthUsedGb: await getCustomerBandwidthUsedGb(user.customerUid ?? ""),
+      bandwidthUsedGb: 0, // not used by checkUploadEntitlement
       trialStartedAt: null,
       trialEndsAt: createPermission.context.expiresAt,
       subscriptionStatus:
@@ -181,7 +187,11 @@ export async function POST(req: Request) {
     // ── 3. File presence ─────────────────────────────────────────────────────
     if (!model) {
       return NextResponse.json(
-        { success: false, code: ProductErrorCode.INVALID_GLB, error: "GLB model file is required." },
+        {
+          success: false,
+          code: ProductErrorCode.INVALID_GLB,
+          error: "3D model file is required (.glb, .obj, or .fbx).",
+        },
         { status: 400 },
       );
     }
@@ -191,22 +201,67 @@ export async function POST(req: Request) {
     }
 
     // ── 4. File type + size validation ────────────────────────────────────────
-    validateUploadedFile(model);
-    if (usdz) validateUploadedFile(usdz);
-
-    if (!model.name.toLowerCase().endsWith(".glb")) {
+    const sourceExt = modelExtension(model.name);
+    if (!isAcceptedModelExtension(sourceExt)) {
       return NextResponse.json(
-        { success: false, code: ProductErrorCode.INVALID_GLB, error: "Only .glb model file is allowed." },
+        {
+          success: false,
+          code: ProductErrorCode.INVALID_GLB,
+          error: "Only .glb, .obj, or .fbx model files are allowed.",
+        },
         { status: 400 },
       );
     }
 
-    const modelBuffer = Buffer.from(await model.arrayBuffer());
+    if (model.size === 0) {
+      return NextResponse.json(
+        { success: false, code: ProductErrorCode.INVALID_GLB, error: `File "${model.name}" is empty.` },
+        { status: 400 },
+      );
+    }
+
+    if (model.size > MAX_SOURCE_MODEL_BYTES) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: ProductErrorCode.INVALID_GLB,
+          error: `File "${model.name}" exceeds the 2 GB upload limit.`,
+        },
+        { status: 400 },
+      );
+    }
+
+    // Source OBJ/FBX are converted to GLB and never written to durable storage.
+    // Skip validateUploadedFile for the model so .obj/.fbx stay outside ALLOWED_EXTENSIONS.
+    if (usdz) validateUploadedFile(usdz);
+
+    const sourceBuffer = Buffer.from(await model.arrayBuffer());
+    let modelBuffer: Buffer;
+    let converted = false;
+    try {
+      const ensured = await ensureGlbBuffer({ buffer: sourceBuffer, fileName: model.name });
+      modelBuffer = ensured.buffer;
+      converted = ensured.converted;
+    } catch (convertErr) {
+      if (convertErr instanceof ModelConversionError) {
+        const status = convertErr.code === "BLENDER_MISSING" ? 503 : 400;
+        return NextResponse.json(
+          {
+            success: false,
+            code: ProductErrorCode.UPLOAD_FAILED,
+            error: convertErr.message,
+          },
+          { status },
+        );
+      }
+      throw convertErr;
+    }
+
     const glbCheck = validateGlbUpload({
       buffer: modelBuffer,
-      fileName: model.name,
-      mimeType: model.type,
-      sizeBytes: model.size,
+      fileName: "model.glb",
+      mimeType: "model/gltf-binary",
+      sizeBytes: modelBuffer.length,
     });
     if (glbCheck.ok === false) {
       return NextResponse.json(
@@ -215,7 +270,29 @@ export async function POST(req: Request) {
       );
     }
 
-    // ── 6. Ensure customer folder exists ─────────────────────────────────────
+    // Oversized authoring textures crash mobile browsers, so downscale before storing.
+    const { buffer: storedModelBuffer, stats: optimizeStats } = await optimizeGlbBuffer(modelBuffer);
+    console.info(
+      `[local-upload] ${model.name}${converted ? ` → GLB via Blender` : ""}: ${describeGlbOptimizeStats(optimizeStats)}`,
+    );
+
+    // ── 6. Ensure storage + customer folder exist ───────────────────────────
+    try {
+      const { ensureActiveStorageRoot } = await import("@/lib/storage/adapter");
+      await ensureActiveStorageRoot();
+    } catch (storageError) {
+      console.error("[local-upload] storage root unavailable", storageError);
+      return NextResponse.json(
+        {
+          success: false,
+          code: ProductErrorCode.UPLOAD_FAILED,
+          error:
+            "Storage folder is not writable on the server. Create storage/Customers and set write permissions.",
+        },
+        { status: 500 },
+      );
+    }
+
     const customer = await ensureCustomerFolder({
       customerUid: user.customerUid,
       userId: String(user.id),
@@ -233,22 +310,13 @@ export async function POST(req: Request) {
     let uploadCommitted = false;
 
     try {
-      await syncProductToMysql({
-        productUid: product.productUid,
-        customerUid: customer.customerUid,
-        title,
-        category,
-        description: description || undefined,
-        publicFolder: product.publicFolder,
-        userId: user.id,
-        status: "processing",
-      });
-
+      // Write file first (fast path), then one MySQL sync — skip pre-insert + dual recalc.
       const modelUrl = await writeProductFile({
         customerUid: customer.customerUid,
         productUid: product.productUid,
         fileName: "model.glb",
-        data: modelBuffer,
+        data: storedModelBuffer,
+        deferStorageRecalc: true,
       });
 
       const modelDiskPath = getSecureProductPath(
@@ -260,6 +328,41 @@ export async function POST(req: Request) {
 
       let usdzUrl = "";
       let usdzFileName = "";
+      let arModelUrl = "";
+      let arLiteStatus: "ok" | "failed" | "skipped" | "not_needed" = "not_needed";
+      let arLiteMessage = "";
+
+      // Heavy GLBs crash iOS Safari when AR runs in-tab — store a lite Scene Viewer copy.
+      if (storedModelBuffer.length > 12 * 1024 * 1024) {
+        try {
+          const lite = await buildArLiteGlb(storedModelBuffer);
+          if (lite.stats.optimized && lite.buffer.length < storedModelBuffer.length) {
+            arModelUrl = await writeProductFile({
+              customerUid: customer.customerUid,
+              productUid: product.productUid,
+              fileName: "model.ar.glb",
+              data: lite.buffer,
+              deferStorageRecalc: true,
+            });
+            arLiteStatus = "ok";
+            arLiteMessage = describeGlbOptimizeStats(lite.stats);
+            console.info(
+              `[local-upload] AR lite ${product.productUid}: ${arLiteMessage}`,
+            );
+          } else {
+            arLiteStatus = "skipped";
+            arLiteMessage = describeGlbOptimizeStats(lite.stats);
+            console.info(
+              `[local-upload] AR lite skipped ${product.productUid}: ${arLiteMessage}`,
+            );
+          }
+        } catch (arLiteErr) {
+          arLiteStatus = "failed";
+          arLiteMessage =
+            arLiteErr instanceof Error ? arLiteErr.message.slice(0, 180) : "AR lite build failed";
+          console.warn("[local-upload] AR lite failed:", arLiteErr);
+        }
+      }
 
       if (usdz) {
         if (!usdz.name.toLowerCase().endsWith(".usdz")) {
@@ -271,6 +374,7 @@ export async function POST(req: Request) {
           productUid: product.productUid,
           fileName: "model.usdz",
           data: usdzBuffer,
+          deferStorageRecalc: true,
         });
         usdzFileName = usdz.name;
       }
@@ -284,14 +388,18 @@ export async function POST(req: Request) {
           description: description || undefined,
           modelUrl,
           fileName: model.name,
+          modelBytes: storedModelBuffer.length,
+          arModelUrl: arModelUrl || undefined,
+          arLiteStatus,
+          arLiteMessage: arLiteMessage || undefined,
           usdzUrl: usdzUrl || undefined,
           usdzFileName: usdzFileName || undefined,
           publicFolder: product.publicFolder,
-          status: "draft",
+          status: "published",
           activeVariantId: "default",
-          initialZoom: 100,
+          initialZoom: 50,
           fov: 45,
-          cameraOrbit: "35deg 58deg 100%",
+          cameraOrbit: "35deg 58deg 155%",
           cameraTarget: "auto auto auto",
           backgroundType: "solid",
           variants: [
@@ -299,7 +407,7 @@ export async function POST(req: Request) {
               id: "default",
               name: "Default",
               materialSettings: {},
-              environmentImage: "neutral",
+              environmentImage: "default",
               exposure: 1,
               backgroundColor: "#ffffff",
               transparent: false,
@@ -311,7 +419,7 @@ export async function POST(req: Request) {
               interactionPrompt: true,
               autoPlay: true,
               fov: 45,
-              initialZoom: 100,
+              initialZoom: 50,
             },
           ],
         },
@@ -327,11 +435,12 @@ export async function POST(req: Request) {
         fileName: model.name,
         publicFolder: product.publicFolder,
         userId: user.id,
-        status: "draft",
+        status: "published",
       });
 
       uploadCommitted = true;
-      recalculateCustomerStorage(customer.customerUid).catch((err) =>
+      // Background only — do not block the response on disk walk.
+      void recalculateCustomerStorage(customer.customerUid).catch((err) =>
         console.warn("[local-upload] Storage recalculation failed:", err),
       );
 
@@ -343,6 +452,16 @@ export async function POST(req: Request) {
           meshCount: glbCheck.meshCount,
           textureCount: glbCheck.textureCount,
         },
+        warnings:
+          arLiteStatus === "failed"
+            ? [
+                "Mobile AR-lite GLB could not be built. Large models may crash Safari AR until you re-upload or add a USDZ.",
+              ]
+            : arLiteStatus === "skipped" && storedModelBuffer.length > 35 * 1024 * 1024
+              ? [
+                  "Mobile AR-lite was skipped for this heavy GLB. Prefer a smaller model or USDZ for iPhone AR.",
+                ]
+              : [],
         product: {
           ...productJson,
           id: product.productUid,
@@ -353,12 +472,16 @@ export async function POST(req: Request) {
           description: description || undefined,
           modelUrl,
           fileName: model.name,
+          modelBytes: storedModelBuffer.length,
+          arModelUrl: arModelUrl || undefined,
+          arLiteStatus,
+          arLiteMessage: arLiteMessage || undefined,
           usdzUrl: usdzUrl || undefined,
           usdzFileName: usdzFileName || undefined,
           folder: "All",
           poster: "",
           views: 0,
-          status: "Draft",
+          status: "published",
           variants: [{ id: "default", name: "Default" }],
           materialSettings: {},
           hotspots: [],
@@ -385,11 +508,28 @@ export async function POST(req: Request) {
       );
     }
     console.error("[local-upload]", error);
+    const detail =
+      error instanceof Error
+        ? error.message
+        : typeof error === "string"
+          ? error
+          : "Upload failed.";
+    const permissionDenied =
+      typeof detail === "string" &&
+      (/EACCES|EPERM|permission denied|read-only/i.test(detail) ||
+        (typeof (error as { code?: string })?.code === "string" &&
+          /EACCES|EPERM/.test(String((error as { code?: string }).code))));
+
     return NextResponse.json(
       {
         success: false,
         code: ProductErrorCode.UPLOAD_FAILED,
-        error: friendlyProductError(ProductErrorCode.UPLOAD_FAILED),
+        error: permissionDenied
+          ? "Server cannot write model files. Fix storage folder permissions on the VPS."
+          : friendlyProductError(ProductErrorCode.UPLOAD_FAILED),
+        // Safe operational hint for VPS debugging (no stack / no secrets).
+        errno: typeof (error as { code?: string })?.code === "string" ? (error as { code: string }).code : undefined,
+        detail: detail.slice(0, 180),
       },
       { status: 500 },
     );

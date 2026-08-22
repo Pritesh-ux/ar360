@@ -37,6 +37,8 @@ export type PlanLimits = {
   ocMaxRetries?: number | null;
   /** Custom hostname for public viewer/share/embed. */
   allowCustomDomain?: boolean;
+  /** Enquire + dedicated WhatsApp on public viewer (Trial / Business / Enterprise only). */
+  allowProductContact?: boolean;
 };
 
 export type UsageSnapshot = {
@@ -67,64 +69,143 @@ export function mapLegacyPlanId(planId: string): string {
   if (clean === "free") return "trial";
   if (clean === "basic") return "starter";
   if (clean === "professional") return "pro";
+  // Enterprise is the public name; enterprise remains the stable plan id.
+  if (clean === "organisation" || clean === "organization") return "enterprise";
   return clean;
+}
+
+/** Enquire / WhatsApp: Trial, Business, Enterprise (and custom enterprise contracts). */
+export function planAllowsProductContact(
+  plan: Pick<PlanLimits, "planId" | "isEnterpriseCustom"> | string | null | undefined,
+): boolean {
+  if (plan == null) return false;
+  if (typeof plan !== "string") {
+    if (plan.isEnterpriseCustom) return true;
+    return planAllowsProductContact(plan.planId);
+  }
+  const id = mapLegacyPlanId(String(plan || "").trim());
+  if (id.startsWith("ecp_")) return true;
+  return id === "trial" || id === "business" || id === "enterprise";
+}
+
+/** Human label for Master Admin trial_hours (e.g. 72 → "3 days"). */
+export function formatTrialDurationLabel(hours?: number | null): string {
+  const h = Math.max(1, Math.round(Number(hours) || 72));
+  if (h % 24 === 0) {
+    const days = h / 24;
+    return days === 1 ? "1 day" : `${days} days`;
+  }
+  return h === 1 ? "1 hour" : `${h} hours`;
+}
+
+export function normalizeTrialHours(hours?: number | null, fallback = 72): number {
+  const n = Number(hours);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.round(n);
 }
 
 export const DEFAULT_PLAN_LIMITS: Record<string, PlanLimits> = {
   trial: {
     planId: "trial",
     name: "Free Trial",
-    products: 1,
+    products: 10,
     storageMb: 100,
     bandwidthGb: 1,
-    trialHours: 24,
+    trialHours: 72,
     allowViewer: true,
     allowUpload: true,
     allowAr: true,
+    allowQr: true,
+    allowShare: true,
+    allowEmbed: false,
+    advancedAnalytics: false,
+    allowObjectCapture: true,
     allowCustomBranding: false,
     allowCustomDomain: false,
+    allowProductContact: true,
     unlimitedStorage: false,
     unlimitedBandwidth: false,
   },
   starter: {
     planId: "starter",
     name: "Starter",
-    products: 5,
+    products: 10,
     storageMb: 512,
-    bandwidthGb: 5,
+    bandwidthGb: 2,
     allowViewer: true,
     allowUpload: true,
     allowAr: true,
+    allowQr: true,
+    allowShare: true,
+    allowEmbed: false,
+    advancedAnalytics: false,
+    allowObjectCapture: true,
     allowCustomBranding: false,
     allowCustomDomain: false,
+    allowProductContact: false,
+    unlimitedStorage: false,
+    unlimitedBandwidth: false,
+  },
+  intermediate: {
+    planId: "intermediate",
+    name: "Intermediate",
+    products: 50,
+    storageMb: 2048,
+    bandwidthGb: 100,
+    allowViewer: true,
+    allowUpload: true,
+    allowAr: true,
+    allowQr: true,
+    allowShare: true,
+    allowEmbed: true,
+    advancedAnalytics: false,
+    allowObjectCapture: true,
+    allowCustomBranding: false,
+    allowCustomDomain: false,
+    allowProductContact: false,
     unlimitedStorage: false,
     unlimitedBandwidth: false,
   },
   pro: {
     planId: "pro",
     name: "Pro",
-    products: 50,
+    products: 100,
     storageMb: 5120,
-    bandwidthGb: 50,
+    bandwidthGb: 250,
     allowViewer: true,
     allowUpload: true,
     allowAr: true,
+    allowQr: true,
+    allowShare: true,
+    allowEmbed: true,
+    advancedAnalytics: true,
+    prioritySupport: true,
+    allowObjectCapture: true,
     allowCustomBranding: true,
     allowCustomDomain: false,
+    allowProductContact: false,
     unlimitedStorage: false,
     unlimitedBandwidth: false,
   },
   business: {
     planId: "business",
     name: "Business",
-    products: 250,
-    storageMb: 25600,
-    bandwidthGb: 250,
+    products: 200,
+    storageMb: 10240,
+    bandwidthGb: 500,
     allowViewer: true,
     allowUpload: true,
     allowAr: true,
+    allowQr: true,
+    allowShare: true,
+    allowEmbed: true,
+    advancedAnalytics: true,
+    priorityProcessing: true,
+    prioritySupport: true,
+    allowObjectCapture: true,
     allowCustomBranding: true,
     allowCustomDomain: true,
+    allowProductContact: true,
     unlimitedStorage: false,
     unlimitedBandwidth: false,
   },
@@ -137,8 +218,16 @@ export const DEFAULT_PLAN_LIMITS: Record<string, PlanLimits> = {
     allowViewer: true,
     allowUpload: true,
     allowAr: true,
+    allowQr: true,
+    allowShare: true,
+    allowEmbed: true,
+    advancedAnalytics: true,
+    priorityProcessing: true,
+    prioritySupport: true,
+    allowObjectCapture: true,
     allowCustomBranding: true,
     allowCustomDomain: true,
+    allowProductContact: true,
     unlimitedStorage: false,
     unlimitedBandwidth: false,
   },
@@ -159,16 +248,14 @@ export function checkUploadEntitlement(
     return { allowed: false, reason: "Upload is not available on your current plan.", upgradeRequired: true, limitType: "status" };
   }
 
-  if (plan.planId === "free" || plan.planId === "trial") {
-    if (isTrialExpired(usage)) {
-      return { allowed: false, reason: "Your 24 hours trial has expired. Upgrade to continue uploading or editing products.", upgradeRequired: true, trialExpired: true, limitType: "trial" };
-    }
-    if (usage.productsUsed > 1) {
-      return { allowed: false, reason: "Trial limit exceeded. You have more than 1 product. Upgrade to edit or manage products.", upgradeRequired: true, limitType: "products" };
-    }
-    if (!isEdit && usage.productsUsed >= 1) {
-      return { allowed: false, code: "PRODUCT_LIMIT_REACHED", reason: "Trial limit reached. Your trial plan allows 1 product only. Upgrade to continue uploading.", upgradeRequired: true, limitType: "products" };
-    }
+  if ((plan.planId === "free" || plan.planId === "trial") && isTrialExpired(usage)) {
+    return {
+      allowed: false,
+      reason: `Your ${formatTrialDurationLabel(plan.trialHours)} trial has expired. Upgrade to continue uploading or editing products.`,
+      upgradeRequired: true,
+      trialExpired: true,
+      limitType: "trial",
+    };
   }
 
   if (!isEdit && plan.products !== null && usage.productsUsed >= plan.products) {
@@ -224,13 +311,14 @@ export function checkViewerEntitlement(plan: PlanLimits, usage: UsageSnapshot): 
     return { allowed: false, reason: "Viewer is disabled for your current plan.", upgradeRequired: true, limitType: "status" };
   }
 
-  if (plan.planId === "free" || plan.planId === "trial") {
-    if (isTrialExpired(usage)) {
-      return { allowed: false, reason: "This trial viewer has expired. Upgrade to reactivate the public viewer.", upgradeRequired: true, trialExpired: true, limitType: "trial" };
-    }
-    if (usage.productsUsed > 1) {
-      return { allowed: false, reason: "Trial limit exceeded. You have more than 1 product. Upgrade to reactivate the viewer.", upgradeRequired: true, limitType: "products" };
-    }
+  if ((plan.planId === "free" || plan.planId === "trial") && isTrialExpired(usage)) {
+    return {
+      allowed: false,
+      reason: "This trial viewer has expired. Upgrade to reactivate the public viewer.",
+      upgradeRequired: true,
+      trialExpired: true,
+      limitType: "trial",
+    };
   }
 
   const bandwidth = checkBandwidthEntitlement(plan, usage);

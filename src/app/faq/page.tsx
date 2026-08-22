@@ -1,12 +1,18 @@
 import LegalLayout from "@/components/shared/LegalLayout";
+import Link from "next/link";
+import { getMarketingChrome } from "@/lib/website/marketing-chrome";
 
 export const metadata = {
   title: "FAQ — AR360 Studio",
 };
 
-export default function FaqPage() {
+export const revalidate = 15;
+
+export default async function FaqPage() {
+  const chrome = await getMarketingChrome();
+
   return (
-    <LegalLayout title="Frequently asked questions">
+    <LegalLayout title="Frequently asked questions" chrome={chrome}>
       <p>
         Answers to common questions about AR360 Studio — 3D viewers, AR previews, billing, and
         sharing.
@@ -50,7 +56,8 @@ export default function FaqPage() {
 
       <h2>Need more help?</h2>
       <p>
-        Visit the <a href="/contact">contact page</a> or email support from your dashboard settings.
+        Visit the <Link href="/contact">contact page</Link> or email support from your dashboard
+        settings.
       </p>
     </LegalLayout>
   );

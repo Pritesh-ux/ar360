@@ -1,10 +1,9 @@
 "use client";
 
 import { motion } from "framer-motion";
+import AppImage from "@/components/shared/AppImage";
 import { Box, Check, MoreHorizontal } from "lucide-react";
 import type { MouseEvent, ReactNode } from "react";
-import ModelViewer from "@/components/shared/ModelViewer";
-import { getProductModelSrc } from "@/lib/modelSource";
 import ProductActions from "./ProductActions";
 import ProductStatusBadge from "./ProductStatusBadge";
 import type { ProductListItem } from "./types";
@@ -19,6 +18,10 @@ type Props = {
   onOpen: (id: string) => void;
   onMore: (e: MouseEvent, id: string) => void;
   qrRecordId?: number | null;
+  /** When set, Viewer / QR / Share open with client delivery context. */
+  clientUid?: string | null;
+  /** Hide bulk-select checkbox (e.g. client workspace). Default true. */
+  showSelect?: boolean;
 };
 
 export default function ProductCard({
@@ -30,8 +33,9 @@ export default function ProductCard({
   onOpen,
   onMore,
   qrRecordId,
+  clientUid,
+  showSelect = true,
 }: Props) {
-  const modelSrc = getProductModelSrc(product);
   const cardImage = product.poster || product.thumbnailUrl;
 
   return (
@@ -47,19 +51,21 @@ export default function ProductCard({
       ].join(" ")}
     >
       <div className="relative h-[128px] shrink-0 overflow-hidden rounded-t-[16px] bg-[#FAFAFA]">
-        <button
-          type="button"
-          onClick={(e) => onSelect(e, product.id)}
-          aria-label={`Select ${product.title}`}
-          className={[
-            "up-select-check absolute left-2.5 top-2.5 z-10 grid place-items-center rounded-full border transition",
-            selected
-              ? "border-[#84D400] bg-[#84D400] text-white"
-              : "border-[#C8CDD4] bg-white/90 text-[#A3A3A3] shadow-sm hover:border-[#A3A3A3]",
-          ].join(" ")}
-        >
-          {selected ? <Check size={11} strokeWidth={3} /> : null}
-        </button>
+        {showSelect ? (
+          <button
+            type="button"
+            onClick={(e) => onSelect(e, product.id)}
+            aria-label={`Select ${product.title}`}
+            className={[
+              "up-select-check absolute left-2.5 top-2.5 z-10 grid place-items-center rounded-full border transition",
+              selected
+                ? "border-[#84D400] bg-[#84D400] text-white"
+                : "border-[#C8CDD4] bg-white/90 text-[#A3A3A3] shadow-sm hover:border-[#A3A3A3]",
+            ].join(" ")}
+          >
+            {selected ? <Check size={11} strokeWidth={3} /> : null}
+          </button>
+        ) : null}
 
         <div className="absolute right-2.5 top-2.5 z-10 flex items-center gap-1.5">
           <ProductStatusBadge product={product} compact />
@@ -78,20 +84,7 @@ export default function ProductCard({
         </div>
 
         {cardImage ? (
-          <img src={cardImage} alt={product.title} className="h-full w-full object-contain p-3" loading="lazy" />
-        ) : modelSrc ? (
-          <div className="pointer-events-none h-full">
-            <ModelViewer
-              src={modelSrc}
-              showArButton={false}
-              cameraControls={false}
-              autoRotate={false}
-              interactionPrompt={false}
-              disableMaterialOverrides
-              backgroundColor="#FAFAFA"
-              shadowIntensity={0}
-            />
-          </div>
+          <AppImage src={cardImage} alt={product.title} className="h-full w-full object-contain p-3" loading="lazy" />
         ) : (
           <div className="grid h-full place-items-center">
             <Box size={32} className="text-[#D4D4D4]" />
@@ -111,6 +104,7 @@ export default function ProductCard({
           productId={product.id}
           productTitle={product.title}
           qrRecordId={qrRecordId}
+          clientUid={clientUid}
           onMore={(e) => {
             e.preventDefault();
             e.stopPropagation();

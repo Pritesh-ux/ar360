@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { stopCustomerImpersonation } from "@/lib/auth";
 import { guardAdminPermission } from "@/lib/permissions/admin-rbac";
 

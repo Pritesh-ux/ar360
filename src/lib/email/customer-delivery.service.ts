@@ -8,6 +8,7 @@ import {
   getNotificationPreferences,
   type NotificationPreferences,
 } from "@/lib/account/notify.service";
+import { secureEmailActionUrl } from "@/lib/auth/email-action-token";
 
 export type CustomerEmailCategory = keyof NotificationPreferences;
 
@@ -73,9 +74,20 @@ async function claimDelivery(input: {
     [input.customerUid, input.dedupeKey],
   );
   const existing = rows[0]?.status;
-  if (existing === "sent" || existing === "pending" || existing === "skipped") return false;
+  if (existing === "sent" || existing === "skipped") return false;
 
-  if (existing === "failed") {
+  // Stale pending rows (crashed send) or previous failures are retryable.
+  if (existing === "pending") {
+    const stale = await query<{ stale: number }>(
+      `SELECT CASE WHEN updated_at < DATE_SUB(NOW(), INTERVAL 10 MINUTE) THEN 1 ELSE 0 END AS stale
+         FROM customer_email_deliveries
+        WHERE customer_uid = ? AND dedupe_key = ? LIMIT 1`,
+      [input.customerUid, input.dedupeKey],
+    );
+    if (!Number(stale[0]?.stale || 0)) return false;
+  }
+
+  if (existing === "failed" || existing === "pending") {
     await query(
       `UPDATE customer_email_deliveries
           SET status = 'pending', attempts = attempts + 1, error_message = NULL
@@ -132,6 +144,10 @@ export async function sendCustomerLifecycleEmail(input: {
   dedupeKey: string;
   content: CustomerEmailContent;
   respectPreferences?: boolean;
+  metadata?: Record<string, unknown>;
+  /** When set, used instead of the standard lifecycle HTML shell (e.g. full invoice). */
+  htmlOverride?: string | null;
+  textOverride?: string | null;
 }) {
   const recipient = await resolveRecipient(input.customerUid);
   if (!recipient?.email?.trim()) return { delivered: false, skipped: true, reason: "missing_recipient" };
@@ -160,12 +176,64 @@ export async function sendCustomerLifecycleEmail(input: {
   });
   if (!claimed) return { delivered: false, skipped: true, reason: "duplicate" };
 
-  const rendered = renderCustomerLifecycleEmail(recipient.contact_name || "", input.content);
+  let content = input.content;
+  let htmlOverride = input.htmlOverride;
+  let textOverride = input.textOverride;
+  if (content.actionUrl) {
+    const insecureUrl = content.actionUrl;
+    const secureUrl = await secureEmailActionUrl({
+      customerUid: input.customerUid,
+      userId: recipient.user_id,
+      email: recipient.email,
+      destinationUrlOrPath: insecureUrl,
+    });
+    content = { ...content, actionUrl: secureUrl };
+    if (htmlOverride && htmlOverride.includes(insecureUrl)) {
+      htmlOverride = htmlOverride.split(insecureUrl).join(secureUrl);
+    }
+    if (textOverride && textOverride.includes(insecureUrl)) {
+      textOverride = textOverride.split(insecureUrl).join(secureUrl);
+    }
+  }
+
+  const rendered = htmlOverride
+    ? {
+        subject: content.subject,
+        text:
+          textOverride ||
+          [
+            `Hi ${recipient.contact_name || "there"},`,
+            "",
+            content.title,
+            "",
+            content.intro,
+            content.actionUrl
+              ? `${content.actionLabel || "Open AR360"}: ${content.actionUrl}`
+              : "",
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        html: htmlOverride,
+      }
+    : renderCustomerLifecycleEmail(recipient.contact_name || "", content);
   try {
     const result = await sendEmail({
       to: recipient.email,
       ...rendered,
       template: input.templateId,
+      metadata: {
+        customerUid: input.customerUid,
+        dedupeKey: input.dedupeKey,
+        content: {
+          title: content.title,
+          intro: content.intro,
+          lines: content.lines || [],
+          details: content.details || [],
+          actionLabel: content.actionLabel || null,
+          actionUrl: content.actionUrl || null,
+        },
+        ...(input.metadata || {}),
+      },
     });
     await finishDelivery(input.customerUid, input.dedupeKey, {
       status: result.delivered ? "sent" : result.mode === "skipped" ? "skipped" : "failed",

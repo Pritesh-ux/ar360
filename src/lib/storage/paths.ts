@@ -5,10 +5,10 @@ import path from "path";
 export const STORAGE_PUBLIC_PREFIX = "/Storage/Customers";
 
 /** Phase 2 protected disk root (outside public/). */
-export const DEFAULT_STORAGE_ROOT = path.resolve(process.cwd(), "storage", "Customers");
+export const DEFAULT_STORAGE_ROOT = path.resolve("./", "storage", "Customers");
 
 /** Pre-Phase 2 location served directly from public/. */
-export const LEGACY_STORAGE_ROOT = path.resolve(process.cwd(), "public", "Storage", "Customers");
+export const LEGACY_STORAGE_ROOT = path.resolve("./", "public", "Storage", "Customers");
 
 function directoryHasEntries(dir: string): boolean {
   try {

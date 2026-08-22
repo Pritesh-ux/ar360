@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useDeferredEffect } from "@/lib/react/use-deferred-effect";
 import { X } from "lucide-react";
 import { AdminButton } from "@/components/ui/admin";
+import UserFilterDropdown from "@/components/user-panel/UserFilterDropdown";
+import ViewportPortal from "@/components/shared/ViewportPortal";
 
 type Props = {
   open: boolean;
@@ -22,7 +25,7 @@ export default function ManualPaymentModal({ open, saving, onClose, onCreated }:
   const [error, setError] = useState("");
   const [plans, setPlans] = useState<string[]>(["trial", "basic", "professional", "enterprise"]);
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     if (!open) return;
     setEmail("");
     setAmount("");
@@ -70,7 +73,8 @@ export default function ManualPaymentModal({ open, saving, onClose, onCreated }:
   }
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/40 p-4">
+    <ViewportPortal>
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/40 p-4">
       <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <h2 className="text-[16px] font-black text-slate-900">Add Manual Payment</h2>
@@ -80,15 +84,30 @@ export default function ManualPaymentModal({ open, saving, onClose, onCreated }:
         </div>
         <div className="space-y-3 px-5 py-4">
           <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Customer email *" type="email" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px] outline-none" />
-          <select value={plan} onChange={(e) => setPlan(e.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px]">
-            {plans.map((p) => (
-              <option key={p} value={p}>{p}</option>
-            ))}
-          </select>
-          <select value={billing} onChange={(e) => setBilling(e.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px]">
-            <option value="Monthly">Monthly</option>
-            <option value="Yearly">Yearly</option>
-          </select>
+          <UserFilterDropdown
+            hideLabel
+            compact
+            className="w-full"
+            menuWidth={240}
+            label="Plan"
+            menuTitle="Plan"
+            value={plan}
+            options={plans}
+            onChange={setPlan}
+            renderOption={(value) => value.charAt(0).toUpperCase() + value.slice(1)}
+            renderValue={(value) => value.charAt(0).toUpperCase() + value.slice(1)}
+          />
+          <UserFilterDropdown
+            hideLabel
+            compact
+            className="w-full"
+            menuWidth={200}
+            label="Billing"
+            menuTitle="Billing"
+            value={billing}
+            options={["Monthly", "Yearly"]}
+            onChange={setBilling}
+          />
           <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount (INR, excl. GST base) *" type="number" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px] outline-none" />
           <input value={gateway} onChange={(e) => setGateway(e.target.value)} placeholder="Gateway" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px] outline-none" />
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes" rows={2} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px] outline-none" />
@@ -104,5 +123,6 @@ export default function ManualPaymentModal({ open, saving, onClose, onCreated }:
         </div>
       </div>
     </div>
+    </ViewportPortal>
   );
 }

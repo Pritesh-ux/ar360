@@ -34,7 +34,7 @@ export default function UserButton({
     <button
       type="button"
       disabled={disabled || loading}
-      className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${VARIANT_CLASS[variant]} ${className}`}
+      className={`inline-flex h-9 items-center justify-center gap-2 rounded-xl px-3.5 text-[13px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${VARIANT_CLASS[variant]} ${className}`}
       {...props}
     >
       {loading ? <Loader2 size={16} className="animate-spin" /> : icon}

@@ -494,6 +494,64 @@ export async function activateCoupon(couponUid: string, adminId?: number) {
   });
 }
 
+export async function deleteCoupons(couponUids: string[], adminId?: number) {
+  if (!couponUids.length) return { deleted: 0 };
+
+  const placeholders = couponUids.map(() => "?").join(",");
+  const rows = await query<{ coupon_uid: string; code: string }>(
+    `SELECT coupon_uid, code FROM coupons WHERE coupon_uid IN (${placeholders})`,
+    couponUids,
+  );
+
+  if (!rows.length) return { deleted: 0 };
+
+  await query(
+    `DELETE FROM coupon_redemptions WHERE coupon_uid IN (${placeholders})`,
+    couponUids,
+  );
+  const result = await query(
+    `DELETE FROM coupons WHERE coupon_uid IN (${placeholders})`,
+    couponUids,
+  );
+
+  const deleted = (result as any).affectedRows || rows.length;
+
+  for (const row of rows) {
+    await writeMasterAdminAudit({
+      adminId,
+      action: "coupon.delete",
+      entityType: "coupon",
+      entityId: row.coupon_uid,
+      metadata: { code: row.code },
+    });
+  }
+
+  return { deleted };
+}
+
+export async function deleteAllCoupons(adminId?: number) {
+  const rows = await query<{ coupon_uid: string; code: string }>(
+    "SELECT coupon_uid, code FROM coupons",
+  );
+  if (!rows.length) return { deleted: 0 };
+
+  await query("DELETE FROM coupon_redemptions");
+  const result = await query("DELETE FROM coupons");
+  const deleted = (result as any).affectedRows || rows.length;
+
+  for (const row of rows) {
+    await writeMasterAdminAudit({
+      adminId,
+      action: "coupon.delete",
+      entityType: "coupon",
+      entityId: row.coupon_uid,
+      metadata: { code: row.code, bulk: true },
+    });
+  }
+
+  return { deleted };
+}
+
 async function uniqueDuplicateCode(baseCode: string) {
   let attempt = `${baseCode}-COPY`;
   let suffix = 2;

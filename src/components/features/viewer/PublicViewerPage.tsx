@@ -1,40 +1,72 @@
 "use client";
 
+import { sanitizeOrigin } from "@/lib/url";
+import AppImage from "@/components/shared/AppImage";
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState, forwardRef, type CSSProperties } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useDeferredEffect } from "@/lib/react/use-deferred-effect";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   Camera,
   Check,
   Copy,
   Download,
-  Maximize2,
+  MessageCircle,
+  Palette,
   RefreshCw,
   RotateCcw,
   ExternalLink,
   Info,
+  Maximize2,
   MoreVertical,
   Share2,
   Smartphone,
   X,
 } from "lucide-react";
 import ARExperienceProButton from "@/components/features/ar/ARExperienceProButton";
+import StudioLookArCamera, {
+  stopMediaStream,
+} from "@/components/features/ar/StudioLookArCamera";
+import PoweredByAr360 from "@/components/brand/PoweredByAr360";
 import MobileProductLanding from "@/components/features/viewer/MobileProductLanding";
+import VariantPickerSheet from "@/components/features/viewer/VariantPickerSheet";
+import ClientCatalogSidebar from "@/components/features/viewer/ClientCatalogSidebar";
+import ViewerBrandMark from "@/components/features/viewer/ViewerBrandMark";
 import { getProductModelSrc } from "@/lib/modelSource";
+import { fitProductCamera } from "@/components/features/viewer/fit-product-camera";
 import { trackAnalyticsEvent } from "@/lib/analytics/track-event";
+import { buildWhatsAppHref } from "@/lib/viewer-contact/whatsapp";
+import EnquireModal from "@/components/features/viewer/EnquireModal";
 import { usePublicViewerProduct } from "@/lib/user-panel/public-viewer";
+import { viewerBrandStyle } from "@/lib/branding/contrast";
+import { DEFAULT_LOGO_DESIGN, type LogoDesign } from "@/lib/branding/logo-design";
 import { DetailRow } from "./DetailRow";
 import type { Notice } from "./types";
 import {
   copyToClipboard,
-  getActiveVariant,
   getLogo,
+  getVariantSwatchColor,
   getViewerSettings,
   normalizeViewerAssetUrl,
   resolveEnvironmentImage,
 } from "./viewer-utils";
-import { checkViewerAccess, needsPassword, type ViewerProduct as UniversalViewerProduct } from "@/lib/universal-viewer";
+import { checkViewerAccess, needsPassword, recordViewerEvent, type ViewerProduct as UniversalViewerProduct } from "@/lib/universal-viewer";
+
+/** Match server MOBILE_AR_SAFE_BYTES — keep client free of glb-optimize deps. */
+/** Prefer AR-lite GLB on phones whenever a lite file exists. */
+function usePreferMobileArLite() {
+  const [preferLite, setPreferLite] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 900px), (pointer: coarse)");
+    const sync = () => setPreferLite(mq.matches);
+    sync();
+    mq.addEventListener?.("change", sync);
+    return () => mq.removeEventListener?.("change", sync);
+  }, []);
+  return preferLite;
+}
 
 const ModelViewerImport = dynamic(() => import("@/components/shared/ModelViewer"), {
   ssr: false,
@@ -50,6 +82,9 @@ const ModelViewer = forwardRef<any, any>((props, ref) => (
   <ModelViewerImport {...props} forwardedRef={ref} />
 ));
 ModelViewer.displayName = "ModelViewer";
+
+/** How long the transfer may stay frozen before the viewer offers a retry. */
+const MODEL_STALL_MS = 20000;
 
 function viewerFontFamily(font?: string) {
   if (font === "sans") return 'var(--font-auth-body), "Instrument Sans", system-ui, sans-serif';
@@ -74,31 +109,46 @@ function headerChromeClass(style?: string, dark?: boolean) {
 
 function brandButtonClass(style?: string) {
   if (style === "outline") {
-    return "border-2 border-[var(--ar-primary)] bg-transparent text-slate-950 hover:bg-[var(--ar-primary-soft)]";
+    return "border-2 border-[var(--ar-primary)] bg-transparent text-[var(--ar-outline-fg)] hover:bg-[var(--ar-primary-soft)]";
   }
   if (style === "soft") {
-    return "border border-transparent bg-[var(--ar-primary-soft)] text-slate-950 hover:bg-[var(--ar-primary)]";
+    return "border border-transparent bg-[var(--ar-primary-soft)] text-[var(--ar-on-soft)] hover:bg-[var(--ar-primary)] hover:text-[var(--ar-on-primary)]";
   }
-  return "border border-transparent bg-[var(--ar-primary)] text-slate-950 hover:bg-[var(--ar-primary-hover)]";
+  return "border border-transparent bg-[var(--ar-primary)] text-[var(--ar-on-primary)] hover:brightness-110 hover:text-[var(--ar-on-primary)]";
 }
 
 export default function PublicViewerPage() {
   const params = useParams();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const id = String(params.id || "");
+  const clientUid = String(searchParams.get("client") || "").trim();
 
   const viewerRef = useRef<any>(null);
   const viewerShellRef = useRef<HTMLElement | null>(null);
   const cameraFitTimerRef = useRef<number | null>(null);
+  const userMovedCameraRef = useRef(false);
+  const openingCameraRef = useRef<{
+    cameraOrbit: string;
+    cameraTarget: string;
+    fieldOfView: string;
+  } | null>(null);
   const source = searchParams.get("source") || "direct";
+  const allowPreview = searchParams.get("preview") === "1";
   const { product, loading, error: entitlementError } = usePublicViewerProduct(id, {
-    source,
+    source: allowPreview ? "preview" : source,
     trackEvent: "viewer_open",
     retries: 2,
+    allowPreview,
+    clientUid: clientUid || null,
   });
   const [modelReady, setModelReady] = useState(false);
   const [modelError, setModelError] = useState(false);
   const [modelRetryKey, setModelRetryKey] = useState(0);
+  const [autoRotateOverride, setAutoRotateOverride] = useState<boolean | null>(null);
+  const loadedPercentRef = useRef(0);
+  const lastProgressAtRef = useRef(0);
+  const [resolvedArScale, setResolvedArScale] = useState<number | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -107,14 +157,27 @@ export default function PublicViewerPage() {
   const [accessDenied, setAccessDenied] = useState<string | null>(null);
   const [stage, setStage] = useState<"landing" | "viewer">("viewer");
   const [pendingAR, setPendingAR] = useState(false);
+  const [studioLookAr, setStudioLookAr] = useState(false);
+  const [studioArStream, setStudioArStream] = useState<MediaStream | null>(null);
+  const studioArStreamRef = useRef<MediaStream | null>(null);
+  const [shopperVariantId, setShopperVariantId] = useState<string | null>(null);
+  const [pendingVariantId, setPendingVariantId] = useState<string | null>(null);
+  const [variantSheetOpen, setVariantSheetOpen] = useState(false);
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const [clientLogoUrl, setClientLogoUrl] = useState("");
+  const [clientLogoDesign, setClientLogoDesign] = useState<LogoDesign | null>(null);
+  const [enquireOpen, setEnquireOpen] = useState(false);
+
+  const arEnabled = product?.allowAr !== false;
 
   const autoOpenAR =
-    pendingAR ||
-    searchParams.get("openAR") === "1" ||
-    searchParams.get("ar") === "1" ||
-    searchParams.get("mode") === "ar";
+    arEnabled &&
+    (pendingAR ||
+      searchParams.get("openAR") === "1" ||
+      searchParams.get("ar") === "1" ||
+      searchParams.get("mode") === "ar");
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     const fromQr =
       searchParams.get("source") === "qr" ||
       searchParams.get("landing") === "1" ||
@@ -125,20 +188,32 @@ export default function PublicViewerPage() {
   }, [searchParams]);
 
   useEffect(() => {
-    if (!product || !autoOpenAR || !modelReady || stage !== "viewer") return;
+    if (!product || !arEnabled || !autoOpenAR || !modelReady || stage !== "viewer") return;
+    // Open tutorial sheet only (synthetic click is not isTrusted → no camera yet).
     const timer = window.setTimeout(() => {
       document.querySelector<HTMLButtonElement>("[data-ar-pro-launch]")?.click();
       setPendingAR(false);
     }, 700);
     return () => window.clearTimeout(timer);
-  }, [product, autoOpenAR, modelReady, stage]);
+  }, [product, arEnabled, autoOpenAR, modelReady, stage]);
+
+  useEffect(() => {
+    studioArStreamRef.current = studioArStream;
+  }, [studioArStream]);
+
+  useEffect(() => {
+    return () => {
+      stopMediaStream(studioArStreamRef.current);
+      studioArStreamRef.current = null;
+    };
+  }, []);
 
   const viewerAccessProduct = useMemo((): UniversalViewerProduct | null => {
     if (!product) return null;
     return { ...product, id: product.id || product.productUid || id } as UniversalViewerProduct;
   }, [product, id]);
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     if (!viewerAccessProduct) return;
     const access = checkViewerAccess(viewerAccessProduct, { passwordUnlocked });
     if (!access.ok) {
@@ -155,19 +230,69 @@ export default function PublicViewerPage() {
     setAccessDenied(null);
   }, [viewerAccessProduct, passwordUnlocked]);
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     setModelReady(false);
     setModelError(false);
   }, [id]);
 
-  const settings = useMemo(() => getViewerSettings(product), [product]);
-  const activeVariant = useMemo(() => getActiveVariant(product), [product]);
-  const modelSrc = getProductModelSrc(product);
-  const modelIdentity = `${product?.productUid || product?.id || id}-${activeVariant?.id || "default"}`;
-  const logo = getLogo(product);
+  useDeferredEffect(() => {
+    if (!product) return;
+    const initial =
+      product.activeVariantId ||
+      product.variants?.[0]?.id ||
+      null;
+    setShopperVariantId(initial);
+    setPendingVariantId(null);
+  }, [product?.productUid || product?.id, product?.activeVariantId]);
+
+  const shopperVariants = product?.variants || [];
+  const hasVariantPicker = shopperVariants.length > 1;
+  const previewVariantId =
+    variantSheetOpen && pendingVariantId ? pendingVariantId : shopperVariantId;
+  const settings = useMemo(
+    () => getViewerSettings(product, previewVariantId),
+    [product, previewVariantId],
+  );
+  const preferMobileArLite = usePreferMobileArLite();
+  const modelSrc = useMemo(() => {
+    if (!product) return undefined;
+    const full = getProductModelSrc(product);
+    const arLite = String(product.arModelUrl || "").trim();
+    // Prefer lite whenever present on phone/coarse viewports — don't require modelBytes.
+    if (preferMobileArLite && arLite) {
+      return getProductModelSrc({
+        ...product,
+        modelUrl: arLite,
+        fileName: "model.ar.glb",
+      });
+    }
+    return full;
+  }, [product, preferMobileArLite]);
+  // Keep model identity stable across variant switches so materials apply live.
+  const modelIdentity = `${product?.productUid || product?.id || id}`;
+  const productLogo = getLogo(product);
+  // Client branding wins when viewer opens with ?client=...; else product brand; else AR360 mark.
+  const logo = clientLogoUrl || productLogo;
+  const logoDesign = clientLogoDesign || product?.logoDesign || DEFAULT_LOGO_DESIGN;
+  const autoRotateEnabled = autoRotateOverride ?? settings.autoRotate !== false;
+
+  useDeferredEffect(() => {
+    if (!clientUid) {
+      setClientLogoUrl("");
+      setClientLogoDesign(null);
+    }
+  }, [clientUid]);
+
+  useDeferredEffect(() => {
+    setAutoRotateOverride(null);
+    setResolvedArScale(null);
+    openingCameraRef.current = null;
+  }, [modelIdentity]);
 
   useEffect(() => {
-    const href = product?.faviconUrl || product?.brandLogoUrl || product?.brandLogo || logo;
+    // Prefer an uploaded customer favicon only. Never fall back to brand logo —
+    // that made share/AR/embed tabs show another company's mark.
+    const href = String(product?.faviconUrl || "").trim();
     if (!href || typeof document === "undefined") return;
     let link = document.querySelector<HTMLLinkElement>("link[data-ar360-brand-favicon]");
     if (!link) {
@@ -177,11 +302,11 @@ export default function PublicViewerPage() {
       document.head.appendChild(link);
     }
     link.href = href;
-  }, [product?.faviconUrl, product?.brandLogoUrl, product?.brandLogo, logo]);
+  }, [product?.faviconUrl]);
 
   const viewerUrl = useMemo(() => {
     if (typeof window === "undefined") return `/viewer/${id}`;
-    return `${window.location.origin}/viewer/${id}`;
+    return `${sanitizeOrigin(window.location.origin)}/viewer/${id}`;
   }, [id]);
 
   function showNotice(type: Notice["type"], message: string) {
@@ -202,6 +327,56 @@ export default function PublicViewerPage() {
     return defaults[settings.ctaType || "visit_website"] || "Learn More";
   }, [settings]);
 
+  const viewerContact = product?.viewerContact;
+  const enquireEnabled = Boolean(viewerContact?.enquireEnabled);
+  const whatsappEnabled = Boolean(viewerContact?.whatsappEnabled && viewerContact?.whatsappNumber);
+  const enquireLabel = viewerContact?.enquireLabel?.trim() || "Enquire";
+  const whatsappLabel = viewerContact?.whatsappLabel?.trim() || "WhatsApp";
+
+  function openEnquire() {
+    if (!product) return;
+    trackAnalyticsEvent({
+      event: "enquiry_open",
+      productUid: product.productUid || product.id || id,
+    });
+    setEnquireOpen(true);
+  }
+
+  async function submitEnquire(input: { name: string; phone: string; email: string; message: string }) {
+    if (!product) throw new Error("Product is not available.");
+    const res = await fetch("/api/product-enquiries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        productId: product.productUid || product.id || id,
+        clientUid: clientUid || undefined,
+        viewerUrl,
+        ...input,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(String(data.error || "Could not send enquiry."));
+    trackAnalyticsEvent({
+      event: "enquiry_submit",
+      productUid: product.productUid || product.id || id,
+    });
+  }
+
+  function openWhatsApp() {
+    if (!product || !viewerContact?.whatsappNumber) return;
+    trackAnalyticsEvent({
+      event: "whatsapp_click",
+      productUid: product.productUid || product.id || id,
+    });
+    const href = buildWhatsAppHref({
+      number: viewerContact.whatsappNumber,
+      productTitle: product.title || "this product",
+      productId: product.productUid || product.id || id,
+      viewerUrl,
+    });
+    if (href) window.open(href, "_blank", "noopener,noreferrer");
+  }
+
   function handleCtaClick() {
     if (!settings.ctaUrl || !product) return;
     trackAnalyticsEvent({
@@ -209,31 +384,70 @@ export default function PublicViewerPage() {
       productUid: product.productUid || product.id || id,
       meta: { ctaType: settings.ctaType || "visit_website", trafficSource: source },
     });
-    window.open(settings.ctaUrl, "_blank", "noopener,noreferrer");
+    const raw = String(settings.ctaUrl).trim();
+    const type = settings.ctaType || "visit_website";
+    let href = raw;
+    if (type === "whatsapp") {
+      href =
+        buildWhatsAppHref({
+          number: raw,
+          productTitle: product.title || "this product",
+          productId: product.productUid || product.id || id,
+          viewerUrl,
+        }) || raw;
+    } else if (type === "tel" || type === "contact_seller") {
+      href = raw.startsWith("tel:") ? raw : `tel:${raw.replace(/[^\d+]/g, "") || raw}`;
+    } else if (type === "mailto") {
+      href = raw.startsWith("mailto:") ? raw : `mailto:${raw}`;
+    } else if (!/^https?:\/\//i.test(raw) && !raw.startsWith("mailto:") && !raw.startsWith("tel:")) {
+      href = `https://${raw}`;
+    }
+    window.open(href, "_blank", "noopener,noreferrer");
   }
 
   async function copyShareLink() {
+    trackAnalyticsEvent({ event: "copy_link", productUid: product?.productUid || product?.id || id });
     await copyToClipboard(viewerUrl);
     showNotice("success", "Share link copied");
-    trackAnalyticsEvent({ event: "copy_link", productUid: product?.productUid || product?.id || id });
   }
 
   async function nativeShare() {
     if (!product) return;
+    const productUid = product.productUid || product.id || id;
     if (navigator.share) {
-      await navigator.share({
-        title: product.title || "3D Product",
-        text: product.description || "View this product in 3D / AR",
-        url: viewerUrl,
-      });
-      trackAnalyticsEvent({ event: "share_native", productUid: product.productUid || product.id || id });
-      return;
+      try {
+        await navigator.share({
+          title: product.title || "3D Product",
+          text: product.description || "View this product in 3D / AR",
+          url: viewerUrl,
+        });
+        trackAnalyticsEvent({ event: "share_native", productUid });
+        return;
+      } catch {
+        // User cancelled or share failed — still keep a copy fallback.
+      }
     }
     await copyShareLink();
   }
 
+  function enterStudioLookAr(stream?: MediaStream) {
+    setMenuOpen(false);
+    setVariantSheetOpen(false);
+    setStudioArStream(stream ?? null);
+    setStudioLookAr(true);
+  }
+
+  function exitStudioLookAr() {
+    setStudioLookAr(false);
+    setStudioArStream((prev) => {
+      stopMediaStream(prev);
+      return null;
+    });
+  }
+
   async function takeScreenshot() {
     const viewer = viewerRef.current;
+    const productUid = product?.productUid || product?.id || id;
     if (!viewer?.toDataURL) {
       showNotice("error", "Screenshot is not ready yet");
       return;
@@ -245,6 +459,7 @@ export default function PublicViewerPage() {
       const fileName = `${product?.title || "ar-product"}-screenshot.png`;
       const blob = await (await fetch(dataUrl)).blob();
       const file = new File([blob], fileName, { type: "image/png" });
+      trackAnalyticsEvent({ event: "screenshot", productUid });
 
       if (navigator.canShare?.({ files: [file] }) && navigator.share) {
         await navigator.share({ files: [file], title: product?.title || "3D Screenshot" });
@@ -256,7 +471,6 @@ export default function PublicViewerPage() {
       }
 
       showNotice("success", "Screenshot saved");
-      trackAnalyticsEvent({ event: "screenshot", productUid: product?.productUid || product?.id || id });
     } catch {
       showNotice("error", "Screenshot failed. Try again after model loads.");
     }
@@ -266,37 +480,61 @@ export default function PublicViewerPage() {
     const viewer = viewerRef.current;
     if (!viewer?.loaded) return;
 
-    try {
-      const isMobileViewport = typeof window !== "undefined" && window.innerWidth < 640;
-      const zoomFactor = (settings.initialZoom || 100) / 100;
+    // Mobile browsers fire resize whenever the URL bar collapses mid-gesture, which
+    // would otherwise snap the camera back and make pinch-zoom look broken.
+    if (reason === "resize" && userMovedCameraRef.current) {
+      viewer.updateFraming?.();
+      return;
+    }
+    if (reason !== "resize") userMovedCameraRef.current = false;
 
-      if (settings.cameraTarget) {
-        viewer.cameraTarget = settings.cameraTarget;
-      } else {
-        const center = viewer.getBoundingBoxCenter?.();
-        if (center && Number.isFinite(center.x) && Number.isFinite(center.y) && Number.isFinite(center.z)) {
-          viewer.cameraTarget = `${center.x}m ${center.y}m ${center.z}m`;
-        } else {
-          viewer.cameraTarget = "auto auto auto";
+    const opening = openingCameraRef.current;
+    const restoreOrbit =
+      reason === "reset"
+        ? opening?.cameraOrbit || settings.cameraOrbit || null
+        : settings.cameraOrbit || null;
+    const restoreTarget =
+      reason === "reset"
+        ? opening?.cameraTarget || settings.cameraTarget || ""
+        : settings.cameraTarget || "";
+    const restoreFov =
+      reason === "reset"
+        ? opening?.fieldOfView || settings.fov || 45
+        : settings.fov || 45;
+
+    try {
+      await fitProductCamera({
+        viewer,
+        cameraOrbit: restoreOrbit,
+        cameraTarget: restoreTarget,
+        fieldOfView: restoreFov,
+        // Reset restores the QR/open view — never a padded auto-fit zoom-out.
+        forceAutoFit: reason === "retry" && !restoreOrbit,
+        fitPadding: 1.18,
+        reason,
+      });
+      if (reason === "ready" && !openingCameraRef.current) {
+        const live = viewer.getCameraOrbit?.();
+        const orbit =
+          String(settings.cameraOrbit || "").trim() ||
+          (live && Number.isFinite(live.theta)
+            ? `${live.theta}rad ${live.phi}rad ${live.radius}m`
+            : String(viewer.cameraOrbit || "").trim());
+        if (orbit) {
+          openingCameraRef.current = {
+            cameraOrbit: orbit,
+            cameraTarget:
+              String(settings.cameraTarget || viewer.cameraTarget || "").trim(),
+            fieldOfView: String(viewer.fieldOfView || `${settings.fov || 45}deg`),
+          };
         }
       }
-
-      if (settings.cameraOrbit) {
-        viewer.cameraOrbit = settings.cameraOrbit;
-      } else {
-        const dimensions = viewer.getDimensions?.();
-        const maxDimension = dimensions
-          ? Math.max(Number(dimensions.x || 0), Number(dimensions.y || 0), Number(dimensions.z || 0))
-          : 0;
-        const desktopRadius = maxDimension > 3 ? 205 : maxDimension > 1.6 ? 185 : 165;
-        const mobileRadius = maxDimension > 3 ? 320 : maxDimension > 1.6 ? 290 : 255;
-        const radius = (isMobileViewport ? mobileRadius : desktopRadius) / zoomFactor;
-        viewer.cameraOrbit = `35deg 65deg ${reason === "reset" ? (isMobileViewport ? 285 : 175) / zoomFactor : radius}%`;
+      try {
+        viewer.cameraControls = true;
+        viewer.removeAttribute?.("disable-zoom");
+      } catch {
+        // ignore
       }
-
-      viewer.fieldOfView = `${isMobileViewport ? Math.min(Number(settings.fov || 38), 32) : settings.fov || 38}deg`;
-      viewer.updateFraming?.();
-      viewer.jumpCameraToGoal?.();
     } catch (error) {
       console.warn("Viewer camera fit failed", error);
     }
@@ -319,7 +557,7 @@ export default function PublicViewerPage() {
 
   async function resetCamera() {
     await fitViewerCamera("reset");
-    showNotice("success", "Camera centered");
+    showNotice("success", "View reset");
   }
 
   async function openFullscreenViewer() {
@@ -344,7 +582,10 @@ export default function PublicViewerPage() {
       scheduleCameraFit("resize", 180);
     }
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setMenuOpen(false);
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+        exitStudioLookAr();
+      }
     }
     document.addEventListener("fullscreenchange", onFullscreenChange);
     window.addEventListener("keydown", onKeyDown);
@@ -358,14 +599,19 @@ export default function PublicViewerPage() {
   useEffect(() => {
     if (!product || !modelSrc || modelReady || modelError || loading) return;
 
-    const timer = window.setTimeout(() => {
-      if (!modelReady) {
-        setModelError(true);
-        showNotice("error", "3D model is taking too long. Try reload.");
-      }
-    }, 14000);
+    loadedPercentRef.current = 0;
+    lastProgressAtRef.current = Date.now();
 
-    return () => window.clearTimeout(timer);
+    // Heavy models on mobile data can legitimately take a minute, so give up only
+    // when the transfer itself stops advancing instead of at a fixed deadline.
+    const timer = window.setInterval(() => {
+      if (Date.now() - lastProgressAtRef.current < MODEL_STALL_MS) return;
+      window.clearInterval(timer);
+      setModelError(true);
+      showNotice("error", "3D model is taking too long. Try reload.");
+    }, 2000);
+
+    return () => window.clearInterval(timer);
   }, [product, modelSrc, modelReady, modelError, loading, modelRetryKey]);
 
   useEffect(() => {
@@ -385,17 +631,46 @@ export default function PublicViewerPage() {
     window.addEventListener("resize", handleViewportChange);
     window.addEventListener("orientationchange", handleViewportChange);
 
+    const viewer = viewerRef.current as HTMLElement | null;
+    const markUserCamera = (event: Event) => {
+      const source = (event as CustomEvent<{ source?: string }>).detail?.source;
+      if (source === "user-interaction") userMovedCameraRef.current = true;
+    };
+    viewer?.addEventListener("camera-change", markUserCamera);
+
     return () => {
       observer?.disconnect();
       window.removeEventListener("resize", handleViewportChange);
       window.removeEventListener("orientationchange", handleViewportChange);
+      viewer?.removeEventListener("camera-change", markUserCamera);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelReady, modelIdentity]);
 
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset cached scale when model changes
+    setResolvedArScale(null);
+  }, [modelIdentity, modelSrc]);
+
   const darkTheme = product?.customViewerTheme === "dark";
   const headerClass = headerChromeClass(product?.headerStyle, darkTheme);
   const buttonClass = brandButtonClass(product?.buttonStyle);
+  const solidViewerBg = settings.transparent
+    ? "transparent"
+    : !settings.backgroundColor ||
+        settings.backgroundColor === "#ffffff" ||
+        settings.backgroundColor === "#FFFFFF"
+      ? null
+      : settings.backgroundColor;
+  const pageBackdrop = solidViewerBg
+    ? solidViewerBg
+    : darkTheme
+      ? "linear-gradient(180deg, #111318 0%, #17191D 52%, #0D0F12 100%)"
+      : product?.customViewerTheme === "brand" && product?.enterpriseBrandColor
+        ? `linear-gradient(180deg, color-mix(in srgb, ${product.enterpriseBrandColor} 18%, white) 0%, #ffffff 48%, #f7f8f5 100%)`
+        : product?.customViewerTheme === "light"
+          ? "linear-gradient(180deg, #ffffff 0%, #ffffff 55%, #f3f4f6 100%)"
+          : "linear-gradient(180deg, #ffffff 0%, #fbfcfb 52%, #f4f7f4 100%)";
 
   return (
     <main
@@ -403,55 +678,44 @@ export default function PublicViewerPage() {
       data-viewer-theme={product?.customViewerTheme || "default"}
       data-header-style={product?.headerStyle || "glass"}
       data-button-style={product?.buttonStyle || "filled"}
+      data-transparent-viewer={settings.transparent ? "true" : "false"}
       className={`fixed inset-0 overflow-hidden text-slate-950 [touch-action:manipulation] z-0 ${
         darkTheme ? "bg-[#111318] text-white" : "bg-[#fbfcfb]"
       }`}
       style={
         {
           fontFamily: viewerFontFamily(product?.viewerFont),
-          "--ar-primary": product?.enterpriseBrandColor || "#B8FF3C",
-          "--ar-primary-hover":
-            product?.enterpriseAccentColor || product?.enterpriseBrandColor || "#84D400",
-          "--ar-primary-soft": product?.enterpriseBrandColor
-            ? `color-mix(in srgb, ${product.enterpriseBrandColor} 14%, white)`
-            : "#F3FFD7",
+          ...viewerBrandStyle(product?.enterpriseBrandColor, product?.enterpriseAccentColor),
+          ...(solidViewerBg ? { background: solidViewerBg } : {}),
         } as CSSProperties
       }
     >
       <div
         className="pointer-events-none fixed inset-0 z-0"
-        style={{
-          background:
-            product?.customViewerTheme === "dark"
-              ? "linear-gradient(180deg, #111318 0%, #17191D 52%, #0D0F12 100%)"
-              : product?.customViewerTheme === "brand" && product?.enterpriseBrandColor
-                ? `linear-gradient(180deg, color-mix(in srgb, ${product.enterpriseBrandColor} 18%, white) 0%, #ffffff 48%, #f7f8f5 100%)`
-                : product?.customViewerTheme === "light"
-                  ? "linear-gradient(180deg, #ffffff 0%, #ffffff 55%, #f3f4f6 100%)"
-                  : "linear-gradient(180deg, #ffffff 0%, #fbfcfb 52%, #f4f7f4 100%)",
-        }}
+        style={{ background: pageBackdrop }}
       />
-      <div className="pointer-events-none fixed inset-0 z-0 opacity-[0.16] [background-image:linear-gradient(to_right,rgba(15,23,42,.06)_1px,transparent_1px),linear-gradient(to_bottom,rgba(15,23,42,.06)_1px,transparent_1px)] [background-size:46px_46px]" />
-      {product?.viewerWatermark && (logo || product.brandName) ? (
-        <div className="pointer-events-none fixed bottom-3 left-3 z-[80] flex max-w-[220px] items-center gap-2 rounded-xl border border-slate-200/80 bg-white/85 px-2.5 py-2 shadow-sm backdrop-blur-md">
-          {logo ? <img src={logo} alt="" className="h-6 w-6 rounded-lg object-contain" /> : null}
-          {product.brandName ? (
-            <span className="truncate text-[11px] font-bold text-slate-700">{product.brandName}</span>
-          ) : null}
+      {!solidViewerBg ? (
+        <div className="pointer-events-none fixed inset-0 z-0 opacity-[0.16] [background-image:linear-gradient(to_right,rgba(15,23,42,.06)_1px,transparent_1px),linear-gradient(to_bottom,rgba(15,23,42,.06)_1px,transparent_1px)] [background-size:46px_46px]" />
+      ) : null}
+      {product?.viewerWatermark && logo ? (
+        <div className="pointer-events-none fixed bottom-3 left-3 z-[80]">
+          <ViewerBrandMark src={logo} size={40} className="shrink-0 drop-shadow-md" design={logoDesign} />
         </div>
       ) : null}
 
       {loading ? (
-        <div className="fixed inset-0 z-[9999] grid place-items-center bg-white/55 px-5 text-slate-950 backdrop-blur-md">
-          <div className="w-full max-w-[320px] rounded-[30px] border border-slate-200 bg-white/88 p-6 text-center shadow-2xl backdrop-blur-xl">
-            <div className="mx-auto grid h-14 w-14 place-items-center rounded-3xl bg-[var(--ar-primary-soft)]">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--ar-primary)] border-t-transparent" />
+        <div className="fixed inset-0 z-[9999] grid place-items-center bg-white px-5 text-slate-950">
+          <div className="flex flex-col items-center gap-4 text-center">
+            <div className="w-[180px] rounded-3xl border border-[#ECECEC] bg-white p-4 text-center shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+              <div className="relative h-1 w-full overflow-hidden rounded-full bg-slate-100">
+                <div className="absolute left-0 top-0 h-full w-1/2 animate-pulse rounded-full bg-[#84D400]" />
+              </div>
+              <span className="mt-3 block text-[11px] font-bold uppercase tracking-wider text-[#737373]">
+                Loading Viewer
+              </span>
             </div>
-            <p className="mt-5 text-sm font-black uppercase tracking-[0.24em] text-slate-400">
-              Loading viewer
-            </p>
-            <p className="mt-2 text-xs font-semibold text-slate-400">
-              {product?.loadingMessage || "Preparing premium 3D experience"}
+            <p className="max-w-xs text-[13px] font-medium text-[#737373]">
+              {product?.loadingMessage || "Please wait while we prepare the 3D experience..."}
             </p>
           </div>
         </div>
@@ -497,7 +761,7 @@ export default function PublicViewerPage() {
                   showNotice("error", "Incorrect password");
                 }
               }}
-              className="mt-4 w-full rounded-xl bg-[var(--ar-primary)] px-4 py-3 text-sm font-bold text-slate-950"
+              className="mt-4 w-full rounded-xl bg-[var(--ar-primary)] px-4 py-3 text-sm font-bold text-[var(--ar-on-primary)]"
             >
               Unlock viewer
             </button>
@@ -523,11 +787,13 @@ export default function PublicViewerPage() {
           poster={product.poster}
           logo={logo || undefined}
           hidePoweredBy={Boolean(product.removeBranding)}
+          poweredByLabel={product.poweredByLabel}
           viewerTheme={product.customViewerTheme}
           ctaLabel={product.ctaLabel || undefined}
           buttonStyle={product.buttonStyle}
           headerStyle={product.headerStyle}
           viewerFont={product.viewerFont}
+          showAr={arEnabled}
           onView3D={() => {
             setPendingAR(false);
             setStage("viewer");
@@ -539,40 +805,94 @@ export default function PublicViewerPage() {
         />
       ) : (
         <>
-          <section data-viewer-section ref={viewerShellRef} className="fixed inset-0 z-10 pointer-events-auto bg-transparent">
+          <section
+            data-viewer-section
+            ref={viewerShellRef}
+            className="fixed inset-0 z-10 pointer-events-auto"
+            style={{
+              backgroundColor: studioLookAr
+                ? "transparent"
+                : settings.transparent
+                  ? "transparent"
+                  : solidViewerBg || "#F0F2F5",
+            }}
+          >
+            {studioLookAr ? (
+              <StudioLookArCamera
+                active
+                stream={studioArStream}
+                onExit={exitStudioLookAr}
+                onCameraError={(message) => {
+                  showNotice("error", message || "Camera access failed. Tap View in AR to retry.");
+                  exitStudioLookAr();
+                }}
+              />
+            ) : null}
+            <div
+              className={
+                studioLookAr
+                  ? "pointer-events-auto absolute inset-0 z-[2] bg-transparent"
+                  : "h-full w-full"
+              }
+              style={studioLookAr ? { background: "transparent" } : undefined}
+            >
             <ModelViewer
               key={`${modelIdentity}-${modelRetryKey}`}
               ref={viewerRef}
               src={modelSrc}
               poster={normalizeViewerAssetUrl(settings.poster)}
               exposure={settings.exposure ?? 0.9}
+              environmentTint={settings.environmentTint || "#ffffff"}
+              environmentSaturation={settings.environmentSaturation ?? 1}
               toneMapping="commerce"
               environmentImage={resolveEnvironmentImage(settings.environmentImage)}
-              backgroundColor={
-                !settings.backgroundColor || settings.backgroundColor === "#ffffff"
-                  ? "#F0F2F5"
-                  : settings.backgroundColor
+              skyboxImage={
+                studioLookAr
+                  ? undefined
+                  : (settings as { useSkybox?: boolean }).useSkybox === true &&
+                      settings.environmentImage &&
+                      settings.environmentImage !== "default" &&
+                      !String(settings.environmentImage).startsWith("blob:")
+                    ? settings.environmentImage
+                    : undefined
               }
-              transparent={settings.transparent}
-              shadowIntensity={settings.shadowIntensity ?? 1.25}
+              backgroundColor={
+                studioLookAr || settings.transparent
+                  ? "transparent"
+                  : solidViewerBg || "#F0F2F5"
+              }
+              transparent={studioLookAr || Boolean(settings.transparent)}
+              shadowIntensity={studioLookAr ? 0 : settings.shadowIntensity ?? 1.25}
               shadowSoftness={settings.shadowSoftness ?? 0.7}
-              autoRotate={settings.autoRotate}
-              cameraControls={settings.cameraControls}
-              interactionPrompt={settings.interactionPrompt}
+              autoRotate={studioLookAr ? false : autoRotateEnabled}
+              cameraControls={settings.cameraControls !== false}
+              interactionPrompt={studioLookAr ? false : settings.interactionPrompt}
               autoPlay={settings.autoPlay}
               showArButton={false}
               fov={settings.fov}
-              cameraOrbit={settings.cameraOrbit || "35deg 65deg 240%"}
+              cameraOrbit={settings.cameraOrbit || undefined}
               cameraTarget={settings.cameraTarget}
-              baseColor={settings.baseColor}
-              metalness={settings.metalness}
-              roughness={settings.roughness}
-              emissiveColor={settings.emissiveColor}
-              baseColorTexture={settings.baseColorTexture}
+              disableZoom={false}
+              disableTap
+              // Variant materials only — do NOT pass product-level baseColor/metalness.
               allMaterialSettings={settings.materialSettings}
               arPlacement={settings.arPlacement === "wall" ? "wall" : "floor"}
-              realScale={product.realScale !== false}
+              realScale={product.realScale === true}
+              modelUnit={product.arModelUnit || "auto"}
+              iosSrc={normalizeViewerAssetUrl(product.usdzUrl) || undefined}
+              modelScale={
+                typeof product.arModelScale === "number" && product.arModelScale > 0
+                  ? product.arModelScale
+                  : null
+              }
+              onModelScaleResolved={(scale) => setResolvedArScale(scale)}
               logoDecals={product.logoDecals || []}
+              hotspots={product.hotspots || []}
+              onLoadProgress={(percent) => {
+                if (percent <= loadedPercentRef.current) return;
+                loadedPercentRef.current = percent;
+                lastProgressAtRef.current = Date.now();
+              }}
               onModelReady={() => {
                 setModelReady(true);
                 setModelError(false);
@@ -584,14 +904,29 @@ export default function PublicViewerPage() {
                 showNotice("error", "Model failed to load");
               }}
             />
+            </div>
           </section>
 
-          {!modelReady && !modelError && (
-            <div className="pointer-events-none fixed left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2 rounded-full border border-slate-200 bg-white/88 px-5 py-3 text-sm font-black text-slate-500 shadow-xl backdrop-blur-xl">
-              <span className="mr-2 inline-block h-2 w-2 animate-pulse rounded-full bg-[var(--ar-primary)]" />
-              Loading 3D model...
-            </div>
-          )}
+          {clientUid && !studioLookAr ? (
+            <ClientCatalogSidebar
+              clientUid={clientUid}
+              activeProductId={String(product.id || id)}
+              fallbackLogoUrl={productLogo || undefined}
+              hasVariantPicker={hasVariantPicker}
+              onLogoUrlChange={setClientLogoUrl}
+              onLogoDesignChange={setClientLogoDesign}
+              onOpenChange={setCatalogOpen}
+              onSelectProduct={(productId) => {
+                const next = new URLSearchParams(searchParams.toString());
+                next.delete("openAR");
+                next.delete("ar");
+                next.delete("mode");
+                next.set("client", clientUid);
+                const qs = next.toString();
+                router.push(`/viewer/${encodeURIComponent(productId)}${qs ? `?${qs}` : ""}`);
+              }}
+            />
+          ) : null}
 
           {modelError && (
             <div className="fixed left-1/2 top-1/2 z-30 w-[calc(100vw-32px)] max-w-[360px] -translate-x-1/2 -translate-y-1/2 rounded-[28px] border border-slate-200 bg-white/94 p-5 text-center shadow-2xl backdrop-blur-xl">
@@ -603,7 +938,7 @@ export default function PublicViewerPage() {
               <button
                 type="button"
                 onClick={retryModelLoad}
-                className="mt-5 inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-[var(--ar-primary)] px-5 text-sm font-black text-[var(--ar-text)] shadow-lg shadow-black/10"
+                className="mt-5 inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-[var(--ar-primary)] px-5 text-sm font-black text-[var(--ar-on-primary)] shadow-lg shadow-black/10"
               >
                 <RefreshCw size={16} />
                 Reload Model
@@ -611,87 +946,121 @@ export default function PublicViewerPage() {
             </div>
           )}
 
+          {!studioLookAr ? (
           <header
             data-viewer-header
             className="pointer-events-none fixed inset-x-0 top-0 z-[80] flex items-start justify-between gap-3 p-3 pt-[max(12px,env(safe-area-inset-top))] sm:p-5 sm:pt-5"
           >
-            <div
-              className={`pointer-events-auto flex min-w-0 max-w-[min(72vw,340px)] items-center gap-2.5 rounded-full border px-2.5 py-2 shadow-[0_10px_30px_rgba(15,23,42,0.10)] sm:gap-3 sm:px-3 ${headerClass}`}
-            >
-              {logo ? (
-                <span className="flex h-10 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-1 ring-1 ring-slate-200/80">
-                  <img src={logo} alt="Brand logo" className="h-full w-full object-contain" />
-                </span>
-              ) : (
-                <div
-                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[11px] font-black tracking-wide text-slate-950"
-                  style={{ backgroundColor: "var(--ar-primary)" }}
-                >
-                  {(product.brandName || "AR").trim().slice(0, 2).toUpperCase()}
-                </div>
-              )}
-              <div className="min-w-0 pr-1.5">
-                {product.brandWebsiteUrl ? (
-                  <a
-                    href={product.brandWebsiteUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`block truncate text-[13px] font-bold leading-tight underline-offset-2 hover:underline sm:text-sm ${
-                      darkTheme ? "text-white" : "text-slate-950"
-                    }`}
-                  >
-                    {product.brandName || product.title || "3D Product"}
-                  </a>
-                ) : (
-                  <p
-                    className={`truncate text-[13px] font-bold leading-tight sm:text-sm ${
-                      darkTheme ? "text-white" : "text-slate-950"
-                    }`}
-                  >
-                    {product.brandName || product.title || "3D Product"}
-                  </p>
-                )}
-                <p className={`truncate text-[11px] font-semibold ${darkTheme ? "text-white/55" : "text-slate-400"}`}>
-                  {product.viewerTagline ||
-                    (product.brandName
-                      ? product.showProductTitle === false
-                        ? product.category || "3D / AR Viewer"
-                        : product.title || product.category || "3D / AR Viewer"
-                      : product.category || "3D / AR Viewer")}
-                </p>
+            {clientUid && catalogOpen ? (
+              <span aria-hidden className="h-10 w-24 shrink-0 sm:h-11" />
+            ) : logo ? (
+              <div className="pointer-events-auto drop-shadow-[0_6px_16px_rgba(15,23,42,0.22)]">
+                <ViewerBrandMark src={logo} size={52} className="shrink-0" design={logoDesign} />
               </div>
-            </div>
+            ) : product.brandName ? (
+              <div
+                className={`pointer-events-auto flex min-w-0 max-w-[min(72vw,280px)] items-center gap-2 rounded-full border px-3 py-1.5 shadow-[0_10px_30px_rgba(15,23,42,0.10)] sm:px-3.5 sm:py-2 ${headerClass}`}
+              >
+                <div className="min-w-0 pr-1">
+                  {product.brandWebsiteUrl ? (
+                    <a
+                      href={product.brandWebsiteUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`block truncate text-[13px] font-bold leading-tight underline-offset-2 hover:underline sm:text-sm ${
+                        darkTheme ? "text-white" : "text-slate-950"
+                      }`}
+                    >
+                      {product.brandName}
+                    </a>
+                  ) : (
+                    <p
+                      className={`truncate text-[13px] font-bold leading-tight sm:text-sm ${
+                        darkTheme ? "text-white" : "text-slate-950"
+                      }`}
+                    >
+                      {product.brandName}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <span aria-hidden className="h-10 w-10 shrink-0" />
+            )}
 
             <button
               type="button"
               onClick={() => setMenuOpen(true)}
-              className={`pointer-events-auto grid h-11 w-11 shrink-0 place-items-center rounded-full border text-slate-900 shadow-[0_10px_30px_rgba(15,23,42,0.10)] transition active:scale-95 sm:h-12 sm:w-12 ${headerClass} ${
-                darkTheme ? "text-white hover:bg-white/15" : "hover:bg-white"
+              className={`pointer-events-auto grid h-10 w-10 shrink-0 place-items-center text-slate-900 transition active:scale-95 sm:h-11 sm:w-11 ${
+                darkTheme ? "text-white" : "text-slate-800"
               }`}
               aria-label="Open product menu"
               aria-haspopup="dialog"
               aria-expanded={menuOpen}
             >
-              <MoreVertical size={20} />
+              <MoreVertical size={22} />
             </button>
           </header>
-
-          {!product.hideInteractionHint ? (
-            <div className="pointer-events-none fixed inset-x-0 top-[72px] z-[70] flex justify-center px-4 sm:top-[84px]">
-              <div
-                className={`max-w-[calc(100vw-32px)] truncate rounded-full border px-3.5 py-1.5 text-[11px] font-semibold shadow-[0_8px_24px_rgba(15,23,42,0.08)] sm:px-4 sm:py-2 sm:text-xs sm:font-bold ${headerClass} ${
-                  darkTheme ? "text-white/70" : "text-slate-500"
-                }`}
-              >
-                <span className="sm:hidden">Drag • Pinch • View in AR</span>
-                <span className="hidden sm:inline">
-                  Drag to rotate • Pinch to zoom • View in AR to place in room
-                </span>
-              </div>
-            </div>
           ) : null}
 
-          <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[80] flex justify-center px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-2 sm:px-6 sm:pb-6">
+          {/* Interaction tip intentionally hidden on public viewer (mobile clutter). */}
+
+          {!studioLookAr ? (
+          <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[80] flex flex-col items-center gap-2 px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-2 sm:px-6 sm:pb-6">
+            {hasVariantPicker ? (
+              <div className="pointer-events-auto flex max-w-[min(100%,420px)] items-center gap-2 overflow-x-auto rounded-full border border-white/70 bg-white/92 px-2 py-1.5 shadow-[0_12px_36px_rgba(15,23,42,0.12)] backdrop-blur-xl">
+                {shopperVariants.map((variant) => {
+                  const selected = shopperVariantId === variant.id;
+                  const swatch = getVariantSwatchColor(variant);
+                  const poster = normalizeViewerAssetUrl(variant.poster);
+                  return (
+                    <button
+                      key={variant.id}
+                      type="button"
+                      title={variant.name || "Variant"}
+                      onClick={() => {
+                        setShopperVariantId(variant.id);
+                        setPendingVariantId(null);
+                        if (viewerAccessProduct) {
+                          recordViewerEvent(viewerAccessProduct, "variant_change", {
+                            variantId: variant.id,
+                            variantName: variant.name || "",
+                          });
+                        }
+                      }}
+                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full p-0.5 transition ${
+                        selected
+                          ? "bg-[#F0FBD9] ring-2 ring-[#84D400]"
+                          : "bg-[#F4F5F7] hover:bg-[#EBEDF0]"
+                      }`}
+                    >
+                      {poster ? (
+                        <span className="h-9 w-9 overflow-hidden rounded-full ring-1 ring-black/10">
+                          <AppImage src={poster} alt="" className="h-full w-full object-cover" />
+                        </span>
+                      ) : (
+                        <span
+                          className="h-9 w-9 rounded-full ring-1 ring-black/10"
+                          style={{ backgroundColor: swatch }}
+                          aria-hidden
+                        />
+                      )}
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPendingVariantId(shopperVariantId);
+                    setVariantSheetOpen(true);
+                  }}
+                  className="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-black text-[#3F7A00]"
+                >
+                  See all
+                </button>
+              </div>
+            ) : null}
+
             <div className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-white/70 bg-white/92 p-1.5 shadow-[0_18px_50px_rgba(15,23,42,0.14)] backdrop-blur-xl">
               <button
                 type="button"
@@ -715,6 +1084,21 @@ export default function PublicViewerPage() {
 
               <button
                 type="button"
+                onClick={() => setAutoRotateOverride(!autoRotateEnabled)}
+                title={autoRotateEnabled ? "Stop auto-rotate" : "Start auto-rotate"}
+                aria-label={autoRotateEnabled ? "Stop auto-rotate" : "Start auto-rotate"}
+                aria-pressed={autoRotateEnabled}
+                className={`grid h-11 w-11 place-items-center rounded-full transition active:scale-[0.96] ${
+                  autoRotateEnabled
+                    ? "bg-[#F0FBD9] text-[#3F7A00] ring-1 ring-[#84D400]/60"
+                    : "bg-[#F4F5F7] text-slate-900 hover:bg-[#EBEDF0]"
+                }`}
+              >
+                <RefreshCw size={18} className={autoRotateEnabled ? "animate-spin [animation-duration:3s]" : ""} />
+              </button>
+
+              <button
+                type="button"
                 onClick={() => void openFullscreenViewer()}
                 title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
                 aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
@@ -723,33 +1107,92 @@ export default function PublicViewerPage() {
                 <Maximize2 size={18} />
               </button>
 
-              <ARExperienceProButton
-                product={{
-                  id: product.id || id,
-                  productUid: product.productUid || id,
-                  title: product.title,
-                  modelUrl: modelSrc,
-                  usdzUrl: product.usdzUrl,
-                  poster: normalizeViewerAssetUrl(product.poster),
-                  realScale: product.realScale,
-                  arPlacement: settings.arPlacement === "wall" ? "wall" : "floor",
-                }}
-                viewerRef={viewerRef}
-                viewerUrl={viewerUrl}
-                className={`grid h-11 w-11 place-items-center rounded-full shadow-lg transition active:scale-[0.96] ${buttonClass}`}
-              >
-                <Smartphone size={18} />
-              </ARExperienceProButton>
+              {hasVariantPicker ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPendingVariantId(shopperVariantId);
+                    setVariantSheetOpen(true);
+                  }}
+                  title="Choose variant"
+                  aria-label="Choose variant"
+                  className="grid h-11 w-11 place-items-center rounded-full bg-[#F4F5F7] text-slate-900 transition hover:bg-[#EBEDF0] active:scale-[0.96]"
+                >
+                  <Palette size={18} />
+                </button>
+              ) : null}
+
+              {arEnabled ? (
+                <ARExperienceProButton
+                  product={{
+                    id: product.id || id,
+                    productUid: product.productUid || id,
+                    title: product.title,
+                    modelUrl: modelSrc,
+                    arModelUrl: product.arModelUrl,
+                    usdzUrl: product.usdzUrl,
+                    modelBytes: product.modelBytes,
+                    poster: normalizeViewerAssetUrl(product.poster),
+                    realScale: product.realScale,
+                    arPlacement: settings.arPlacement === "wall" ? "wall" : "floor",
+                    arModelScale:
+                      resolvedArScale ??
+                      (typeof product.arModelScale === "number" ? product.arModelScale : null),
+                  }}
+                  viewerRef={viewerRef}
+                  viewerUrl={viewerUrl}
+                  onStudioLookAr={enterStudioLookAr}
+                  className={`grid h-11 w-11 place-items-center rounded-full shadow-lg transition active:scale-[0.96] ${buttonClass}`}
+                  brandLogoUrl={logo || undefined}
+                  brandColor={product.enterpriseBrandColor}
+                  brandAccentColor={product.enterpriseAccentColor}
+                >
+                  <Smartphone size={18} />
+                </ARExperienceProButton>
+              ) : null}
             </div>
           </div>
-
-          {!product.removeBranding ? (
-            <p className="pointer-events-none fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] left-1/2 z-[70] -translate-x-1/2 text-[10px] font-semibold tracking-wide text-slate-400 sm:bottom-[5.5rem]">
-              Powered by AR360
-            </p>
           ) : null}
 
-          {menuOpen && (
+          <VariantPickerSheet
+            open={variantSheetOpen}
+            variants={shopperVariants}
+            selectedId={shopperVariantId}
+            pendingId={pendingVariantId}
+            onSelect={(variantId) => setPendingVariantId(variantId)}
+            onApply={() => {
+              const nextId = pendingVariantId || shopperVariantId;
+              if (nextId) {
+                setShopperVariantId(nextId);
+                if (viewerAccessProduct) {
+                  recordViewerEvent(viewerAccessProduct, "variant_change", {
+                    variantId: nextId,
+                    variantName: shopperVariants.find((item) => item.id === nextId)?.name || "",
+                  });
+                }
+              }
+              setPendingVariantId(null);
+              setVariantSheetOpen(false);
+            }}
+            onClose={() => {
+              setPendingVariantId(null);
+              setVariantSheetOpen(false);
+            }}
+          />
+
+          {!product.removeBranding && !studioLookAr ? (
+            <div
+              className={`pointer-events-none fixed left-1/2 z-[70] -translate-x-1/2 text-slate-400 ${
+                hasVariantPicker
+                  ? "bottom-[calc(8.5rem+env(safe-area-inset-bottom))] sm:bottom-[9.25rem]"
+                  : "bottom-[calc(4.75rem+env(safe-area-inset-bottom))] sm:bottom-[5.5rem]"
+              }`}
+            >
+              <PoweredByAr360 tone="light" className="text-slate-400" label={product.poweredByLabel} />
+            </div>
+          ) : null}
+
+          {menuOpen && !studioLookAr && (
             <div
               className="fixed inset-0 z-[9999] flex items-end justify-center sm:items-start sm:justify-end"
               onClick={() => setMenuOpen(false)}
@@ -770,15 +1213,7 @@ export default function PublicViewerPage() {
                 {/* Sticky header */}
                 <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-4 py-3.5 sm:px-5">
                   <div className="flex min-w-0 items-center gap-3">
-                    {logo ? (
-                      <span className="flex h-11 w-[72px] shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-1 ring-1 ring-slate-200">
-                        <img src={logo} alt="Brand logo" className="h-full w-full object-contain" />
-                      </span>
-                    ) : (
-                      <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-slate-950 text-[11px] font-black tracking-wide text-[#B9FF2C]">
-                        AR
-                      </div>
-                    )}
+                    {logo ? <ViewerBrandMark src={logo} size={48} className="shrink-0" design={logoDesign} /> : null}
                     <div className="min-w-0">
                       <h2 className="truncate text-[16px] font-bold leading-tight text-slate-950">
                         {product.title || "3D Product"}
@@ -804,7 +1239,7 @@ export default function PublicViewerPage() {
                   {product.poster ? (
                     <div className="overflow-hidden rounded-[18px] border border-slate-200 bg-[#FAFAFA]">
                       <div className="relative aspect-square w-full bg-white p-3 sm:p-4">
-                        <img
+                        <AppImage
                           src={normalizeViewerAssetUrl(product.poster)}
                           alt={`${product.title || "Product"} poster`}
                           className="h-full w-full object-contain"
@@ -825,7 +1260,7 @@ export default function PublicViewerPage() {
                       <DetailRow label="File" value={product.fileName || "GLB model"} />
                       <DetailRow
                         label="AR Scale"
-                        value={product.realScale === false ? "Resizable" : "Real scale"}
+                        value={product.realScale === true ? "Real scale" : "Resizable"}
                       />
                     </div>
                     {product.description ? (
@@ -852,7 +1287,7 @@ export default function PublicViewerPage() {
                       <button
                         type="button"
                         onClick={() => void nativeShare()}
-                        className="flex h-11 items-center justify-center gap-2 rounded-2xl bg-[var(--ar-primary)] text-[13px] font-bold text-slate-950 transition hover:bg-[var(--ar-primary-hover)] active:scale-[0.98]"
+                        className="flex h-11 items-center justify-center gap-2 rounded-2xl bg-[var(--ar-primary)] text-[13px] font-bold text-[var(--ar-on-primary)] transition hover:brightness-110 hover:text-[var(--ar-on-primary)] active:scale-[0.98]"
                       >
                         <Share2 size={15} />
                         Share
@@ -863,30 +1298,62 @@ export default function PublicViewerPage() {
 
                 {/* Sticky footer actions */}
                 <div className="shrink-0 space-y-2.5 border-t border-slate-100 bg-white px-4 py-3 pb-[max(12px,env(safe-area-inset-bottom))] sm:px-5 sm:pb-4">
-                  <ARExperienceProButton
-                    product={{
-                      id: product.id || id,
-                      productUid: product.productUid || id,
-                      title: product.title,
-                      modelUrl: modelSrc,
-                      usdzUrl: product.usdzUrl,
-                      poster: normalizeViewerAssetUrl(product.poster),
-                      realScale: product.realScale,
-                      arPlacement: settings.arPlacement === "wall" ? "wall" : "floor",
-                    }}
-                    viewerRef={viewerRef}
-                    viewerUrl={viewerUrl}
-                    className={`flex h-12 w-full items-center justify-center gap-2 rounded-2xl px-4 text-[14px] font-bold transition active:scale-[0.98] ${buttonClass}`}
-                  >
-                    <Smartphone size={18} />
-                    {product.ctaLabel || "View in AR"}
-                  </ARExperienceProButton>
+                  {arEnabled ? (
+                    <ARExperienceProButton
+                      product={{
+                        id: product.id || id,
+                        productUid: product.productUid || id,
+                        title: product.title,
+                        modelUrl: modelSrc,
+                        arModelUrl: product.arModelUrl,
+                        usdzUrl: product.usdzUrl,
+                        modelBytes: product.modelBytes,
+                        poster: normalizeViewerAssetUrl(product.poster),
+                        realScale: product.realScale,
+                        arPlacement: settings.arPlacement === "wall" ? "wall" : "floor",
+                        arModelScale:
+                          resolvedArScale ??
+                          (typeof product.arModelScale === "number" ? product.arModelScale : null),
+                      }}
+                      viewerRef={viewerRef}
+                      viewerUrl={viewerUrl}
+                      onStudioLookAr={enterStudioLookAr}
+                      className={`flex h-12 w-full items-center justify-center gap-2 rounded-2xl px-4 text-[14px] font-bold transition active:scale-[0.98] ${buttonClass}`}
+                      brandLogoUrl={logo || undefined}
+                      brandColor={product.enterpriseBrandColor}
+                      brandAccentColor={product.enterpriseAccentColor}
+                    >
+                      <Smartphone size={18} />
+                      {product.ctaLabel || "View in AR"}
+                    </ARExperienceProButton>
+                  ) : null}
+
+                  {enquireEnabled ? (
+                    <button
+                      type="button"
+                      onClick={openEnquire}
+                      className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[#111111] px-4 text-[14px] font-bold text-white transition hover:brightness-125 hover:text-white active:scale-[0.98]"
+                    >
+                      <MessageCircle size={18} />
+                      {enquireLabel}
+                    </button>
+                  ) : null}
+
+                  {whatsappEnabled ? (
+                    <button
+                      type="button"
+                      onClick={openWhatsApp}
+                      className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[#25D366] px-4 text-[14px] font-bold text-white transition hover:brightness-110 hover:text-white active:scale-[0.98]"
+                    >
+                      {whatsappLabel}
+                    </button>
+                  ) : null}
 
                   {ctaLabel ? (
                     <button
                       type="button"
                       onClick={handleCtaClick}
-                      className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 text-[14px] font-bold text-white transition hover:bg-slate-800 active:scale-[0.98]"
+                      className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[#111111] px-4 text-[14px] font-bold text-white transition hover:brightness-125 hover:text-white active:scale-[0.98]"
                     >
                       <ExternalLink size={18} />
                       {ctaLabel}
@@ -938,6 +1405,13 @@ export default function PublicViewerPage() {
               </div>
             </div>
           )}
+
+          <EnquireModal
+            open={enquireOpen}
+            productTitle={product?.title || "this product"}
+            onClose={() => setEnquireOpen(false)}
+            onSubmit={submitEnquire}
+          />
         </>
       )}
     </main>

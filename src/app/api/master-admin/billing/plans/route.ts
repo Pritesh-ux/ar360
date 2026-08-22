@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { guardAdminPermission } from "@/lib/permissions/admin-rbac";
 import {
   countActiveSubscriptionsForPlan,
+  deleteBillingPlan,
   getBillingPlans,
   replaceBillingPlans,
   upsertBillingPlan,
@@ -184,6 +185,51 @@ export async function POST(request: Request) {
       {
         success: false,
         message: error instanceof Error ? error.message : "Unable to save plan.",
+      },
+      { status: 500 },
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  const auth = await guardAdminPermission("settings.manage");
+  if (auth instanceof NextResponse) return auth;
+
+  try {
+    const url = new URL(request.url);
+    const planId = url.searchParams.get("id");
+    if (!planId) {
+      return NextResponse.json({ success: false, message: "Plan ID is required." }, { status: 400 });
+    }
+
+    const activeSubscriptions = await countActiveSubscriptionsForPlan(planId);
+    if (activeSubscriptions > 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: `Cannot delete plan: ${activeSubscriptions} active subscription(s) are using it.`,
+        },
+        { status: 409 },
+      );
+    }
+
+    await deleteBillingPlan(planId);
+    await writeMasterAdminAudit({
+      adminId: auth.admin.id,
+      action: "billing.plan_delete",
+      entityType: "billing_plan",
+      entityId: planId,
+      metadata: {},
+    }).catch(() => {});
+
+    const plans = await getBillingPlans();
+    return NextResponse.json({ success: true, plans });
+  } catch (error) {
+    console.error("[master-admin/billing/plans DELETE]", error);
+    return NextResponse.json(
+      {
+        success: false,
+        message: error instanceof Error ? error.message : "Unable to delete plan.",
       },
       { status: 500 },
     );

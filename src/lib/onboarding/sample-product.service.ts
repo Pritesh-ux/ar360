@@ -1,4 +1,4 @@
-import { readFile } from "fs/promises";
+import { readFile, stat } from "fs/promises";
 import path from "path";
 import { query } from "@/lib/db";
 import { createProductUid } from "@/lib/uid";
@@ -7,7 +7,7 @@ import {
   ensureCustomerFolder,
   updateProductJson,
 } from "@/lib/localCustomerStorage";
-import { writeProductFile } from "@/lib/storage";
+import { writeProductFile, getSecureProductPath } from "@/lib/storage";
 import {
   checkEnterpriseModelLimit,
   checkProductLimit,
@@ -21,15 +21,65 @@ import { logOnboardingEvent } from "@/lib/onboarding/activity";
 
 const SAMPLE_TITLE = "AR360 Sample Chair";
 
+/** Prefer real authored models — `chair.glb` in-repo is a tiny placeholder (~6KB). */
+const SAMPLE_MODEL_CANDIDATES = ["chair_01.glb", "LOCK GLB.glb"] as const;
+const MIN_REAL_MODEL_BYTES = 50_000;
+
 async function readSampleModelBuffer() {
-  const diskPath = path.join(process.cwd(), "public", "models", "chair.glb");
-  try {
-    const data = await readFile(diskPath);
-    if (data.byteLength > 12) return data;
-  } catch {
-    // fall through
+  for (const fileName of SAMPLE_MODEL_CANDIDATES) {
+    const diskPath = path.join(process.cwd(), "public", "models", fileName);
+    try {
+      const data = await readFile(diskPath);
+      if (data.byteLength >= MIN_REAL_MODEL_BYTES) return data;
+    } catch {
+      // try next candidate
+    }
   }
+  console.warn("[sample-product] Real chair model missing; using generated placeholder GLB.");
   return createSampleGlbBuffer();
+}
+
+async function refreshSampleProductModel(input: {
+  customerUid: string;
+  productUid: string;
+  modelBuffer: Buffer;
+}) {
+  const modelUrl = await writeProductFile({
+    customerUid: input.customerUid,
+    productUid: input.productUid,
+    fileName: "model.glb",
+    data: input.modelBuffer,
+  });
+
+  await updateProductJson({
+    customerUid: input.customerUid,
+    productUid: input.productUid,
+    patch: {
+      modelUrl,
+      fileName: "model.glb",
+      updatedAt: new Date().toISOString(),
+    },
+  });
+
+  await query(
+    `UPDATE products
+        SET model_url = ?, file_name = 'model.glb', updated_at = NOW()
+      WHERE id = ? AND customer_uid = ? AND deleted_at IS NULL
+      LIMIT 1`,
+    [modelUrl, input.productUid, input.customerUid],
+  );
+
+  return modelUrl;
+}
+
+async function shouldRefreshSampleModel(customerUid: string, productUid: string) {
+  try {
+    const filePath = getSecureProductPath(customerUid, productUid, "model.glb");
+    const info = await stat(filePath);
+    return info.size < MIN_REAL_MODEL_BYTES;
+  } catch {
+    return true;
+  }
 }
 
 export type SampleProductResult =
@@ -45,7 +95,22 @@ export async function createCustomerSampleProduct(input: {
 }): Promise<SampleProductResult> {
   const onboarding = await getCustomerOnboarding(input.customerUid);
   if (onboarding?.sampleProductId) {
-    return { ok: true, productId: onboarding.sampleProductId, alreadyExists: true };
+    const productId = onboarding.sampleProductId;
+    if (await shouldRefreshSampleModel(input.customerUid, productId)) {
+      const modelBuffer = await readSampleModelBuffer();
+      if (modelBuffer.byteLength >= MIN_REAL_MODEL_BYTES) {
+        try {
+          await refreshSampleProductModel({
+            customerUid: input.customerUid,
+            productUid: productId,
+            modelBuffer,
+          });
+        } catch (error) {
+          console.error("[sample-product] could not refresh placeholder model", error);
+        }
+      }
+    }
+    return { ok: true, productId, alreadyExists: true };
   }
 
   const existingSample = await query<{ id: string }>(
@@ -55,13 +120,28 @@ export async function createCustomerSampleProduct(input: {
     [input.customerUid, SAMPLE_TITLE],
   );
   if (existingSample[0]) {
+    const productId = existingSample[0].id;
+    if (await shouldRefreshSampleModel(input.customerUid, productId)) {
+      const modelBuffer = await readSampleModelBuffer();
+      if (modelBuffer.byteLength >= MIN_REAL_MODEL_BYTES) {
+        try {
+          await refreshSampleProductModel({
+            customerUid: input.customerUid,
+            productUid: productId,
+            modelBuffer,
+          });
+        } catch (error) {
+          console.error("[sample-product] could not refresh placeholder model", error);
+        }
+      }
+    }
     await updateCustomerOnboarding(input.customerUid, {
       sampleProductCreated: true,
-      sampleProductId: existingSample[0].id,
+      sampleProductId: productId,
       preferredCreationMethod: "sample",
       completed: true,
     });
-    return { ok: true, productId: existingSample[0].id, alreadyExists: true };
+    return { ok: true, productId, alreadyExists: true };
   }
 
   const plan = await resolveCustomerPlanLimits(input.customerUid);

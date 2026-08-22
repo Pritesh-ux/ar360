@@ -108,7 +108,15 @@ export async function reconcileSubscription(
     );
     await query(
       "UPDATE customers SET plan_id = ?, status = ?, updated_at = NOW() WHERE customer_uid = ?",
-      [sub.plan_id, ["active", "past_due"].includes(expected) ? "Active" : "Suspended", sub.customer_uid],
+      [
+        sub.plan_id,
+        ["active", "past_due", "trialing", "grace"].includes(expected)
+          ? "Active"
+          : ["paused", "halted"].includes(expected)
+            ? "Suspended"
+            : "Active",
+        sub.customer_uid,
+      ],
     );
     repaired += 1;
   } else {
@@ -217,6 +225,83 @@ export async function reconcileSubscription(
   return { repaired };
 }
 
+/**
+ * One-time (non-mandate) checkouts never show up under a provider subscription,
+ * so `reconcileSubscription` cannot see them. Without this pass a captured
+ * payment can activate a plan and still leave the customer with no invoice and
+ * no "payment successful" notification.
+ */
+export async function backfillMissingPaymentInvoices(limit = 50) {
+  const rows = await query<{
+    customer_uid: string;
+    order_uid: string | null;
+    razorpay_payment_id: string;
+    amount_paise: number;
+    paid_at: string | null;
+    plan_id: string | null;
+    billing_period: "monthly" | "yearly" | null;
+    subscription_id: number | null;
+  }>(
+    `SELECT bp.customer_uid,
+            bp.order_uid,
+            bp.razorpay_payment_id,
+            bp.amount_paise,
+            COALESCE(bp.captured_at, bp.created_at) AS paid_at,
+            COALESCE(o.plan_id, s.plan_id)          AS plan_id,
+            COALESCE(o.billing_period, s.billing_period) AS billing_period,
+            s.id AS subscription_id
+       FROM billing_payments bp
+       LEFT JOIN billing_orders o  ON o.order_uid = bp.order_uid
+       LEFT JOIN billing_invoices i ON i.razorpay_payment_id = bp.razorpay_payment_id
+       LEFT JOIN customer_subscriptions s
+              ON s.id = (SELECT id FROM customer_subscriptions
+                          WHERE customer_uid = bp.customer_uid
+                          ORDER BY id DESC LIMIT 1)
+      WHERE bp.status = 'captured'
+        AND bp.razorpay_payment_id IS NOT NULL
+        AND bp.razorpay_payment_id <> ''
+        AND i.id IS NULL
+        AND bp.created_at > DATE_SUB(NOW(), INTERVAL 120 DAY)
+      ORDER BY bp.created_at DESC
+      LIMIT ?`,
+    [limit],
+  );
+
+  let repaired = 0;
+  for (const row of rows) {
+    if (!row.plan_id) continue;
+    try {
+      const invoice = await finalizePaymentInvoice({
+        customerUid: row.customer_uid,
+        planId: row.plan_id,
+        period: row.billing_period === "yearly" ? "yearly" : "monthly",
+        amountPaise: Number(row.amount_paise),
+        razorpayPaymentId: row.razorpay_payment_id,
+        orderUid: row.order_uid,
+        subscriptionId: row.subscription_id,
+        paidAt: row.paid_at,
+      });
+      if (!invoice?.invoice_uid) continue;
+
+      const { createCustomerNotification } = await import("@/lib/account/notify.service");
+      await createCustomerNotification({
+        customerUid: row.customer_uid,
+        category: "billing",
+        title: "Payment successful",
+        body: `Your ${row.plan_id} plan is now active. Invoice ${invoice.invoice_number} is ready.`,
+        href: "/dashboard/billing/invoices",
+        dedupeKey: `payment-success:${row.razorpay_payment_id}`,
+      }).catch(() => undefined);
+
+      repaired += 1;
+    } catch (error) {
+      console.error("[reconciliation] invoice backfill failed", row.razorpay_payment_id, error);
+    }
+  }
+
+  return { scanned: rows.length, repaired };
+}
+
 export async function runProviderReconciliationBatch(
   limit = 50,
   provider: ReconciliationProvider = razorpayReconciliationProvider(),
@@ -249,12 +334,22 @@ export async function runProviderReconciliationBatch(
       await query("UPDATE customer_subscriptions SET reconciliation_required = 1 WHERE id = ?", [sub.id]);
     }
   }
+  let invoiceBackfill = { scanned: 0, repaired: 0 };
+  try {
+    invoiceBackfill = await backfillMissingPaymentInvoices(limit);
+    repaired += invoiceBackfill.repaired;
+  } catch (error) {
+    issues += 1;
+    console.error("[reconciliation] invoice backfill sweep failed", error);
+  }
+
+  const scanned = subscriptions.length + invoiceBackfill.scanned;
   await query(
     `UPDATE billing_reconciliation_runs SET status = 'completed', scanned_count = ?,
         repaired_count = ?, issue_count = ?, completed_at = NOW() WHERE run_uid = ?`,
-    [subscriptions.length, repaired, issues, runUid],
+    [scanned, repaired, issues, runUid],
   );
-  return { runUid, scanned: subscriptions.length, repaired, issues };
+  return { runUid, scanned, repaired, issues };
 }
 
 export async function expireStaleCheckoutSessions() {

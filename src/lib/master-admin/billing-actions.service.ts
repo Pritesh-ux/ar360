@@ -4,7 +4,6 @@ import { getLedgerPaymentByUid } from "@/lib/billing/payment-ledger";
 import { sendEmail } from "@/lib/email/send-email";
 import { writeMasterAdminAudit } from "@/lib/master-admin/audit-log";
 import { createTaxInvoice, formatMoney } from "@/server/billing/invoice.service";
-import { getInvoiceByUid } from "@/server/billing/invoice.repository";
 import {
   sendInvoiceEmail,
   sendSubscriptionStateEmail,
@@ -225,5 +224,6 @@ export async function recordBillingRefund(input: {
 }
 
 export async function getInvoiceForDownload(invoiceUid: string) {
-  return getInvoiceByUid(invoiceUid);
+  const { resolveCanonicalInvoice } = await import("@/server/billing/invoice.repository");
+  return resolveCanonicalInvoice(invoiceUid);
 }

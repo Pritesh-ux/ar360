@@ -65,8 +65,29 @@ function isRazorpayPlanId(value: string | null | undefined) {
   return /^plan_[A-Za-z0-9]+$/.test(String(value || "").trim());
 }
 
-function isRazorpaySubscriptionId(value: string | null | undefined) {
+export function isRazorpaySubscriptionId(value: string | null | undefined) {
   return /^sub_[A-Za-z0-9]+$/.test(String(value || "").trim());
+}
+
+function mapRazorpayProviderError(error: unknown, action: "cancel" | "pause" | "resume"): SubscriptionLifecycleError {
+  const payload = error as {
+    statusCode?: number;
+    error?: { code?: string; description?: string };
+    message?: string;
+  };
+  const description =
+    payload?.error?.description ||
+    (error instanceof Error ? error.message : "") ||
+    `Razorpay rejected the ${action} request.`;
+  const invalidId = /invalid|could not be found|not found/i.test(description);
+  if (invalidId) {
+    return new SubscriptionLifecycleError(
+      "Provider subscription is unavailable. Applying the change locally.",
+      "PROVIDER_ID_INVALID",
+      409,
+    );
+  }
+  return new SubscriptionLifecycleError(description, `PROVIDER_${action.toUpperCase()}_REJECTED`, 502);
 }
 
 function mapRazorpayLifecycleError(error: unknown, fallbackCode: string): SubscriptionLifecycleError {
@@ -110,8 +131,11 @@ export function validateLifecycleTransition(
     }
     throw new SubscriptionLifecycleError("Subscription is already ended.", "SUBSCRIPTION_ENDED");
   }
-  if (action === "pause" && status !== "active") {
-    throw new SubscriptionLifecycleError("Only active subscriptions can be paused.", "PAUSE_NOT_ALLOWED");
+  if (action === "pause" && !["active", "authenticated", "trialing", "trialling", "trial"].includes(status)) {
+    throw new SubscriptionLifecycleError(
+      "Only active, authenticated, or trial subscriptions can be paused.",
+      "PAUSE_NOT_ALLOWED",
+    );
   }
   if (action === "resume" && status !== "paused") {
     throw new SubscriptionLifecycleError("Only paused subscriptions can resume.", "RESUME_NOT_ALLOWED");
@@ -124,7 +148,7 @@ export function validateLifecycleTransition(
 
 function requireNative(subscription: BillingSubscription | null) {
   if (!subscription) throw new SubscriptionLifecycleError("Subscription not found.", "SUBSCRIPTION_NOT_FOUND", 404);
-  if (!subscription.razorpay_subscription_id) {
+  if (!isRazorpaySubscriptionId(subscription.razorpay_subscription_id)) {
     throw new SubscriptionLifecycleError("This subscription is not managed by Razorpay.", "NOT_PROVIDER_MANAGED");
   }
   return subscription;
@@ -186,28 +210,33 @@ export async function mutateProviderSubscription(input: {
     input.cancelAtPeriodEnd !== false,
   );
 
-  if (input.action === "resume") {
-    result = await provider.resume(providerId);
-    assertIdentity(providerId, result);
-    if (!["active", "authenticated", "resumed"].includes(result.status)) {
-      throw new SubscriptionLifecycleError("Razorpay did not resume the subscription.", "PROVIDER_RESUME_REJECTED", 502);
+  try {
+    if (input.action === "resume") {
+      result = await provider.resume(providerId);
+      assertIdentity(providerId, result);
+      if (!["active", "authenticated", "resumed"].includes(result.status)) {
+        throw new SubscriptionLifecycleError("Razorpay did not resume the subscription.", "PROVIDER_RESUME_REJECTED", 502);
+      }
+    } else if (input.action === "pause") {
+      result = await provider.pause(providerId);
+      assertIdentity(providerId, result);
+      if (result.status !== "paused") {
+        throw new SubscriptionLifecycleError("Razorpay did not pause the subscription.", "PROVIDER_PAUSE_REJECTED", 502);
+      }
+    } else {
+      result = await provider.cancel(providerId, input.cancelAtPeriodEnd !== false);
+      assertIdentity(providerId, result);
+      const scheduled = input.cancelAtPeriodEnd !== false;
+      if (scheduled && !["active", "authenticated", "pending", "paused"].includes(result.status)) {
+        throw new SubscriptionLifecycleError("Razorpay did not schedule cancellation.", "PROVIDER_CANCEL_REJECTED", 502);
+      }
+      if (!scheduled && result.status !== "cancelled") {
+        throw new SubscriptionLifecycleError("Razorpay did not cancel the subscription.", "PROVIDER_CANCEL_REJECTED", 502);
+      }
     }
-  } else if (input.action === "pause") {
-    result = await provider.pause(providerId);
-    assertIdentity(providerId, result);
-    if (result.status !== "paused") {
-      throw new SubscriptionLifecycleError("Razorpay did not pause the subscription.", "PROVIDER_PAUSE_REJECTED", 502);
-    }
-  } else {
-    result = await provider.cancel(providerId, input.cancelAtPeriodEnd !== false);
-    assertIdentity(providerId, result);
-    const scheduled = input.cancelAtPeriodEnd !== false;
-    if (scheduled && !["active", "authenticated", "pending"].includes(result.status)) {
-      throw new SubscriptionLifecycleError("Razorpay did not schedule cancellation.", "PROVIDER_CANCEL_REJECTED", 502);
-    }
-    if (!scheduled && result.status !== "cancelled") {
-      throw new SubscriptionLifecycleError("Razorpay did not cancel the subscription.", "PROVIDER_CANCEL_REJECTED", 502);
-    }
+  } catch (error) {
+    if (error instanceof SubscriptionLifecycleError) throw error;
+    throw mapRazorpayProviderError(error, input.action);
   }
 
   const { scheduledCancellation, effectiveCancellation } = transition;
@@ -378,30 +407,17 @@ export async function previewAndSchedulePlanChange(input: {
     );
   }
 
-  const downgrade = getPlanLevel(targetPlanId) < getPlanLevel(current.plan_id);
-  const effectiveAt = downgrade ? current.current_period_end : new Date().toISOString();
-  if (downgrade) {
-    const limits = await resolvePlanLimits(targetPlanId);
-    const usage = await query<{ products: number; storage_mb: number }>(
-      `SELECT
-         (SELECT COUNT(*) FROM products WHERE customer_uid = ? AND deleted_at IS NULL) AS products,
-         COALESCE((SELECT SUM(size_bytes) FROM product_assets WHERE customer_uid = ?), 0) / 1048576 AS storage_mb`,
-      [input.customerUid, input.customerUid],
+  if (getPlanLevel(targetPlanId) < getPlanLevel(current.plan_id)) {
+    throw new SubscriptionLifecycleError(
+      `Downgrades are not supported. You are on ${mapLegacyPlanId(current.plan_id)}; choose a higher plan to upgrade.`,
+      "DOWNGRADE_NOT_ALLOWED",
+      400,
     );
-    if (
-      (!limits.unlimitedStorage && Number(usage[0]?.storage_mb || 0) > Number(limits.storageMb || 0)) ||
-      (limits.products != null && Number(usage[0]?.products || 0) > limits.products)
-    ) {
-      throw new SubscriptionLifecycleError(
-        "Current usage exceeds the target plan limits.",
-        "DOWNGRADE_USAGE_EXCEEDED",
-        400,
-      );
-    }
   }
+  const effectiveAt = new Date().toISOString();
 
   const preview = {
-    policy: downgrade ? "next_cycle" : "immediate",
+    policy: "immediate" as const,
     effectiveAt,
     requiresCheckout: false as const,
     checkoutPath: null as string | null,
@@ -421,7 +437,7 @@ export async function previewAndSchedulePlanChange(input: {
     response = await provider.changePlan(
       current.razorpay_subscription_id!,
       price.provider_plan_id,
-      downgrade ? "cycle_end" : "now",
+      "now",
     );
   } catch (error) {
     if (error instanceof SubscriptionLifecycleError && error.code === "CHECKOUT_REQUIRED") {
@@ -456,49 +472,45 @@ export async function previewAndSchedulePlanChange(input: {
       input.customerUid,
       current.id,
       current.razorpay_subscription_id,
-      downgrade ? "downgrade" : "upgrade",
+      "upgrade",
       current.plan_id,
       targetPlanId,
       price.id,
       effectiveAt,
-      downgrade ? "scheduled" : "applied",
+      "applied",
       JSON.stringify(response),
     ],
   );
-  if (!downgrade) {
-    const limits = await resolvePlanLimits(targetPlanId);
-    await query(
-      `UPDATE customer_subscriptions SET plan_id = ?, billing_period = ?, price_version_id = ?,
-          provider_plan_id = ?, product_limit = ?, storage_limit_mb = ?, bandwidth_limit_mb = ?, updated_at = NOW()
-        WHERE customer_uid = ?`,
-      [
-        targetPlanId,
-        input.period,
-        price.id,
-        price.provider_plan_id,
-        limits.products,
-        limits.storageMb,
-        limits.unlimitedBandwidth ? null : Math.round(Number(limits.bandwidthGb || 0) * 1024),
-        input.customerUid,
-      ],
-    );
-    await syncCustomerPlanMirror({ customerUid: input.customerUid, planId: targetPlanId, status: "active" });
-  }
+  const limits = await resolvePlanLimits(targetPlanId);
+  await query(
+    `UPDATE customer_subscriptions SET plan_id = ?, billing_period = ?, price_version_id = ?,
+        provider_plan_id = ?, product_limit = ?, storage_limit_mb = ?, bandwidth_limit_mb = ?, updated_at = NOW()
+      WHERE customer_uid = ?`,
+    [
+      targetPlanId,
+      input.period,
+      price.id,
+      price.provider_plan_id,
+      limits.products,
+      limits.storageMb,
+      limits.unlimitedBandwidth ? null : Math.round(Number(limits.bandwidthGb || 0) * 1024),
+      input.customerUid,
+    ],
+  );
+  await syncCustomerPlanMirror({ customerUid: input.customerUid, planId: targetPlanId, status: "active" });
   await audit({
     actorType: "customer",
-    action: downgrade ? "subscription.downgrade_scheduled" : "subscription.upgraded",
+    action: "subscription.upgraded",
     subscription: current,
     after: response,
     metadata: preview,
   });
   await deliverBillingLifecycleEvent({
     customerUid: input.customerUid,
-    type: downgrade ? "change_scheduled" : "change_applied",
+    type: "change_applied",
     eventKey: `${current.razorpay_subscription_id}:${targetPlanId}:${effectiveAt}`,
-    title: downgrade ? "Plan change scheduled" : "Plan change applied",
-    body: downgrade
-      ? `Your plan will change to ${targetPlanId} on ${effectiveAt}.`
-      : `Your ${targetPlanId} plan is now active.`,
+    title: "Plan change applied",
+    body: `Your ${targetPlanId} plan is now active.`,
   }).catch(() => undefined);
-  return { ...preview, scheduled: downgrade, providerStatus: response.status };
+  return { ...preview, scheduled: false, providerStatus: response.status };
 }

@@ -12,22 +12,25 @@ type Props = {
 
 export default function UserRangePills({ options, value, onChange, disabled }: Props) {
   return (
-    <div className="flex flex-wrap items-center gap-1 rounded-2xl border border-[#ECECEC] bg-[#FAFAFA] p-1">
-      {options.map((option) => (
-        <button
-          key={option.id}
-          type="button"
-          onClick={() => onChange(option.id)}
-          disabled={disabled}
-          className={`rounded-xl px-3.5 py-2 text-[12px] font-semibold transition disabled:opacity-60 ${
-            value === option.id
-              ? "bg-white text-[#111111] shadow-sm ring-1 ring-[#ECECEC]"
-              : "text-[#737373] hover:bg-white/70 hover:text-[#111111]"
-          }`}
-        >
-          {option.label}
-        </button>
-      ))}
+    <div className="flex flex-wrap items-center gap-1 rounded-[16px] border border-[#ECECEC] bg-[#FAFAFB] p-1">
+      {options.map((option) => {
+        const active = value === option.id;
+        return (
+          <button
+            key={option.id}
+            type="button"
+            onClick={() => onChange(option.id)}
+            disabled={disabled}
+            className={`rounded-[14px] px-3.5 py-2 text-[12px] font-semibold transition-all duration-[250ms] disabled:opacity-60 ${
+              active
+                ? "dash-tab-pill--active bg-[#B6FF38] text-[#102000] shadow-[0_2px_8px_rgba(182,255,56,0.3)]"
+                : "text-[#6B7280] hover:bg-white hover:text-[#111827]"
+            }`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
     </div>
   );
 }

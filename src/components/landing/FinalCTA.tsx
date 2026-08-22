@@ -1,87 +1,59 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
-import MotionReveal from "./MotionReveal";
-import ModelViewer from "./LandingModelViewer";
 import { DISPLAY, SECTION_PAD } from "./landingMotion";
 
-const MODEL_PATH = "/models/chair_01.glb";
+type ButtonType = {
+  label: string;
+  href: string;
+  style?: "primary" | "secondary";
+};
 
-export default function FinalCTA() {
-  const hostRef = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    const node = hostRef.current;
-    if (!node) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) setVisible(true);
-      },
-      { rootMargin: "120px" },
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, []);
-
+export default function FinalCTA({
+  title = "Turn Every Product Into An Interactive Experience.",
+  description = "Launch interactive 3D, browser AR, and permanent QR from one workspace.",
+  buttons = [
+    { label: "Start Free", href: "/signup", style: "primary" },
+    { label: "Book Demo", href: "/contact", style: "secondary" },
+  ],
+}: {
+  title?: string;
+  description?: string;
+  buttons?: ButtonType[];
+  background?: string;
+}) {
+  // No content parallax here — last light section; transform overflow was creating
+  // empty grid space below the page after the dark footer.
   return (
-    <section
-      className={`relative overflow-hidden border-b border-[#E8EAED] bg-[#F7F8FA] ${SECTION_PAD}`}
-    >
-      <div className="relative mx-auto max-w-5xl px-6 text-center">
-        <MotionReveal y={14}>
-          <div ref={hostRef} className="relative mx-auto mb-6 h-[200px] w-full max-w-md sm:h-[240px]">
-            {visible ? (
-              <ModelViewer
-                src={MODEL_PATH}
-                cameraControls={false}
-                autoRotate
-                disableZoom
-                cameraOrbit="25deg 68deg 120%"
-                cameraTarget="0m 0.4m 0m"
-                fov={26}
-                shadowIntensity={1}
-                shadowSoftness={0.9}
-                environmentImage="neutral"
-                exposure={1.1}
-                transparent={false}
-                backgroundColor="#FFFFFF"
-                disableMaterialOverrides
-                showArButton={false}
-                interactionPrompt={false}
-              />
-            ) : (
-              <div className="mx-auto h-40 w-40 animate-pulse rounded-full bg-white" />
-            )}
-          </div>
+    <section className={`relative overflow-hidden bg-transparent ${SECTION_PAD}`}>
+      <div className="relative mx-auto max-w-5xl px-4 text-center sm:px-6">
+        <h2
+          className={`${DISPLAY} text-[34px] font-bold leading-[1.04] tracking-tight text-[#111111] sm:text-5xl lg:text-[52px]`}
+        >
+          {title}
+        </h2>
+        <p className="mx-auto mt-4 max-w-md text-[15px] font-medium leading-relaxed text-[#6B7078] sm:mt-5 sm:max-w-lg sm:text-sm">
+          {description}
+        </p>
 
-          <h2
-            className={`${DISPLAY} text-3xl font-bold leading-[1.08] tracking-tight text-[#111111] sm:text-5xl lg:text-[52px]`}
-          >
-            Turn Every Product Into
-            <br />
-            An Interactive Experience.
-          </h2>
-          <p className="mx-auto mt-5 max-w-lg text-sm font-medium leading-relaxed text-[#6B7078]">
-            Launch interactive 3D, browser AR, and permanent QR from one workspace.
-          </p>
-
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-            <Link
-              href="/signup"
-              className="inline-flex h-12 items-center justify-center rounded-full bg-[#B9FF2C] px-8 text-sm font-bold text-[#111111] shadow-[0_12px_32px_rgba(185,255,44,0.35)] transition hover:scale-[1.02] hover:bg-[#A7F11D]"
-            >
-              Start Free
-            </Link>
-            <a
-              href="/contact"
-              className="inline-flex h-12 items-center justify-center rounded-full border border-[#D8DBE0] bg-white px-8 text-sm font-bold text-[#111111] transition hover:scale-[1.02] hover:bg-[#FAFBFC]"
-            >
-              Book Demo
-            </a>
-          </div>
-        </MotionReveal>
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+          {buttons.map((btn, idx) => {
+            const isPrimary = btn.style === "primary";
+            return (
+              <Link
+                key={idx}
+                href={btn.href}
+                className={
+                  isPrimary
+                    ? "inline-flex h-12 items-center justify-center rounded-full bg-[#b9ff2c] px-8 text-sm font-bold text-[#0A0B14] shadow-[0_12px_32px_rgba(185,255,44,0.28)] transition hover:scale-[1.02] hover:bg-[#a3f020]"
+                    : "inline-flex h-12 items-center justify-center rounded-full border border-[#E5E7EB] bg-white px-8 text-sm font-bold text-[#0A0B14] transition hover:scale-[1.02] hover:bg-[#FAFAFA]"
+                }
+              >
+                {btn.label}
+              </Link>
+            );
+          })}
+        </div>
       </div>
     </section>
   );

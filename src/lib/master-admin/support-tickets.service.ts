@@ -41,6 +41,7 @@ type TicketRow = {
   category: string;
   priority: string;
   status: string;
+  process_status: string | null;
   assigned_to: string;
   created_at: string;
   updated_at: string;
@@ -65,6 +66,7 @@ export function mapTicketRow(row: TicketRow) {
     rawPriority: row.priority,
     status: ticketStatusLabel(row.status),
     rawStatus: row.status,
+    processStatus: row.process_status || "",
     assignedTo: row.assigned_to || "Unassigned",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -150,7 +152,7 @@ export async function listSupportTickets(params: TicketFilterParams & { page?: n
     query<{ total: number }>(`SELECT COUNT(*) AS total FROM support_tickets ${where}`, values),
     query<TicketRow>(`
       SELECT ticket_uid, ticket_number, customer_uid, customer_name, customer_email,
-        subject, description, category, priority, status, assigned_to, created_at, updated_at
+        subject, description, category, priority, status, process_status, assigned_to, created_at, updated_at
       FROM support_tickets
       ${where}
       ORDER BY updated_at DESC
@@ -269,7 +271,7 @@ export async function exportTicketsCsv(params: TicketFilterParams) {
   const { where, values } = buildTicketWhere(params);
   const rows = await query<TicketRow>(`
     SELECT ticket_uid, ticket_number, customer_uid, customer_name, customer_email,
-      subject, description, category, priority, status, assigned_to, created_at, updated_at
+      subject, description, category, priority, status, process_status, assigned_to, created_at, updated_at
     FROM support_tickets
     ${where}
     ORDER BY updated_at DESC
@@ -430,6 +432,7 @@ export async function updateTicket(
     assignedTo?: string;
     category?: "technical" | "billing" | "account" | "feature" | "other";
     subject?: string;
+    processStatus?: string;
   },
   adminId?: number,
 ) {
@@ -462,6 +465,10 @@ export async function updateTicket(
     sets.push("subject = ?");
     values.push(input.subject);
   }
+  if (input.processStatus !== undefined) {
+    sets.push("process_status = ?");
+    values.push(input.processStatus);
+  }
 
   if (sets.length === 0) return;
 
@@ -481,7 +488,7 @@ export async function updateTicket(
 export async function getTicketByUid(ticketUid: string) {
   const rows = await query<TicketRow>(
     `SELECT ticket_uid, ticket_number, customer_uid, customer_name, customer_email,
-      subject, description, category, priority, status, assigned_to, created_at, updated_at
+      subject, description, category, priority, status, process_status, assigned_to, created_at, updated_at
      FROM support_tickets WHERE ticket_uid = ? LIMIT 1`,
     [ticketUid],
   );

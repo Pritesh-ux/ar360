@@ -4,6 +4,7 @@ import {
   createEnterpriseRenewalRequest,
   getEnterpriseDashboard,
 } from "@/lib/enterprise-sales/customer-dashboard.service";
+import { requireActiveSubscriptionApi } from "@/lib/subscription/api-subscription-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,6 +14,8 @@ async function requireEnterpriseCustomer() {
   if (!user?.customerUid) {
     return { response: NextResponse.json({ error: "Login required." }, { status: 401 }) };
   }
+  const gate = await requireActiveSubscriptionApi(user.customerUid ?? "");
+  if (!gate.ok) return { response: gate.response };
   const dashboard = await getEnterpriseDashboard(user.customerUid);
   if (!dashboard) {
     return {

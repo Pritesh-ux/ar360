@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useDeferredEffect } from "@/lib/react/use-deferred-effect";
 import { X } from "lucide-react";
 import { AdminButton } from "@/components/ui/admin";
+import UserFilterDropdown from "@/components/user-panel/UserFilterDropdown";
+import ViewportPortal from "@/components/shared/ViewportPortal";
 
 export type CouponFormValues = {
   code: string;
@@ -36,7 +39,7 @@ const defaultValues: CouponFormValues = {
 export default function CouponFormModal({ open, title, initial, saving, onClose, onSubmit }: Props) {
   const [values, setValues] = useState<CouponFormValues>(defaultValues);
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     if (!open) return;
     setValues({
       code: initial?.code || "",
@@ -52,7 +55,8 @@ export default function CouponFormModal({ open, title, initial, saving, onClose,
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/40 p-6">
+    <ViewportPortal>
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/40 p-6">
       <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
         <div className="mb-5 flex items-start justify-between gap-4">
           <h2 className="text-xl font-black text-slate-950">{title}</h2>
@@ -88,20 +92,26 @@ export default function CouponFormModal({ open, title, initial, saving, onClose,
           </label>
 
           <div className="grid grid-cols-2 gap-3">
-            <label className="block space-y-1">
-              <span className="text-[12px] font-bold uppercase tracking-wide text-slate-500">Type</span>
-              <select
+            <div className="block space-y-1">
+              <UserFilterDropdown
+                compact
+                className="w-full"
+                menuWidth={200}
+                label="Type"
+                menuTitle="Type"
                 value={values.discountType}
-                onChange={(e) =>
-                  setValues((v) => ({ ...v, discountType: e.target.value as CouponFormValues["discountType"] }))
+                options={["percentage", "fixed", "free_trial"]}
+                onChange={(value) =>
+                  setValues((v) => ({ ...v, discountType: value as CouponFormValues["discountType"] }))
                 }
-                className="h-10 w-full rounded-xl border border-slate-200 px-3 text-[13px] font-semibold"
-              >
-                <option value="percentage">Percentage</option>
-                <option value="fixed">Fixed Amount</option>
-                <option value="free_trial">Free Trial</option>
-              </select>
-            </label>
+                renderOption={(value) =>
+                  value === "percentage" ? "Percentage" : value === "fixed" ? "Fixed Amount" : "Free Trial"
+                }
+                renderValue={(value) =>
+                  value === "percentage" ? "Percentage" : value === "fixed" ? "Fixed Amount" : "Free Trial"
+                }
+              />
+            </div>
             <label className="block space-y-1">
               <span className="text-[12px] font-bold uppercase tracking-wide text-slate-500">Value</span>
               <input
@@ -136,17 +146,18 @@ export default function CouponFormModal({ open, title, initial, saving, onClose,
             </label>
           </div>
 
-          <label className="block space-y-1">
-            <span className="text-[12px] font-bold uppercase tracking-wide text-slate-500">Status</span>
-            <select
-              value={values.status}
-              onChange={(e) => setValues((v) => ({ ...v, status: e.target.value as CouponFormValues["status"] }))}
-              className="h-10 w-full rounded-xl border border-slate-200 px-3 text-[13px] font-semibold"
-            >
-              <option value="active">Active</option>
-              <option value="disabled">Disabled</option>
-            </select>
-          </label>
+          <UserFilterDropdown
+            compact
+            className="w-full"
+            menuWidth={180}
+            label="Status"
+            menuTitle="Status"
+            value={values.status}
+            options={["active", "disabled"]}
+            onChange={(value) => setValues((v) => ({ ...v, status: value as CouponFormValues["status"] }))}
+            renderOption={(value) => (value === "active" ? "Active" : "Disabled")}
+            renderValue={(value) => (value === "active" ? "Active" : "Disabled")}
+          />
 
           <div className="flex justify-end gap-2 pt-2">
             <AdminButton type="button" onClick={onClose}>
@@ -159,5 +170,6 @@ export default function CouponFormModal({ open, title, initial, saving, onClose,
         </form>
       </div>
     </div>
+    </ViewportPortal>
   );
 }

@@ -1,6 +1,9 @@
 "use client";
 
 import { Box, Smartphone } from "lucide-react";
+import AppImage from "@/components/shared/AppImage";
+import { BrandLogo } from "@/components/brand/BrandLogo";
+import PoweredByAr360 from "@/components/brand/PoweredByAr360";
 import { normalizeViewerAssetUrl } from "@/components/features/viewer/viewer-utils";
 
 type Props = {
@@ -14,11 +17,14 @@ type Props = {
   poster?: string;
   logo?: string;
   hidePoweredBy?: boolean;
+  poweredByLabel?: string | null;
   viewerTheme?: string;
   ctaLabel?: string;
   buttonStyle?: string;
   headerStyle?: string;
   viewerFont?: string;
+  /** When false, hide AR CTA (owner plan gate). */
+  showAr?: boolean;
   onView3D: () => void;
   onViewAR: () => void;
 };
@@ -32,12 +38,12 @@ function fontFamily(font?: string) {
 
 function arButtonClass(style?: string) {
   if (style === "outline") {
-    return "border-2 border-[var(--ar-primary)] bg-transparent text-[#111827] hover:bg-[var(--ar-primary-soft)]";
+    return "border-2 border-[var(--ar-primary)] bg-transparent text-[var(--ar-outline-fg)] hover:bg-[var(--ar-primary-soft)]";
   }
   if (style === "soft") {
-    return "border border-transparent bg-[var(--ar-primary-soft)] text-[#111827] hover:bg-[var(--ar-primary)]";
+    return "border border-transparent bg-[var(--ar-primary-soft)] text-[var(--ar-on-soft)] hover:bg-[var(--ar-primary)] hover:text-[var(--ar-on-primary)]";
   }
-  return "border border-transparent bg-[var(--ar-primary)] text-[#111827] hover:bg-[var(--ar-primary-hover)]";
+  return "border border-transparent bg-[var(--ar-primary)] text-[var(--ar-on-primary)] hover:brightness-110 hover:text-[var(--ar-on-primary)]";
 }
 
 export default function MobileProductLanding({
@@ -51,11 +57,13 @@ export default function MobileProductLanding({
   poster,
   logo,
   hidePoweredBy = false,
+  poweredByLabel,
   viewerTheme = "default",
   ctaLabel,
   buttonStyle = "filled",
   headerStyle = "glass",
   viewerFont = "system",
+  showAr = true,
   onView3D,
   onViewAR,
 }: Props) {
@@ -91,33 +99,39 @@ export default function MobileProductLanding({
         <div className="flex min-w-0 items-center gap-2.5">
           {logo ? (
             <span className="flex h-10 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[#E5E7EB] bg-white p-1">
-              <img src={logo} alt="Brand logo" className="h-full w-full object-contain" />
+              <AppImage src={logo} alt={brandName || "Brand logo"} className="h-full w-full object-contain" />
+            </span>
+          ) : brandName ? (
+            <span
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-[11px] font-black tracking-wide text-[#111827]"
+              style={{ backgroundColor: "var(--ar-primary, #84D400)" }}
+              aria-hidden
+            >
+              {brandName.trim().slice(0, 2).toUpperCase()}
             </span>
           ) : (
-            <div className="grid h-9 w-9 place-items-center rounded-xl bg-[var(--ar-primary)] text-[11px] font-black text-[#111827]">
-              AR
-            </div>
+            <BrandLogo tone={dark ? "dark" : "light"} variant="mark" href={null} size={28} />
           )}
           <p className="truncate text-[15px] font-semibold tracking-tight">
             {brandName || "AR360 Studio"}
           </p>
         </div>
         {!hidePoweredBy ? (
-          <span
-            className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold ${
+          <PoweredByAr360
+            tone={dark ? "dark" : "light"}
+            className={`shrink-0 rounded-full border px-2.5 py-1 ${
               dark
                 ? "border-white/15 bg-white/10 text-white/65"
                 : "border-[#E5E7EB] bg-[#F9FAFB] text-[#6B7280]"
             }`}
-          >
-            Powered by AR360
-          </span>
+            label={poweredByLabel}
+          />
         ) : null}
       </header>
 
       <div className="mx-4 mt-3 overflow-hidden rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC]">
         {poster ? (
-          <img
+          <AppImage
             src={normalizeViewerAssetUrl(poster)}
             alt={title}
             className="aspect-[4/3] w-full object-contain bg-white"
@@ -171,9 +185,9 @@ export default function MobileProductLanding({
       </div>
 
       <div
-        className={`sticky bottom-0 grid grid-cols-2 gap-3 border-t px-4 pb-[max(16px,env(safe-area-inset-bottom))] pt-3 backdrop-blur-md ${
-          dark ? "border-white/15 bg-[#17191D]/95" : "border-[#E5E7EB] bg-white/95"
-        }`}
+        className={`sticky bottom-0 grid gap-3 border-t px-4 pb-[max(16px,env(safe-area-inset-bottom))] pt-3 backdrop-blur-md ${
+          showAr ? "grid-cols-2" : "grid-cols-1"
+        } ${dark ? "border-white/15 bg-[#17191D]/95" : "border-[#E5E7EB] bg-white/95"}`}
       >
         <button
           type="button"
@@ -185,16 +199,18 @@ export default function MobileProductLanding({
           <Box size={18} />
           View in 3D
         </button>
-        <button
-          type="button"
-          onClick={onViewAR}
-          className={`inline-flex h-12 items-center justify-center gap-2 rounded-xl text-[14px] font-semibold transition active:scale-[0.98] ${arButtonClass(buttonStyle)} ${
-            dark && buttonStyle === "outline" ? "text-white" : ""
-          }`}
-        >
-          <Smartphone size={18} />
-          {ctaLabel || "View in AR"}
-        </button>
+        {showAr ? (
+          <button
+            type="button"
+            onClick={onViewAR}
+            className={`inline-flex h-12 items-center justify-center gap-2 rounded-xl text-[14px] font-semibold transition active:scale-[0.98] ${arButtonClass(buttonStyle)} ${
+              dark && buttonStyle === "outline" ? "text-white" : ""
+            }`}
+          >
+            <Smartphone size={18} />
+            {ctaLabel || "View in AR"}
+          </button>
+        ) : null}
       </div>
     </main>
   );

@@ -1,23 +1,21 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { pauseCustomerSubscription } from "@/server/billing/subscription.service";
 import { guardBillingMutation } from "@/server/billing/billing-mutation-guard";
-import { SubscriptionLifecycleError } from "@/server/billing/provider-subscription.service";
 
 export const runtime = "nodejs";
 
+/** Customer self-service pause is disabled — Master Admin / support only. */
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user?.customerUid) return NextResponse.json({ error: "Login required." }, { status: 401 });
   const denied = await guardBillingMutation(req, String(user.id || user.customerUid));
   if (denied) return denied;
-  try {
-    const subscription = await pauseCustomerSubscription(user.customerUid);
-    return NextResponse.json({ success: true, subscription });
-  } catch (error) {
-    if (error instanceof SubscriptionLifecycleError) {
-      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
-    }
-    throw error;
-  }
+
+  return NextResponse.json(
+    {
+      error: "Pause is not available from your account. Contact AR360 support or your account manager.",
+      code: "CUSTOMER_LIFECYCLE_DISABLED",
+    },
+    { status: 403 },
+  );
 }

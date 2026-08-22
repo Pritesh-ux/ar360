@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { guardAdminPermission } from "@/lib/permissions/admin-rbac";
+import { guardAdminPermission, logAdminAudit } from "@/lib/permissions/admin-rbac";
 import { ensureAppSchema } from "@/lib/db";
 import { adminGenerateInvoice } from "@/lib/master-admin/billing-actions.service";
 
@@ -22,6 +22,10 @@ export async function POST(req: NextRequest) {
       adminId: admin.id,
     });
 
+    await logAdminAudit(admin, "invoice.generate", "invoice", invoice?.invoice_uid || null, {
+      customerUid: body.customerUid,
+      planId: body.planId,
+    });
     return NextResponse.json({
       ok: true,
       invoice: {

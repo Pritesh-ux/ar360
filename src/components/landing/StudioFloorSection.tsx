@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import ModelViewer from "./LandingModelViewer";
 import { Home, Cpu, Archive, Layout, Shirt, Factory } from "lucide-react";
 import { CARD_SHADOW, DISPLAY, SECTION_PAD } from "./landingMotion";
@@ -85,7 +84,6 @@ const floors: ShowroomType[] = [
 export default function StudioFloorSection() {
   const [activeFloor, setActiveFloor] = useState(floors[0]);
   const [visible, setVisible] = useState(false);
-  const [morphKey, setMorphKey] = useState(0);
   const sectionRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -101,11 +99,6 @@ export default function StudioFloorSection() {
     return () => observer.disconnect();
   }, []);
 
-  function selectFloor(floor: ShowroomType) {
-    setActiveFloor(floor);
-    setMorphKey((k) => k + 1);
-  }
-
   return (
     <section
       ref={sectionRef}
@@ -113,7 +106,7 @@ export default function StudioFloorSection() {
       className={`border-b border-[#E8EAED] bg-white ${SECTION_PAD}`}
     >
       <div className="mx-auto max-w-7xl px-6">
-        <div className="mx-auto mb-8 max-w-2xl text-center">
+        <div className="mx-auto mb-5 max-w-2xl text-center">
           <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#6B7078]">
             Studio floor
           </p>
@@ -132,7 +125,7 @@ export default function StudioFloorSection() {
               <button
                 key={floor.id}
                 type="button"
-                onClick={() => selectFloor(floor)}
+                onClick={() => setActiveFloor(floor)}
                 className={`inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-[12px] font-bold transition hover:scale-[1.02] ${
                   isActive
                     ? "bg-[#111111] text-white shadow-[0_8px_20px_rgba(15,23,42,0.12)]"
@@ -149,39 +142,32 @@ export default function StudioFloorSection() {
         <div
           className={`relative flex h-[360px] items-center justify-center overflow-hidden rounded-[28px] border border-[#E8EAED] bg-white p-5 sm:h-[420px] ${CARD_SHADOW}`}
         >
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={morphKey}
-              initial={{ opacity: 0, scale: 0.97 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 1.02 }}
-              transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-              className="absolute inset-0"
-            >
-              {visible ? (
-                <ModelViewer
-                  src={MODEL_PATH}
-                  cameraControls
-                  autoRotate
-                  disableZoom
-                  cameraOrbit={activeFloor.orbit}
-                  cameraTarget="0m 0.48m 0m"
-                  fov={20}
-                  shadowIntensity={activeFloor.shadowIntensity}
-                  shadowSoftness={0.9}
-                  environmentImage="neutral"
-                  exposure={activeFloor.exposure}
-                  transparent={false}
-                  backgroundColor="#FFFFFF"
-                  disableMaterialOverrides
-                  showArButton={false}
-                  interactionPrompt={false}
-                />
-              ) : (
-                <div className="h-full w-full animate-pulse rounded-2xl bg-white" />
-              )}
-            </motion.div>
-          </AnimatePresence>
+          <div className="absolute inset-0">
+            {visible ? (
+              <ModelViewer
+                src={MODEL_PATH}
+                loading="eager"
+                showLoadProgress={false}
+                cameraControls
+                autoRotate
+                disableZoom
+                cameraOrbit={activeFloor.orbit}
+                cameraTarget="0m 0.48m 0m"
+                fov={20}
+                shadowIntensity={activeFloor.shadowIntensity}
+                shadowSoftness={0.9}
+                environmentImage="neutral"
+                exposure={activeFloor.exposure}
+                transparent={false}
+                backgroundColor="#FFFFFF"
+                disableMaterialOverrides
+                showArButton={false}
+                interactionPrompt={false}
+              />
+            ) : (
+              <div className="h-full w-full animate-pulse rounded-2xl bg-white" />
+            )}
+          </div>
 
           <div className="absolute bottom-4 left-4 right-4 rounded-2xl border border-[#E8EAED] bg-white px-4 py-3 shadow-sm sm:left-auto sm:right-5 sm:max-w-sm">
             <p className="text-[13px] font-bold text-[#111111]">{activeFloor.name}</p>

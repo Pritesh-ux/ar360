@@ -40,6 +40,7 @@ export type InvoiceRow = {
   buyer_address?: string | null;
   seller_gstin?: string | null;
   invoice_html?: string | null;
+  price_snapshot?: unknown;
   created_at: string;
 };
 

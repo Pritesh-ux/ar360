@@ -77,8 +77,33 @@ function memoryCheckRateLimit(key: string, options: RateLimitOptions): RateLimit
 }
 
 export async function checkRateLimit(key: string, options: RateLimitOptions): Promise<RateLimitResult> {
-  const redisResult = await redisCheckRateLimit(key, options).catch(() => null);
+  const hasRedisUrl = Boolean(process.env.REDIS_URL?.trim());
+  // Fail closed when Redis is configured for this env (or explicitly required).
+  const requireRedis =
+    process.env.RATE_LIMIT_REQUIRE_REDIS === "true" ||
+    (process.env.NODE_ENV === "production" &&
+      hasRedisUrl &&
+      process.env.RATE_LIMIT_REQUIRE_REDIS !== "false");
+
+  const redisResult = await redisCheckRateLimit(key, options).catch((error) => {
+    console.error("[rate-limit] Redis check failed", error);
+    return null;
+  });
   if (redisResult) return redisResult;
+
+  if (requireRedis) {
+    console.error("[rate-limit] Redis unavailable; refusing request (fail-closed)");
+    return {
+      allowed: false,
+      limit: options.limit,
+      remaining: 0,
+      retryAfterSec: 30,
+    };
+  }
+
+  if (hasRedisUrl) {
+    console.warn("[rate-limit] Redis unavailable; falling back to in-memory");
+  }
   return memoryCheckRateLimit(key, options);
 }
 

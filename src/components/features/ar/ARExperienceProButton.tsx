@@ -1,30 +1,58 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode, type RefObject } from "react";
+import { useMemo, useState, type ReactNode, type RefObject } from "react";
+import ViewportPortal from "@/components/shared/ViewportPortal";
 import {
   AlertTriangle,
   ArrowLeft,
-  Box,
-  BrickWall,
+  Camera,
   Copy,
+  Focus,
+  Hand,
   Loader2,
+  Move,
   Share2,
   Smartphone,
   X,
 } from "lucide-react";
-import QRCode from "qrcode";
+import QrCodePreview, { type QrPreviewItem } from "@/components/user-panel/QrCodePreview";
+import { resolveQrCenterLogo } from "@/lib/growth/qr-logo-shared";
+import { viewerBrandStyle } from "@/lib/branding/contrast";
 import {
-  buildQuickLookUrl,
   buildSceneViewerIntent,
   detectARDevice,
+  getAbsoluteUrl,
   getARInstruction,
   getCleanViewerUrl,
   getPhoneShareViewerUrl,
   getProductKey,
+  openQuickLookAr,
   saveARReturnState,
   trackARExperienceEvent,
   type ARExperienceProduct,
 } from "@/lib/ar-experience";
+
+function tutorialStorageKey(placement: "floor" | "wall") {
+  return `ar360_ar_${placement}_tutorial_v1`;
+}
+
+/** Scene Viewer ignores <model-viewer scale> — read the live attribute as fallback. */
+function readLiveArModelScale(
+  viewer: any,
+  fallback?: number | null,
+): number | null {
+  const fromProp = Number(fallback);
+  if (Number.isFinite(fromProp) && fromProp > 0) return fromProp;
+
+  try {
+    const raw = String(viewer?.getAttribute?.("scale") || viewer?.scale || "").trim();
+    const first = Number(raw.split(/\s+/)[0]);
+    if (Number.isFinite(first) && first > 0) return first;
+  } catch {
+    // ignore
+  }
+  return null;
+}
 
 type Props = {
   product: ARExperienceProduct;
@@ -34,6 +62,14 @@ type Props = {
   children?: ReactNode;
   title?: string;
   "aria-label"?: string;
+  brandLogoUrl?: string | null;
+  brandColor?: string | null;
+  brandAccentColor?: string | null;
+  /**
+   * In-browser Studio Look AR (camera + same model-viewer lighting).
+   * Used on iPhone and Android so color matches the 3D viewer.
+   */
+  onStudioLookAr?: (stream?: MediaStream) => void;
 };
 
 export default function ARExperienceProButton({
@@ -44,12 +80,16 @@ export default function ARExperienceProButton({
   children,
   title = "View in AR",
   "aria-label": ariaLabel = "View in AR",
+  brandLogoUrl,
+  brandColor,
+  brandAccentColor,
+  onStudioLookAr: _onStudioLookAr,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [launching, setLaunching] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
-  const [qrDataUrl, setQrDataUrl] = useState("");
+  const [skipTutorialNextTime, setSkipTutorialNextTime] = useState(false);
 
   const productId = getProductKey(product, "unknown");
   const device = useMemo(() => detectARDevice(), []);
@@ -59,31 +99,51 @@ export default function ARExperienceProButton({
   const phoneShareUrl = getPhoneShareViewerUrl(viewerUrl);
   const isDesktop = device === "desktop" || device === "unknown";
 
-  useEffect(() => {
-    if (!open || !phoneShareUrl || !isDesktop) {
-      setQrDataUrl("");
-      return;
-    }
-
-    let cancelled = false;
-    void QRCode.toDataURL(phoneShareUrl, {
-      width: 220,
-      margin: 1,
-      color: { dark: "#111111", light: "#ffffff" },
-    }).then((url) => {
-      if (!cancelled) setQrDataUrl(url);
+  const brandedArQrItem = useMemo<QrPreviewItem | null>(() => {
+    if (!phoneShareUrl || !isDesktop) return null;
+    const qrLogo = resolveQrCenterLogo({
+      customLogoUrl: brandLogoUrl,
+      allowCustomBranding: Boolean(String(brandLogoUrl || "").trim()),
     });
-
-    return () => {
-      cancelled = true;
+    return {
+      id: `ar-phone-${productId}`,
+      productId,
+      destinationUrl: phoneShareUrl,
+      foregroundColor: "#111111",
+      backgroundColor: "#FFFFFF",
+      patternStyle: "square",
+      cornerStyle: "square",
+      logoUrl: qrLogo.logoUrl,
+      logoSize: qrLogo.logoSize,
+      frameEnabled: false,
+      frameStyle: "simple",
+      frameColor: "#111111",
+      frameText: "",
     };
-  }, [open, phoneShareUrl, isDesktop]);
+  }, [phoneShareUrl, isDesktop, productId, brandLogoUrl]);
 
-  function openOnboarding() {
+  function openOnboarding(event?: { isTrusted?: boolean }) {
     setError("");
     setCopied(false);
+    setSkipTutorialNextTime(false);
+    trackARExperienceEvent(productId, "ar_onboarding_open", { device, placement });
+
+    let skipTutorial = false;
+    try {
+      skipTutorial =
+        !isDesktop
+        && typeof window !== "undefined"
+        && window.localStorage.getItem(tutorialStorageKey(placement)) === "1";
+    } catch {
+      skipTutorial = false;
+    }
+
     setOpen(true);
-    trackARExperienceEvent(productId, "ar_onboarding_open", { device });
+    // Programmatic clicks (openAR=1) are not isTrusted — never auto getUserMedia.
+    // Real user taps may skip the sheet when they opted out of the tutorial.
+    if (skipTutorial && event?.isTrusted) {
+      void launchAR();
+    }
   }
 
   async function copyViewerLink() {
@@ -132,6 +192,52 @@ export default function ARExperienceProButton({
     } catch {
       // ignore
     }
+
+    try {
+      viewer.setAttribute?.(
+        "ar-scale",
+        product.realScale === true ? "fixed" : "auto",
+      );
+    } catch {
+      // ignore
+    }
+
+    // Set ios-src so model-viewer can hand off to Quick Look when USDZ exists.
+    try {
+      const usdzAbs = product.usdzUrl ? getAbsoluteUrl(product.usdzUrl) : "";
+      if (usdzAbs) {
+        viewer.setAttribute?.("ios-src", usdzAbs);
+      }
+    } catch {
+      // ignore
+    }
+
+    // Keep Scene Viewer + Quick Look as fallbacks. WebXR-only made floor
+    // placement fail on many Android phones compared with Google Scene Viewer.
+    try {
+      viewer.setAttribute?.("ar-modes", "webxr scene-viewer quick-look");
+    } catch {
+      // ignore
+    }
+
+    const arScale = readLiveArModelScale(viewer, product.arModelScale);
+    const needsBakedScale =
+      arScale != null && Number.isFinite(arScale) && arScale > 0 && Math.abs(arScale - 1) >= 1e-9;
+
+    if (needsBakedScale && arScale != null) {
+      try {
+        const attr = `${arScale} ${arScale} ${arScale}`;
+        viewer.setAttribute?.("scale", attr);
+        try {
+          viewer.scale = attr;
+        } catch {
+          // attribute is enough
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     await viewer.activateAR();
     return true;
   }
@@ -139,55 +245,97 @@ export default function ARExperienceProButton({
   async function launchAR() {
     setLaunching(true);
     setError("");
-    trackARExperienceEvent(productId, "ar_launch_attempt", { device });
+    trackARExperienceEvent(productId, "ar_launch_attempt", { device, placement });
     saveARReturnState(productId, cleanViewerUrl);
 
-    try {
-      if (device === "android") {
-        try {
-          const launchedByModelViewer = await launchWithModelViewer();
-          if (launchedByModelViewer) {
-            trackARExperienceEvent(productId, "ar_launch_success", { mode: "model-viewer", device });
-            setOpen(false);
-            return;
-          }
-        } catch {
-          // Continue to Scene Viewer fallback below.
-        }
+    if (skipTutorialNextTime && typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(tutorialStorageKey(placement), "1");
+      } catch {
+        // ignore
+      }
+    }
 
-        if (!product.modelUrl) throw new Error("Android AR needs a GLB model URL.");
-        window.location.href = buildSceneViewerIntent(product, cleanViewerUrl);
-        trackARExperienceEvent(productId, "ar_launch_success", { mode: "scene-viewer", device });
+    try {
+      const modelBytes = Number(product.modelBytes) || 0;
+      const hasArLite = Boolean(product.arModelUrl);
+      const hasUsdz = Boolean(product.usdzUrl);
+      // In-tab activateAR() keeps the full GLB in Safari memory — OOM on large files.
+      const tooHeavyInPage = modelBytes > 35 * 1024 * 1024;
+      const liveScale = readLiveArModelScale(
+        viewerRef?.current,
+        product.arModelScale,
+      );
+      const productForAr: ARExperienceProduct = {
+        ...product,
+        arModelScale: liveScale,
+      };
+
+      // Prefer native ARKit Quick Look / Google Scene Viewer — not in-tab Studio AR.
+      if (device === "android") {
+        if (!product.modelUrl && !product.arModelUrl) {
+          throw new Error("Android AR needs a GLB model URL.");
+        }
+        window.location.href = buildSceneViewerIntent(productForAr, cleanViewerUrl);
+        trackARExperienceEvent(productId, "ar_launch_success", {
+          mode: "scene-viewer",
+          device,
+          lite: hasArLite,
+          arModelScale: liveScale,
+        });
         return;
       }
 
       if (device === "ios") {
-        try {
-          const launchedByModelViewer = await launchWithModelViewer();
-          if (launchedByModelViewer) {
-            trackARExperienceEvent(productId, "ar_launch_success", { mode: "model-viewer", device });
-            setOpen(false);
-            return;
+        if (hasUsdz && openQuickLookAr(product, cleanViewerUrl)) {
+          trackARExperienceEvent(productId, "ar_launch_success", {
+            mode: "quick-look",
+            device,
+          });
+          setOpen(false);
+          return;
+        }
+
+        // Set ios-src so model-viewer can hand off to Quick Look when USDZ exists.
+        if (hasUsdz) {
+          try {
+            const usdz = product.usdzUrl || "";
+            viewerRef?.current?.setAttribute?.("ios-src", usdz);
+          } catch {
+            // ignore
           }
-        } catch {
-          // Continue to Quick Look fallback below.
         }
 
-        const quickLookUrl = buildQuickLookUrl(product, cleanViewerUrl);
-        if (!quickLookUrl) {
-          throw new Error("iPhone AR needs a USDZ file. Add USDZ export for best iPhone AR support.");
+        if (!(tooHeavyInPage && !hasArLite && !hasUsdz)) {
+          try {
+            const launchedByModelViewer = await launchWithModelViewer();
+            if (launchedByModelViewer) {
+              trackARExperienceEvent(productId, "ar_launch_success", {
+                mode: "model-viewer",
+                device,
+                lite: hasArLite,
+              });
+              setOpen(false);
+              return;
+            }
+          } catch {
+            // Fall through.
+          }
         }
 
-        window.location.href = quickLookUrl;
-        trackARExperienceEvent(productId, "ar_launch_success", { mode: "quick-look", device });
-        return;
+        // Native Quick Look / model-viewer only — do not open in-tab Studio AR.
+        throw new Error(
+          "iPhone AR needs a USDZ file for Apple Quick Look (ARKit). Upload a USDZ for this product in the dashboard.",
+        );
       }
 
       trackARExperienceEvent(productId, "ar_unsupported", { device });
       setError("AR opens on a phone. Scan the QR or copy the link below.");
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "AR launch failed. Try again on a supported mobile browser.";
+        err instanceof Error
+          ? err.message
+          : "AR launch failed. Try again on a supported mobile browser.";
       setError(message);
       trackARExperienceEvent(productId, "ar_launch_failed", { device, message });
     } finally {
@@ -195,18 +343,74 @@ export default function ARExperienceProButton({
     }
   }
 
-  const placementLabel = placement === "wall" ? "Wall" : "Floor";
+  const surfaceLabel = placement === "wall" ? "wall" : "floor";
   const placementHint =
     placement === "wall"
       ? "This product places on a wall or vertical surface."
       : "This product places on the floor or a flat surface.";
+
+  const tutorialSteps =
+    placement === "wall"
+      ? [
+          {
+            icon: Camera,
+            title: "Allow camera access",
+            text:
+              device === "ios"
+                ? "Apple Quick Look (ARKit) will ask for camera access so you can place the product on a wall."
+                : "Google Scene Viewer will ask for camera access so you can place the product on a wall.",
+          },
+          {
+            icon: Move,
+            title: "Point at the wall",
+            text: "Hold the phone upright and aim at the wall or surface where the product should sit.",
+          },
+          {
+            icon: Focus,
+            title: "Tap to place",
+            text: "When a surface is found, tap to place. Drag to move, pinch to resize (unless real-scale is locked).",
+          },
+          {
+            icon: Hand,
+            title: "Close when done",
+            text: "Use the system AR close control to return to the 3D viewer.",
+          },
+        ]
+      : [
+          {
+            icon: Camera,
+            title: "Allow camera access",
+            text:
+              device === "ios"
+                ? "Apple Quick Look (ARKit) opens outside the page — allow camera when prompted."
+                : "Google Scene Viewer opens outside the page — allow camera when prompted.",
+          },
+          {
+            icon: Move,
+            title: "Find the floor or table",
+            text: "Move your phone slowly until the surface is detected, then tap to place the product.",
+          },
+          {
+            icon: Focus,
+            title: "Native phone AR",
+            text:
+              device === "ios"
+                ? "This uses Apple Quick Look / ARKit — not the in-browser Studio preview."
+                : "This uses Google Scene Viewer — not the in-browser Studio preview.",
+          },
+          {
+            icon: Hand,
+            title: "Move and resize",
+            text: "Drag to move, pinch to resize. Close AR to return to the viewer.",
+          },
+        ];
 
   return (
     <>
       <button
         type="button"
         data-ar-pro-launch
-        onClick={openOnboarding}
+        onClick={(event) => openOnboarding(event)}
         className={className}
         title={title}
         aria-label={ariaLabel}
@@ -220,33 +424,37 @@ export default function ARExperienceProButton({
       </button>
 
       {open && (
+        <ViewportPortal>
         <div
-          className="fixed inset-0 z-[10000] flex items-end justify-center bg-black/40 p-0 backdrop-blur-[2px] sm:items-center sm:p-4"
+          className="fixed inset-0 z-[99999] flex items-end justify-center bg-black/45 p-0 backdrop-blur-[2px] sm:items-center sm:p-4"
           onClick={() => !launching && setOpen(false)}
         >
           <div
             onClick={(event) => event.stopPropagation()}
-            className="flex w-full max-w-[400px] max-h-[min(90vh,640px)] flex-col overflow-hidden rounded-t-[24px] bg-white shadow-2xl sm:rounded-[24px]"
+            style={viewerBrandStyle(brandColor, brandAccentColor)}
+            className="flex w-full max-w-[420px] max-h-[min(92vh,720px)] flex-col overflow-hidden rounded-t-[24px] bg-white shadow-2xl sm:rounded-[24px]"
           >
             <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-100 px-5 pb-4 pt-5">
               <div className="min-w-0">
                 <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">
-                  {instruction.deviceLabel}
+                  {instruction.deviceLabel} · AR tutorial
                 </p>
                 <h2 className="mt-1 text-[22px] font-black leading-tight text-slate-950">
-                  {isDesktop ? "Open on your phone" : instruction.title}
+                  {isDesktop ? "Open on your phone" : "See it in your room"}
                 </h2>
                 <p className="mt-2 text-[13px] font-semibold leading-relaxed text-slate-500">
                   {isDesktop
-                    ? "Scan the QR code or copy the link. AR works on Android Chrome and iPhone Safari."
-                    : instruction.description}
+                    ? "Scan the QR code or copy the link. On phones, AR opens in Apple Quick Look or Google Scene Viewer."
+                    : device === "ios"
+                      ? product.usdzUrl
+                        ? "Quick guide before Apple Quick Look (ARKit) opens."
+                        : "This product has no USDZ yet — Apple Quick Look needs a USDZ file for ARKit."
+                      : "Quick guide before Google Scene Viewer opens."}
                 </p>
                 <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-700">
-                  text={
-                    placement === "wall"
-                      ? "This product hangs on a wall"
-                      : "This product stands on the floor"
-                  }
+                  {placement === "wall"
+                    ? "This product hangs on a wall"
+                    : "This product stands on the floor"}
                 </div>
               </div>
               <button
@@ -264,8 +472,8 @@ export default function ARExperienceProButton({
               {isDesktop ? (
                 <div className="space-y-4">
                   <div className="mx-auto grid w-fit place-items-center rounded-2xl border border-slate-200 bg-white p-3">
-                    {qrDataUrl ? (
-                      <img src={qrDataUrl} alt="QR code to open AR on phone" className="h-[180px] w-[180px]" />
+                    {brandedArQrItem ? (
+                      <QrCodePreview item={brandedArQrItem} size={180} />
                     ) : (
                       <div className="grid h-[180px] w-[180px] place-items-center text-sm font-semibold text-slate-400">
                         Preparing QR…
@@ -283,7 +491,7 @@ export default function ARExperienceProButton({
                     <button
                       type="button"
                       onClick={copyViewerLink}
-                      className="flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 text-[13px] font-bold text-white"
+                      className="flex h-11 items-center justify-center gap-2 rounded-xl bg-[#111111] text-[13px] font-bold text-white transition hover:brightness-125 hover:text-white"
                     >
                       <Copy size={15} />
                       {copied ? "Copied" : "Copy link"}
@@ -291,7 +499,7 @@ export default function ARExperienceProButton({
                     <button
                       type="button"
                       onClick={shareViewerLink}
-                      className="flex h-11 items-center justify-center gap-2 rounded-xl bg-[#84D400] text-[13px] font-bold text-slate-950"
+                      className="flex h-11 items-center justify-center gap-2 rounded-xl bg-[var(--ar-primary)] text-[13px] font-bold text-[var(--ar-on-primary)] transition hover:brightness-110 hover:text-[var(--ar-on-primary)]"
                     >
                       <Share2 size={15} />
                       Share
@@ -300,17 +508,26 @@ export default function ARExperienceProButton({
                 </div>
               ) : (
                 <div className="space-y-2.5">
-                  <Step n={1} text="Hold your phone and move slowly" />
-                  <Step
-                    n={2}
-                    text={
-                      placement === "wall"
-                        ? "Point at a wall until a surface is found"
-                        : "Point at the floor until a surface is found"
-                    }
-                  />
-                  <Step n={3} text="Tap to place the product" />
-                  <p className="pt-1 text-[12px] font-semibold text-slate-500">{placementHint}</p>
+                  {tutorialSteps.map((step, index) => (
+                    <TutorialStep
+                      key={step.title}
+                      n={index + 1}
+                      icon={step.icon}
+                      title={step.title}
+                      text={step.text}
+                    />
+                  ))}
+                  <p className="rounded-xl border border-amber-100 bg-amber-50/80 px-3.5 py-3 text-[12px] font-semibold leading-relaxed text-amber-900">
+                    Tip: On iPhone this opens Apple Quick Look (ARKit). On Android it opens Google Scene Viewer.
+                  </p>
+                  <label className="mt-1 flex items-center gap-2 text-[12px] font-bold text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={skipTutorialNextTime}
+                      onChange={(event) => setSkipTutorialNextTime(event.target.checked)}
+                    />
+                    Don&apos;t show this guide next time
+                  </label>
                 </div>
               )}
 
@@ -326,12 +543,12 @@ export default function ARExperienceProButton({
               {!isDesktop ? (
                 <button
                   type="button"
-                  onClick={launchAR}
+                  onClick={() => void launchAR()}
                   disabled={launching}
-                  className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#84D400] text-[14px] font-bold text-slate-950 disabled:opacity-70"
+                  className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[var(--ar-primary)] text-[14px] font-bold text-[var(--ar-on-primary)] transition hover:brightness-110 hover:text-[var(--ar-on-primary)] disabled:opacity-70"
                 >
                   {launching ? <Loader2 size={17} className="animate-spin" /> : <Smartphone size={17} />}
-                  {launching ? "Opening AR…" : instruction.primary}
+                  {launching ? "Opening AR…" : "Got it — open AR"}
                 </button>
               ) : null}
 
@@ -347,18 +564,35 @@ export default function ARExperienceProButton({
             </div>
           </div>
         </div>
+        </ViewportPortal>
       )}
     </>
   );
 }
 
-function Step({ n, text }: { n: number; text: string }) {
+function TutorialStep({
+  n,
+  icon: Icon,
+  title,
+  text,
+}: {
+  n: number;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  title: string;
+  text: string;
+}) {
   return (
-    <div className="flex items-center gap-3 rounded-xl bg-slate-50 px-3.5 py-3">
-      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-slate-900 text-[12px] font-bold text-white">
+    <div className="flex items-start gap-3 rounded-2xl bg-slate-50 px-3.5 py-3">
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-900 text-[12px] font-bold text-white">
         {n}
       </span>
-      <span className="text-[13px] font-bold text-slate-700">{text}</span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <Icon size={14} className="text-[var(--ar-primary)]" />
+          <p className="text-[13px] font-black text-slate-900">{title}</p>
+        </div>
+        <p className="mt-1 text-[12px] font-semibold leading-relaxed text-slate-600">{text}</p>
+      </div>
     </div>
   );
 }

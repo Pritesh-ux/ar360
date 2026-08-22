@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useDeferredEffect } from "@/lib/react/use-deferred-effect";
 import Link from "next/link";
 import { X } from "lucide-react";
 import { AdminButton } from "@/components/ui/admin";
 import { fmtDateShort, fmtMoneyInr } from "@/components/features/master-admin/coupons-utils";
+import ViewportPortal from "@/components/shared/ViewportPortal";
 
 type Redemption = {
   id: number;
@@ -27,7 +29,7 @@ export default function CouponRedemptionsModal({ open, couponUid, couponCode, on
   const [error, setError] = useState("");
   const [redemptions, setRedemptions] = useState<Redemption[]>([]);
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     if (!open || !couponUid) return;
     setLoading(true);
     setError("");
@@ -47,7 +49,8 @@ export default function CouponRedemptionsModal({ open, couponUid, couponCode, on
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/40 p-6">
+    <ViewportPortal>
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/40 p-6">
       <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-3xl bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-6">
           <div>
@@ -79,7 +82,7 @@ export default function CouponRedemptionsModal({ open, couponUid, couponCode, on
               </thead>
               <tbody>
                 {redemptions.map((row) => (
-                  <tr key={row.id} className="border-b border-slate-50">
+                  <tr key={row.id} className="border-b border-slate-50 transition hover:bg-[#FAFAFB]">
                     <td className="py-3 pr-3">
                       {row.customerUid ? (
                         <Link
@@ -111,5 +114,6 @@ export default function CouponRedemptionsModal({ open, couponUid, couponCode, on
         </div>
       </div>
     </div>
+    </ViewportPortal>
   );
 }

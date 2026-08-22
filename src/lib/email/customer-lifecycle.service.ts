@@ -1,5 +1,6 @@
 import { absoluteAppUrl } from "@/lib/email/templates/customer-lifecycle";
 import { sendCustomerLifecycleEmail } from "@/lib/email/customer-delivery.service";
+import { billingInvoiceViewPath } from "@/lib/subscription/subscription-paths";
 
 function planLabel(planId: string) {
   return planId
@@ -37,7 +38,7 @@ export function sendWelcomeEmail(customerUid: string) {
     content: {
       subject: "Welcome to AR360 — your account is ready",
       title: "Welcome to AR360",
-      intro: "Your AR360 account has been created successfully and your 24-hour trial is now active.",
+      intro: "Your AR360 account has been created successfully and your free trial is now active.",
       lines: [
         "You can start adding products, upload 3D models, and create interactive AR experiences from your dashboard.",
       ],
@@ -70,6 +71,7 @@ export function sendPlanActivatedEmail(input: {
     category: "subscription",
     templateId: "plan_activated",
     dedupeKey: `plan-activated:${input.eventKey}`,
+    respectPreferences: false,
     content: {
       subject: `Your ${planLabel(input.planId)} plan is active`,
       title: "Your plan is now active",
@@ -93,6 +95,7 @@ export function sendPlanChangedEmail(input: {
     category: "subscription",
     templateId: "plan_changed",
     dedupeKey: `plan-changed:${input.eventKey}`,
+    respectPreferences: false,
     content: {
       subject: `Your AR360 plan has been updated`,
       title: "Plan updated",
@@ -108,7 +111,7 @@ export function sendPlanChangedEmail(input: {
   });
 }
 
-export function sendInvoiceEmail(input: {
+export async function sendInvoiceEmail(input: {
   customerUid: string;
   invoiceUid: string;
   invoiceNumber?: string | null;
@@ -117,15 +120,31 @@ export function sendInvoiceEmail(input: {
   status?: string | null;
 }) {
   const invoiceLabel = input.invoiceNumber || input.invoiceUid;
+  const invoiceHtml = await import("@/server/billing/invoice.service")
+    .then((mod) => mod.getMasterInvoiceEmailHtml(input.invoiceUid))
+    .catch(() => null);
+
   return sendCustomerLifecycleEmail({
     customerUid: input.customerUid,
     category: "billing",
     templateId: "invoice_ready",
     dedupeKey: `invoice:${input.invoiceUid}:${input.status || "created"}`,
+    respectPreferences: false,
+    htmlOverride: invoiceHtml || null,
+    textOverride: `Your AR360 invoice ${invoiceLabel} is ready. View or download it: ${absoluteAppUrl(billingInvoiceViewPath(input.invoiceUid))}`,
+    metadata: {
+      invoiceUid: input.invoiceUid,
+      invoiceNumber: input.invoiceNumber || invoiceLabel,
+      planId: input.planId || null,
+      amountPaise: input.amountPaise ?? null,
+      invoiceStatus: input.status || null,
+    },
     content: {
       subject: `Your AR360 invoice ${invoiceLabel}`,
       title: "Your invoice is ready",
-      intro: `Invoice ${invoiceLabel} is now available in your AR360 billing dashboard.`,
+      intro: invoiceHtml
+        ? `Please find your invoice ${invoiceLabel} below.`
+        : `Invoice ${invoiceLabel} is now available in your AR360 billing dashboard.`,
       details: [
         ...(input.planId ? [{ label: "Plan", value: planLabel(input.planId) }] : []),
         ...(formatMoney(input.amountPaise)
@@ -134,7 +153,7 @@ export function sendInvoiceEmail(input: {
         ...(input.status ? [{ label: "Status", value: planLabel(input.status) }] : []),
       ],
       actionLabel: "View invoice",
-      actionUrl: absoluteAppUrl("/dashboard/billing"),
+      actionUrl: absoluteAppUrl(billingInvoiceViewPath(input.invoiceUid)),
     },
   });
 }
@@ -150,6 +169,7 @@ export function sendPaymentFailedEmail(input: {
     category: "billing",
     templateId: "payment_failed",
     dedupeKey: `payment-failed:${input.eventKey}`,
+    respectPreferences: false,
     content: {
       subject: "Action needed: AR360 payment failed",
       title: "We could not process your payment",
@@ -185,6 +205,7 @@ export function sendSubscriptionStateEmail(input: {
     category: input.state === "refunded" ? "billing" : "subscription",
     templateId: `subscription_${input.state}`,
     dedupeKey: `subscription-${input.state}:${input.eventKey}`,
+    respectPreferences: false,
     content: {
       subject: `${title} — AR360`,
       title,
@@ -270,6 +291,39 @@ export function sendUsageLimitEmail(input: {
       ],
       actionLabel: "Review usage and plans",
       actionUrl: absoluteAppUrl("/dashboard/billing"),
+    },
+  });
+}
+
+export function sendProductEnquiryEmail(input: {
+  customerUid: string;
+  enquiryUid: string;
+  productTitle: string;
+  visitorName: string;
+  visitorPhone: string;
+  visitorEmail: string | null;
+  message: string | null;
+  viewerUrl: string | null;
+}) {
+  return sendCustomerLifecycleEmail({
+    customerUid: input.customerUid,
+    category: "product",
+    templateId: "product_enquiry",
+    dedupeKey: `product-enquiry:${input.enquiryUid}`,
+    content: {
+      subject: `New product enquiry — ${input.productTitle}`,
+      title: "New Product Enquiry",
+      intro: "Someone submitted an enquiry from your AR360 product viewer.",
+      details: [
+        { label: "Product", value: input.productTitle },
+        { label: "Customer", value: input.visitorName },
+        { label: "Phone", value: input.visitorPhone },
+        { label: "Email", value: input.visitorEmail || "—" },
+        { label: "Message", value: input.message || "—" },
+        ...(input.viewerUrl ? [{ label: "View Product", value: input.viewerUrl }] : []),
+      ],
+      actionLabel: "Open enquiries",
+      actionUrl: absoluteAppUrl("/dashboard/enquiries"),
     },
   });
 }

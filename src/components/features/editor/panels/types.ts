@@ -1,5 +1,11 @@
 import type { LogoDecal, ViewerMaterial } from "@/components/shared/ModelViewer";
-import type { EditorProduct, EditorTab, Hotspot, VariantConfig } from "@/components/features/editor/types";
+import type {
+  EditorProduct,
+  EditorTab,
+  Hotspot,
+  MaterialSetting,
+  VariantConfig,
+} from "@/components/features/editor/types";
 
 export type EditorPanelsProps = {
   activeTab: EditorTab;
@@ -13,6 +19,8 @@ export type EditorPanelsProps = {
   setUseSkybox: (value: boolean) => void;
   exposure: number;
   setExposure: (value: number) => void;
+  environmentSaturation: number;
+  setEnvironmentSaturation: (value: number) => void;
   backgroundColor: string;
   setBackgroundColor: (value: string) => void;
   transparent: boolean;
@@ -42,43 +50,10 @@ export type EditorPanelsProps = {
   selectedMaterialIndex: number;
   handleMaterialSlotChange: (nextIndex: number) => void;
   materials: ViewerMaterial[];
-  baseColor: string;
-  setBaseColor: (value: string) => void;
-  baseColorTexture: string;
-  setBaseColorTexture: (value: string) => void;
-  metalness: number;
-  setMetalness: (value: number) => void;
-  roughness: number;
-  setRoughness: (value: number) => void;
-  emissiveColor: string;
-  setEmissiveColor: (value: string) => void;
-  metallicRoughnessTexture: string;
-  setMetallicRoughnessTexture: (value: string) => void;
-  normalTexture: string;
-  setNormalTexture: (value: string) => void;
-  emissiveTexture: string;
-  setEmissiveTexture: (value: string) => void;
-  occlusionTexture: string;
-  setOcclusionTexture: (value: string) => void;
-  materialLogoImage: string;
-  setMaterialLogoImage: (value: string) => void;
-  materialLogoName: string;
-  setMaterialLogoName: (value: string) => void;
-  materialLogoMode: "print" | "engrave" | "emboss";
-  setMaterialLogoMode: (value: "print" | "engrave" | "emboss") => void;
-  materialLogoBlendMode: "normal" | "multiply" | "screen" | "overlay";
-  setMaterialLogoBlendMode: (value: "normal" | "multiply" | "screen" | "overlay") => void;
-  materialLogoScale: number;
-  setMaterialLogoScale: (value: number) => void;
-  materialLogoOffsetX: number;
-  setMaterialLogoOffsetX: (value: number) => void;
-  materialLogoOffsetY: number;
-  setMaterialLogoOffsetY: (value: number) => void;
-  materialLogoRotation: number;
-  setMaterialLogoRotation: (value: number) => void;
-  materialLogoOpacity: number;
-  setMaterialLogoOpacity: (value: number) => void;
-  saveCurrentMaterialSettings: () => void;
+  /** Live Material Inspector setting for the selected slot. */
+  materialInspectorSetting: MaterialSetting;
+  nativeMaterialSetting?: MaterialSetting;
+  onMaterialInspectorChange: (partial: Partial<MaterialSetting>) => void;
   autoRotate: boolean;
   setAutoRotate: (value: boolean) => void;
   cameraControls: boolean;
@@ -89,18 +64,53 @@ export type EditorPanelsProps = {
   setInteractionPrompt: (value: boolean) => void;
   realScale: boolean;
   setRealScale: (value: boolean) => void;
+  arModelUnit: "auto" | "m" | "cm" | "mm";
+  setArModelUnit: (value: "auto" | "m" | "cm" | "mm") => void;
   autoPlay: boolean;
   setAutoPlay: (value: boolean) => void;
   hideControls: boolean;
   setHideControls: (value: boolean) => void;
   ctaEnabled: boolean;
   setCtaEnabled: (value: boolean) => void;
-  ctaType: "buy_now" | "visit_website" | "whatsapp" | "contact_seller" | "request_quote";
-  setCtaType: (value: "buy_now" | "visit_website" | "whatsapp" | "contact_seller" | "request_quote") => void;
+  ctaType:
+    | "buy_now"
+    | "visit_website"
+    | "whatsapp"
+    | "contact_seller"
+    | "request_quote"
+    | "tel"
+    | "mailto"
+    | "pdf"
+    | "custom";
+  setCtaType: (
+    value:
+      | "buy_now"
+      | "visit_website"
+      | "whatsapp"
+      | "contact_seller"
+      | "request_quote"
+      | "tel"
+      | "mailto"
+      | "pdf"
+      | "custom",
+  ) => void;
   ctaLabel: string;
   setCtaLabel: (value: string) => void;
   ctaUrl: string;
   setCtaUrl: (value: string) => void;
+  contactUseCustom: boolean;
+  setContactUseCustom: (value: boolean) => void;
+  contactEnquireEnabled: boolean;
+  setContactEnquireEnabled: (value: boolean) => void;
+  contactWhatsappEnabled: boolean;
+  setContactWhatsappEnabled: (value: boolean) => void;
+  contactWhatsappNumber: string;
+  setContactWhatsappNumber: (value: string) => void;
+  contactEnquireLabel: string;
+  setContactEnquireLabel: (value: string) => void;
+  contactWhatsappLabel: string;
+  setContactWhatsappLabel: (value: string) => void;
+  allowProductContact?: boolean;
   initialZoom: number;
   setInitialZoom: (value: number) => void;
   fov: number;
@@ -115,7 +125,7 @@ export type EditorPanelsProps = {
   addHotspot: () => void;
   hotspots: Hotspot[];
   deleteHotspot: (id: string) => void;
-  openAddVariantModal: () => void;
+  openAddVariantModal: () => void | Promise<void>;
   openDuplicateVariantModal: () => void;
   variants: VariantConfig[];
   loadVariant: (variant: VariantConfig) => void;

@@ -16,7 +16,9 @@ import {
   checkQrEntitlement,
   checkShareEntitlement,
   checkEnterpriseModelEntitlement,
+  formatTrialDurationLabel,
   mapLegacyPlanId,
+  normalizeTrialHours,
   type EntitlementResult,
   type PlanLimits,
   type UsageSnapshot,
@@ -110,14 +112,27 @@ async function ensureTrialIfMissing(customerUid: string) {
   if (current) return current;
 
   try {
-    await query(
-      `INSERT INTO customer_subscriptions
-       (customer_uid, plan_id, status, trial_started_at, trial_ends_at, current_period_start, current_period_end, trial_used, product_limit, storage_limit_mb, bandwidth_limit_mb)
-       VALUES (?, 'trial', 'trialing', NOW(), DATE_ADD(NOW(), INTERVAL 24 HOUR), NOW(), DATE_ADD(NOW(), INTERVAL 24 HOUR), 1, 1, 100, 1024)`,
-      [customerUid],
-    );
+    const { startTrialSubscription } = await import("@/server/billing/subscription.service");
+    await startTrialSubscription(customerUid);
   } catch {
-    // If table does not exist yet, fallback logic below still keeps UI safe.
+    // Fallback when subscription service / tables are unavailable.
+    try {
+      const limits = await resolvePlanLimits("trial");
+      const hours = normalizeTrialHours(limits.trialHours);
+      const products = limits.products ?? 10;
+      const storageMb = limits.storageMb ?? 100;
+      const bandwidthMb = limits.unlimitedBandwidth
+        ? null
+        : Math.round((limits.bandwidthGb ?? 1) * 1024);
+      await query(
+        `INSERT INTO customer_subscriptions
+         (customer_uid, plan_id, status, trial_started_at, trial_ends_at, current_period_start, current_period_end, trial_used, product_limit, storage_limit_mb, bandwidth_limit_mb)
+         VALUES (?, 'trial', 'trialing', NOW(), DATE_ADD(NOW(), INTERVAL ? HOUR), NOW(), DATE_ADD(NOW(), INTERVAL ? HOUR), 1, ?, ?, ?)`,
+        [customerUid, hours, hours, products, storageMb, bandwidthMb],
+      );
+    } catch {
+      // If table does not exist yet, fallback logic below still keeps UI safe.
+    }
   }
 
   return getSubscription(customerUid);
@@ -135,11 +150,16 @@ export async function getBillingEntitlement(input: {
     resolvePlanLimits(rawPlanId),
     getBillingPlans({ activeOnly: false }).catch(() => []),
   ]);
-  const adminPlan = billingPlans.find((plan) => plan.id === planId);
+  const adminPlan =
+    billingPlans.find((plan) => plan.id === rawPlanId) ||
+    billingPlans.find((plan) => plan.id === planId) ||
+    (rawPlanId.toLowerCase().startsWith("ecp_")
+      ? billingPlans.find((plan) => plan.id.toLowerCase() === rawPlanId.toLowerCase())
+      : undefined);
   const plan: BillingEntitlementSnapshot["plan"] = {
     ...basePlan,
-    priceMonthlyInr: adminPlan?.priceMonthlyInr,
-    priceYearlyInr: adminPlan?.priceYearlyInr,
+    priceMonthlyInr: adminPlan?.priceMonthlyInr ?? null,
+    priceYearlyInr: adminPlan?.priceYearlyInr ?? null,
     features: adminPlan?.features,
   };
 
@@ -232,7 +252,7 @@ export async function getBillingEntitlement(input: {
         allowed: false,
         reason: action === "viewer" || action === "ar"
           ? "This trial viewer has expired. Upgrade to reactivate the public viewer."
-          : "Your 24 hours trial has expired. Upgrade to continue uploading or editing products.",
+          : `Your ${formatTrialDurationLabel(plan.trialHours)} trial has expired. Upgrade to continue uploading or editing products.`,
         upgradeRequired: true,
         trialExpired: true,
         limitType: "trial",

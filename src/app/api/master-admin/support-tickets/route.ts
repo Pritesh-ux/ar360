@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { guardAdminPermission } from "@/lib/permissions/admin-rbac";
+import { guardAdminPermission, logAdminAudit } from "@/lib/permissions/admin-rbac";
 import { ensureSupportTicketsSchema } from "@/lib/db";
 import {
   createTicket,
@@ -106,6 +106,7 @@ export async function POST(req: NextRequest) {
     );
 
     const ticket = await getTicketByUid(created.ticketUid);
+    await logAdminAudit(admin, "ticket.create", "support_ticket", created.ticketUid);
     return NextResponse.json({ ok: true, ticket }, { status: 201 });
   } catch (error) {
     return NextResponse.json(

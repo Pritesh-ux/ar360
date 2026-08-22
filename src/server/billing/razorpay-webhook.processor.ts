@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import os from "os";
 import type { PoolConnection, RowDataPacket } from "mysql2/promise";
-import { getPool } from "@/lib/db";
+import { getPool, query } from "@/lib/db";
 import { parseRazorpayBillingEvent, shouldApplyProviderEvent } from "./razorpay-webhook.types";
 
 const MAX_ATTEMPTS = 10;
@@ -235,51 +235,106 @@ async function upsertCapturedPaymentAndInvoice(
       mysqlDate(payment.captured_at || event.occurredAt), event.occurredAt],
   );
 
-  const invoiceUid = `inv_rzp_${payment.id}`;
-  const invoiceNumber = `RZP-${payment.id}`;
+  const { resolveInvoiceSellerProfile } = await import("@/lib/billing/invoice-seller");
+  const seller = await resolveInvoiceSellerProfile();
+  const existingInvoiceRows = await rows<RowDataPacket & { invoice_uid: string; invoice_number: string | null }>(
+    connection,
+    `SELECT invoice_uid, invoice_number FROM billing_invoices
+      WHERE razorpay_payment_id = ?
+      ORDER BY
+        CASE
+          WHEN invoice_number LIKE 'AR360/%' THEN 0
+          WHEN invoice_uid REGEXP '^INV_' THEN 1
+          ELSE 2
+        END,
+        created_at DESC
+      LIMIT 1`,
+    [payment.id],
+  );
+  const existingInvoice = existingInvoiceRows[0];
+  if (existingInvoice && (String(existingInvoice.invoice_number || "").startsWith("AR360/") || String(existingInvoice.invoice_uid).startsWith("INV_"))) {
+    await connection.execute(
+      `UPDATE billing_payments
+          SET invoice_uid = ?
+        WHERE razorpay_payment_id = ?
+          AND (invoice_uid IS NULL OR invoice_uid = '' OR invoice_uid LIKE 'inv_rzp_%')`,
+      [existingInvoice.invoice_uid, payment.id],
+    );
+    await connection.execute(
+      `INSERT IGNORE INTO billing_history
+         (customer_uid, subscription_id, event_type, title, description, amount_paise, meta, dedupe_key)
+       VALUES (?, ?, 'payment_captured', 'Payment successful', ?, ?, ?, ?)`,
+      [owner.customer_uid, owner.subscription_id, `${owner.plan_id} recurring payment captured.`,
+        amount, json({ paymentId: payment.id, invoiceUid: existingInvoice.invoice_uid }), `webhook:${eventUid}:payment`],
+    );
+    return;
+  }
+
+  const invoiceUid = existingInvoice?.invoice_uid
+    || `INV_${crypto.randomBytes(8).toString("hex").toUpperCase()}`;
+  const invoiceNumber = existingInvoice?.invoice_number
+    || await (await import("@/server/billing/invoice.repository")).nextInvoiceNumber();
+  const { computeInclusiveGstBreakdown } = await import("@/server/billing/invoice.service");
+  const gst = computeInclusiveGstBreakdown(amount, owner.place_of_supply, seller.state);
   const snapshot = {
     priceVersionUid: owner.price_version_uid,
     providerPlanId: owner.provider_plan_id,
-    subtotalPaise: Number(owner.subtotal_paise ?? amount),
-    gstPaise: Number(owner.gst_paise ?? 0),
-    totalPaise: amount,
+    subtotalPaise: gst.subtotalPaise,
+    gstPaise: gst.taxPaise,
+    totalPaise: gst.totalPaise,
     gstRate: Number(owner.gst_rate ?? 18),
     gstInclusive: true,
     currency: payment.currency || owner.currency || "INR",
-    sellerGstin: process.env.BILLING_SELLER_GSTIN || null,
+    sellerGstin: seller.gstin || null,
     buyerGstin: owner.buyer_gstin,
     buyerName: owner.buyer_name,
     buyerEmail: owner.buyer_email,
     buyerAddress: owner.buyer_address,
     placeOfSupply: owner.place_of_supply,
+    entitlements: null as unknown,
   };
+  try {
+    const { resolvePlanEntitlements } = await import("@/server/billing/invoice.service");
+    snapshot.entitlements = await resolvePlanEntitlements(owner.plan_id);
+  } catch {
+    snapshot.entitlements = null;
+  }
   await connection.execute(
     `INSERT INTO billing_invoices
        (invoice_uid, invoice_number, customer_uid, subscription_id, plan_id, period,
-        amount_paise, subtotal_paise, tax_paise, total_paise, gst_rate, currency, status,
-        razorpay_payment_id, paid_at, checkout_session_uid, price_version_id,
-        provider_invoice_id, provider_subscription_id, provider_mode, price_snapshot,
-        provider_event_created_at, seller_gstin, buyer_gstin, buyer_name, buyer_email,
-        buyer_address, supply_state_code, place_of_supply)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'paid', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        amount_paise, subtotal_paise, tax_paise, cgst_paise, sgst_paise, igst_paise, total_paise,
+        gst_rate, currency, status, razorpay_payment_id, paid_at, checkout_session_uid,
+        price_version_id, provider_invoice_id, provider_subscription_id, provider_mode,
+        price_snapshot, provider_event_created_at, seller_gstin, buyer_gstin, buyer_name,
+        buyer_email, buyer_address, supply_state_code, place_of_supply)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'paid', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        price_snapshot = COALESCE(price_snapshot, VALUES(price_snapshot)),
        price_version_id = COALESCE(price_version_id, VALUES(price_version_id)),
        checkout_session_uid = COALESCE(checkout_session_uid, VALUES(checkout_session_uid)),
        provider_subscription_id = COALESCE(provider_subscription_id, VALUES(provider_subscription_id)),
        provider_mode = COALESCE(provider_mode, VALUES(provider_mode)),
+       tax_paise = COALESCE(tax_paise, VALUES(tax_paise)),
+       cgst_paise = COALESCE(cgst_paise, VALUES(cgst_paise)),
+       sgst_paise = COALESCE(sgst_paise, VALUES(sgst_paise)),
+       igst_paise = COALESCE(igst_paise, VALUES(igst_paise)),
+       subtotal_paise = COALESCE(subtotal_paise, VALUES(subtotal_paise)),
+       total_paise = COALESCE(total_paise, VALUES(total_paise)),
        provider_event_created_at = GREATEST(COALESCE(provider_event_created_at, 0), VALUES(provider_event_created_at))`,
     [invoiceUid, invoiceNumber, owner.customer_uid, owner.subscription_id, owner.plan_id,
-      owner.billing_interval, Number(owner.subtotal_paise ?? amount), Number(owner.subtotal_paise ?? amount),
-      Number(owner.gst_paise ?? 0), amount, Number(owner.gst_rate ?? 18),
+      owner.billing_interval, gst.subtotalPaise, gst.subtotalPaise, gst.taxPaise,
+      gst.cgstPaise, gst.sgstPaise, gst.igstPaise, gst.totalPaise, Number(owner.gst_rate ?? 18),
       payment.currency || "INR", payment.id, mysqlDate(payment.captured_at || event.occurredAt),
       owner.checkout_session_uid, owner.price_version_id, payment.invoice_id || null,
       owner.provider_subscription_id, owner.provider_mode, json(snapshot), event.occurredAt,
-      process.env.BILLING_SELLER_GSTIN || null, owner.buyer_gstin, owner.buyer_name,
+      seller.gstin || null, owner.buyer_gstin, owner.buyer_name,
       owner.buyer_email, owner.buyer_address, owner.supply_state_code, owner.place_of_supply],
   );
   await connection.execute(
-    "UPDATE billing_payments SET invoice_uid = ? WHERE razorpay_payment_id = ?",
+    `UPDATE billing_payments
+        SET invoice_uid = ?
+      WHERE razorpay_payment_id = ?
+        AND (invoice_uid IS NULL OR invoice_uid = '' OR invoice_uid LIKE 'inv_rzp_%')`,
     [invoiceUid, payment.id],
   );
   await connection.execute(
@@ -364,12 +419,13 @@ async function applyEvent(connection: PoolConnection, inbox: InboxRow) {
        JOIN customer_subscriptions s ON s.customer_uid = c.customer_uid
        SET c.plan_id = ?, c.status = CASE
              WHEN s.term_mode = 'legacy_until_renewal' AND s.current_period_end > NOW() THEN 'Active'
-             WHEN ? IN ('active', 'past_due') THEN 'Active'
-             ELSE 'Suspended'
+             WHEN ? IN ('active', 'past_due', 'trialing', 'grace') THEN 'Active'
+             WHEN ? IN ('paused', 'halted') THEN 'Suspended'
+             ELSE 'Active'
            END,
            c.updated_at = NOW()
        WHERE c.customer_uid = ?`,
-      [owner.plan_id, state.status || "pending", owner.customer_uid],
+      [owner.plan_id, state.status || "pending", state.status || "pending", owner.customer_uid],
     );
     if (state.status === "active") {
       await connection.execute(
@@ -478,7 +534,10 @@ export async function claimRazorpayWebhook(workerId: string): Promise<InboxRow |
     const candidates = await rows<InboxRow>(
       connection,
       `SELECT * FROM billing_webhook_events
-        WHERE status IN ('received','retry')
+        WHERE (
+            status IN ('received','retry')
+            OR (status = 'processing' AND locked_until IS NOT NULL AND locked_until < NOW())
+          )
           AND available_at <= NOW()
           AND (locked_until IS NULL OR locked_until < NOW())
         ORDER BY received_at, id LIMIT 1 FOR UPDATE SKIP LOCKED`,
@@ -491,12 +550,16 @@ export async function claimRazorpayWebhook(workerId: string): Promise<InboxRow |
     await connection.execute(
       `UPDATE billing_webhook_events
           SET status = 'processing', lock_token = ?, locked_until = DATE_ADD(NOW(), INTERVAL ? SECOND),
-              processing_started_at = NOW(), attempt_count = attempt_count + 1
+              processing_started_at = NOW(),
+              attempt_count = CASE
+                WHEN status = 'processing' THEN attempt_count
+                ELSE attempt_count + 1
+              END
         WHERE id = ?`,
       [lockToken, LEASE_SECONDS, candidate.id],
     );
     await connection.commit();
-    return { ...candidate, lock_token: lockToken, attempt_count: Number(candidate.attempt_count) + 1 };
+    return { ...candidate, lock_token: lockToken, attempt_count: Number(candidate.attempt_count) + (candidate.status === "processing" ? 0 : 1) };
   } catch (error) {
     await connection.rollback();
     throw error;
@@ -546,6 +609,81 @@ export async function processClaimedRazorpayWebhook(inbox: InboxRow) {
         );
         await connection.commit();
         return { processed: true, enterpriseInstallment: true };
+      }
+    }
+
+    // One-time Razorpay Orders (legacy / self-serve checkout) live in billing_orders,
+    // not billing_checkout_sessions. Activate via the same finalize path as verify-payment.
+    if (
+      parsed?.type === "payment.captured" &&
+      parsed.payment?.id &&
+      parsed.payment.order_id
+    ) {
+      const nativeOwner = await resolveOwnership(
+        connection,
+        parsed.providerSubscriptionId,
+        parsed.providerPaymentId,
+      );
+      if (!nativeOwner) {
+        const legacyOrders = await rows<
+          RowDataPacket & {
+            order_uid: string;
+            customer_uid: string;
+            plan_id: string;
+            billing_period: string;
+            amount_paise: number;
+            status: string;
+          }
+        >(
+          connection,
+          `SELECT order_uid, customer_uid, plan_id, billing_period, amount_paise, status
+             FROM billing_orders
+            WHERE razorpay_order_id = ?
+            LIMIT 1 FOR UPDATE`,
+          [parsed.payment.order_id],
+        );
+        const legacy = legacyOrders[0];
+        if (legacy) {
+          const expectedPaise = Number(legacy.amount_paise);
+          const receivedPaise = Number(parsed.payment.amount || 0);
+          if (!Number.isFinite(expectedPaise) || expectedPaise <= 0 || expectedPaise !== receivedPaise) {
+            throw new Error(
+              `Legacy order amount mismatch: expected ${expectedPaise}, received ${receivedPaise}.`,
+            );
+          }
+          const payCurrency = String(parsed.payment.currency || "INR").toUpperCase();
+          if (payCurrency !== "INR") {
+            throw new Error(`Legacy order currency mismatch: ${payCurrency}`);
+          }
+
+          await connection.commit();
+          if (legacy.status !== "paid") {
+            const { finalizeSuccessfulPayment } = await import(
+              "@/server/billing/payment-finalize.service"
+            );
+            await finalizeSuccessfulPayment({
+              customerUid: legacy.customer_uid,
+              orderUid: legacy.order_uid,
+              planId: legacy.plan_id,
+              period: legacy.billing_period === "yearly" ? "yearly" : "monthly",
+              amountPaise: expectedPaise,
+              razorpayOrderId: String(parsed.payment.order_id),
+              razorpayPaymentId: String(parsed.payment.id),
+              rawPayload: typeof locked[0].payload === "string"
+                ? JSON.parse(locked[0].payload)
+                : locked[0].payload,
+            });
+          }
+          // Crash between finalize and this mark is recovered by expired
+          // processing lease reclaim in claimRazorpayWebhook.
+          await query(
+            `UPDATE billing_webhook_events SET status = 'processed', processed_at = NOW(),
+                locked_until = NULL, lock_token = NULL, last_error = NULL, error_message = NULL
+              WHERE id = ? AND lock_token = ?`,
+            [inbox.id, inbox.lock_token],
+          );
+          return { processed: true, legacyOrder: true };
+        }
       }
     }
 

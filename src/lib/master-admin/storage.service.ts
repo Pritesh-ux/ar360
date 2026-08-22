@@ -1,14 +1,14 @@
-import path from "path";
 import { getBillingPlans } from "@/lib/billing/admin-plans";
 import { mapLegacyPlanId } from "@/lib/billing/plan-enforcement";
-import {
-  PLATFORM_BANDWIDTH_TB,
-  PLATFORM_STORAGE_TB,
-  mbToTb,
-} from "@/components/features/master-admin/storage-utils";
+import { mbToTb } from "@/components/features/master-admin/storage-utils";
 import { query } from "@/lib/db";
+import {
+  getHostingerVpsLiveMetrics,
+  liveBytesToTb,
+} from "@/lib/hostinger/vps-live-metrics";
 import { paginationMeta } from "@/lib/master-admin/pagination";
 import { writeMasterAdminAudit } from "@/lib/master-admin/audit-log";
+import { getPlatformSettings } from "@/lib/master-admin-settings";
 import {
   cleanupTempStorage,
   deleteOrphanFolders,
@@ -102,7 +102,24 @@ export async function getStorageDashboard(params: StorageFilterParams = {}) {
   const growthDays = Math.min(90, Math.max(7, Number(params.growthDays || 30)));
   const { where, values } = buildStorageWhere(params.search);
 
-  const [countRows, rows, planRows, recentProducts, audit, allCustomersForWarnings] = await Promise.all([
+  const settings = await getPlatformSettings().catch(() => null);
+  const isHostingerProvider = /hostinger/i.test(String(settings?.storageProvider || ""));
+  const storageLimitGb = isHostingerProvider
+    ? settings?.platformStorageLimitGb && settings.platformStorageLimitGb > 0
+      ? settings.platformStorageLimitGb
+      : 50
+    : settings?.platformStorageLimitGb || 50;
+
+  const storageLimitTb = storageLimitGb / 1024;
+  const bandwidthLimitGb = isHostingerProvider
+    ? settings?.platformBandwidthLimitGb && settings.platformBandwidthLimitGb > 0
+      ? settings.platformBandwidthLimitGb
+      : 4096
+    : settings?.platformBandwidthLimitGb || 4096;
+  const bandwidthLimitTb = bandwidthLimitGb / 1024;
+
+  const [countRows, rows, planRows, recentProducts, audit, allCustomersForWarnings, hostingerLive] =
+    await Promise.all([
     query<{ total: number }>(`
       SELECT COUNT(DISTINCT c.customer_uid) AS total
       FROM customers c
@@ -125,7 +142,15 @@ export async function getStorageDashboard(params: StorageFilterParams = {}) {
       FROM customers c
       LEFT JOIN products p ON p.customer_uid = c.customer_uid
       ${where}
-      GROUP BY c.customer_uid
+      GROUP BY
+        c.customer_uid,
+        c.contact_name,
+        c.company_name,
+        c.email,
+        c.plan_id,
+        c.status,
+        c.storage_used_mb,
+        c.bandwidth_used_mb
       ORDER BY c.storage_used_mb DESC
       LIMIT ? OFFSET ?
     `, [...values, pageSize, offset]),
@@ -165,6 +190,8 @@ export async function getStorageDashboard(params: StorageFilterParams = {}) {
     query<{ plan_id: string; storage_used_mb: number }>(`
       SELECT plan_id, storage_used_mb FROM customers
     `).catch(() => []),
+
+    getHostingerVpsLiveMetrics().catch(() => null),
   ]);
 
   const planLimitCache = new Map<string, number>();
@@ -224,13 +251,41 @@ export async function getStorageDashboard(params: StorageFilterParams = {}) {
 
   const totalUsedMB = Number(platformRows[0]?.storage || 0);
   const totalBandwidthMB = Number(platformRows[0]?.bandwidth || 0);
-  const usedTb = mbToTb(totalUsedMB);
-  const bandwidthUsedTb = mbToTb(totalBandwidthMB);
-  const freeTb = Math.max(PLATFORM_STORAGE_TB - usedTb, 0);
+  const customerUsedTb = mbToTb(totalUsedMB);
+  const customerBandwidthTb = mbToTb(totalBandwidthMB);
+
+  // Prefer Hostinger / live VPS disk for platform summary cards.
+  const hasLiveDisk = Boolean(hostingerLive && hostingerLive.diskUsedBytes >= 0 && hostingerLive.source !== "unavailable");
+  const usedTb = hasLiveDisk
+    ? liveBytesToTb(hostingerLive!.diskUsedBytes)
+    : customerUsedTb;
+  const storageLimitTbLive =
+    isHostingerProvider && storageLimitTb > 0
+      ? storageLimitTb
+      : hasLiveDisk && hostingerLive!.diskTotalBytes > 0
+        ? liveBytesToTb(hostingerLive!.diskTotalBytes)
+        : storageLimitTb;
+  const freeTb = Math.max(storageLimitTbLive - usedTb, 0);
+
+  const hasLiveBandwidth =
+    Boolean(hostingerLive?.bandwidthUsedBytes != null && hostingerLive.bandwidthUsedBytes >= 0);
+  const bandwidthUsedTb = hasLiveBandwidth
+    ? liveBytesToTb(hostingerLive!.bandwidthUsedBytes || 0)
+    : customerBandwidthTb;
+  const bandwidthLimitTbLive =
+    isHostingerProvider && bandwidthLimitTb > 0
+      ? bandwidthLimitTb
+      : hostingerLive?.bandwidthLimitBytes != null && hostingerLive.bandwidthLimitBytes > 0
+        ? liveBytesToTb(hostingerLive.bandwidthLimitBytes)
+        : bandwidthLimitTb;
 
   await upsertStorageSnapshot({
-    totalUsedMB,
-    totalBandwidthMB,
+    totalUsedMB: hasLiveDisk
+      ? Math.round(hostingerLive!.diskUsedBytes / (1024 * 1024))
+      : totalUsedMB,
+    totalBandwidthMB: hasLiveBandwidth
+      ? Math.round((hostingerLive!.bandwidthUsedBytes || 0) / (1024 * 1024))
+      : totalBandwidthMB,
     customerCount: Number(countRows[0]?.total || 0),
   });
 
@@ -281,34 +336,67 @@ export async function getStorageDashboard(params: StorageFilterParams = {}) {
     date: product.updated_at,
   }));
 
+  const usedPct =
+    storageLimitTbLive > 0
+      ? Math.min(100, Math.round((usedTb / storageLimitTbLive) * 1000) / 10)
+      : hasLiveDisk
+        ? hostingerLive!.diskUsedPct
+        : 0;
+  const freePct = Math.max(0, Math.round((100 - usedPct) * 10) / 10);
+  const bandwidthPct =
+    bandwidthLimitTbLive > 0
+      ? Math.min(100, Math.round((bandwidthUsedTb / bandwidthLimitTbLive) * 1000) / 10)
+      : hostingerLive?.bandwidthUsedPct != null
+        ? hostingerLive.bandwidthUsedPct
+        : 0;
+
   return {
     items,
     pagination,
     summary: {
-      totalStorageTb: PLATFORM_STORAGE_TB,
-      usedStorageTb: Number(usedTb.toFixed(3)),
-      freeStorageTb: Number(freeTb.toFixed(3)),
-      usedPct: Math.round((usedTb / PLATFORM_STORAGE_TB) * 1000) / 10,
-      freePct: Math.round((freeTb / PLATFORM_STORAGE_TB) * 1000) / 10,
-      bandwidthUsedTb: Number(bandwidthUsedTb.toFixed(3)),
-      bandwidthLimitTb: PLATFORM_BANDWIDTH_TB,
-      bandwidthPct: Math.round((bandwidthUsedTb / PLATFORM_BANDWIDTH_TB) * 1000) / 10,
-      totalUsedMB,
-      totalBandwidthMB,
+      totalStorageTb: Number(storageLimitTbLive.toFixed(6)),
+      usedStorageTb: Number(usedTb.toFixed(6)),
+      freeStorageTb: Number(freeTb.toFixed(6)),
+      usedPct,
+      freePct,
+      bandwidthUsedTb: Number(bandwidthUsedTb.toFixed(6)),
+      bandwidthLimitTb: Number(bandwidthLimitTbLive.toFixed(6)),
+      bandwidthPct,
+      totalUsedMB: hasLiveDisk
+        ? Math.round(hostingerLive!.diskUsedBytes / (1024 * 1024))
+        : totalUsedMB,
+      totalBandwidthMB: hasLiveBandwidth
+        ? Math.round((hostingerLive!.bandwidthUsedBytes || 0) / (1024 * 1024))
+        : totalBandwidthMB,
       warnings,
       critical,
       customerCount: Number(countRows[0]?.total || 0),
-      storageTrend: trendLabel(usedTb, priorUsedTb),
-      bandwidthTrend: trendLabel(bandwidthUsedTb, priorBandwidthTb),
+      storageTrend: hasLiveDisk
+        ? `Live Hostinger disk · ${hostingerLive!.source}`
+        : trendLabel(usedTb, priorUsedTb),
+      bandwidthTrend: hasLiveBandwidth
+        ? "Live Hostinger bandwidth"
+        : isHostingerProvider
+          ? "Hostinger plan limit · traffic needs API token for exact hPanel match"
+          : trendLabel(bandwidthUsedTb, priorBandwidthTb),
       growthDays,
+      liveSource: hostingerLive?.source || "unavailable",
+      liveHostname: hostingerLive?.hostname || null,
+      liveVmId: hostingerLive?.vmId || null,
+      livePlan: hostingerLive?.plan || null,
+      liveSampledAt: hostingerLive?.sampledAt || null,
+      liveNotes: hostingerLive?.notes || [],
+      customerStorageTb: Number(customerUsedTb.toFixed(6)),
+      customerBandwidthTb: Number(customerBandwidthTb.toFixed(6)),
     },
+    hostinger: hostingerLive,
     analytics: {
       storageGrowth,
       fileTypeBreakdown,
       usedVsFree: {
-        usedTb: Number(usedTb.toFixed(3)),
-        freeTb: Number(freeTb.toFixed(3)),
-        totalTb: PLATFORM_STORAGE_TB,
+        usedTb: Number(usedTb.toFixed(6)),
+        freeTb: Number(freeTb.toFixed(6)),
+        totalTb: Number(storageLimitTbLive.toFixed(6)),
       },
       scanMeta: {
         scannedCustomers: audit.scannedCustomers,
@@ -346,7 +434,14 @@ export async function exportStorageCsv(params: StorageFilterParams = {}) {
     FROM customers c
     LEFT JOIN products p ON p.customer_uid = c.customer_uid
     ${where}
-    GROUP BY c.customer_uid
+    GROUP BY
+      c.customer_uid,
+      c.contact_name,
+      c.company_name,
+      c.email,
+      c.plan_id,
+      c.storage_used_mb,
+      c.bandwidth_used_mb
     ORDER BY c.storage_used_mb DESC
     LIMIT 5000
   `, values);

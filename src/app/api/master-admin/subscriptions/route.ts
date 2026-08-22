@@ -377,6 +377,16 @@ export async function GET(req: NextRequest) {
       value: Math.round(Number(row.value || 0) * 12),
     }));
 
+    const recentRevenue = revenueDaily.slice(-15).reduce((sum, row) => sum + Number(row.value || 0), 0);
+    const priorRevenue = revenueDaily.slice(-30, -15).reduce((sum, row) => sum + Number(row.value || 0), 0);
+    const mrrGrowthPct =
+      priorRevenue > 0
+        ? Math.round(((recentRevenue - priorRevenue) / priorRevenue) * 1000) / 10
+        : recentRevenue > 0
+          ? 100
+          : null;
+    const arrGrowthPct = mrrGrowthPct;
+
     const churnDaily: { label: string; value: number }[] = [];
 
     const alerts = await refreshBillingAdminAlerts();
@@ -391,8 +401,8 @@ export async function GET(req: NextRequest) {
         expiringSoon,
         expiredUsers,
         manualEnterpriseRevenue: Number(manualRevenueRows[0]?.revenue || 0),
-        mrrGrowthPct: 0,
-        arrGrowthPct: 0,
+        mrrGrowthPct,
+        arrGrowthPct,
         churnRate,
       },
       analytics: {
@@ -418,8 +428,8 @@ export async function GET(req: NextRequest) {
         trialUsers: 0,
         expiringSoon: 0,
         expiredUsers: 0,
-        mrrGrowthPct: 0,
-        arrGrowthPct: 0,
+        mrrGrowthPct: null,
+        arrGrowthPct: null,
         churnRate: 0,
       },
       analytics: { mrrDaily: [], arrDaily: [], churnDaily: [], revenueByPlan: [] },

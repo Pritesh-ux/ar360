@@ -17,7 +17,7 @@ const STATUS_FILTERS = new Set<SupportTicketStatusFilter>(["all", "open", "pendi
 
 export async function GET(request: NextRequest) {
   try {
-    const user = await requireScopedApiUser();
+    const user = await requireScopedApiUser({ allowSuspended: true });
     if (!user) return rejectScopedApiUser();
 
     const { searchParams } = request.nextUrl;
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const user = await requireScopedApiUser();
+    const user = await requireScopedApiUser({ allowSuspended: true });
     if (!user) return rejectScopedApiUser();
 
     const ip = getClientIp(request);

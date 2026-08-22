@@ -9,6 +9,41 @@ export type SubscriptionCheckResult = {
   daysRemaining: number;
 };
 
+/** How long a provider subscription stays usable while reconciliation keeps failing. */
+const RECONCILIATION_GRACE_MS = 3 * 24 * 60 * 60 * 1000;
+
+/**
+ * Layout + addon checks call checkSubscription many times in parallel.
+ * Collapse identical in-flight lookups and keep a short TTL so Fast Refresh /
+ * dashboard remounts do not exhaust the MySQL pool queue.
+ */
+const SUB_CHECK_TTL_MS = process.env.NODE_ENV === "development" ? 5_000 : 2_000;
+
+const globalSubCache = globalThis as typeof globalThis & {
+  __ar360SubscriptionCheckCache?: Map<
+    string,
+    { expiresAt: number; promise: Promise<SubscriptionCheckResult> }
+  >;
+};
+
+function getSubscriptionCheckCache() {
+  if (!globalSubCache.__ar360SubscriptionCheckCache) {
+    globalSubCache.__ar360SubscriptionCheckCache = new Map();
+  }
+  return globalSubCache.__ar360SubscriptionCheckCache;
+}
+
+/**
+ * Local testing escape hatch. Off by default so `npm run dev` reproduces the
+ * production lock; set ALLOW_INACTIVE_SUBSCRIPTION=true to bypass it.
+ */
+function subscriptionBypassEnabled() {
+  return (
+    process.env.NODE_ENV === "development" &&
+    String(process.env.ALLOW_INACTIVE_SUBSCRIPTION || "").toLowerCase() === "true"
+  );
+}
+
 export async function checkSubscription(
   customerUid: string,
   providerReconciled = false,
@@ -23,6 +58,27 @@ export async function checkSubscription(
     };
   }
 
+  const cacheKey = `${customerUid}:${providerReconciled ? 1 : 0}`;
+  const cache = getSubscriptionCheckCache();
+  const now = Date.now();
+  const hit = cache.get(cacheKey);
+  if (hit && hit.expiresAt > now) {
+    return hit.promise;
+  }
+
+  const promise = checkSubscriptionUncached(customerUid, providerReconciled);
+  cache.set(cacheKey, { expiresAt: now + SUB_CHECK_TTL_MS, promise });
+  promise.catch(() => {
+    const current = cache.get(cacheKey);
+    if (current?.promise === promise) cache.delete(cacheKey);
+  });
+  return promise;
+}
+
+async function checkSubscriptionUncached(
+  customerUid: string,
+  providerReconciled = false,
+): Promise<SubscriptionCheckResult> {
   // 1. Fetch customer, user, and subscription details from MySQL
   const rows = await query<any>(
     `SELECT 
@@ -39,7 +95,7 @@ export async function checkSubscription(
      LEFT JOIN customer_subscriptions s ON s.customer_uid = c.customer_uid
      WHERE c.customer_uid = ?
      LIMIT 1`,
-    [customerUid]
+    [customerUid],
   ).catch((err) => {
     console.error("checkSubscription query error:", err);
     return [];
@@ -47,6 +103,15 @@ export async function checkSubscription(
 
   const data = rows[0];
   if (!data) {
+    if (subscriptionBypassEnabled()) {
+      return {
+        active: true,
+        reason: "active",
+        plan: getPlanById("trial"),
+        expiresAt: new Date(Date.now() + 86400000 * 30).toISOString(),
+        daysRemaining: 30,
+      };
+    }
     return {
       active: false,
       reason: "missing_plan",
@@ -58,21 +123,37 @@ export async function checkSubscription(
 
   const { getBillingPlans } = await import("@/lib/billing/admin-plans");
   const { mapLegacyPlanId } = await import("@/lib/billing/plan-enforcement");
+  const { resolvePlanLimits } = await import("@/lib/billing/resolve-plan-limits");
   const billingPlans = await getBillingPlans({ activeOnly: false }).catch(() => []);
 
-  const resolvedPlan = (pid: string) => {
-    const dbPlan = billingPlans.find((p) => p.id === mapLegacyPlanId(pid));
-    return dbPlan || getPlanById(pid);
+  const resolvedPlan = async (pid: string) => {
+    const mapped = mapLegacyPlanId(pid);
+    const dbPlan = billingPlans.find((p) => p.id === mapped || mapLegacyPlanId(p.id) === mapped);
+    if (dbPlan) return dbPlan;
+    if (String(pid).toLowerCase().startsWith("ecp_")) {
+      const limits = await resolvePlanLimits(pid).catch(() => null);
+      const base = getPlanById("enterprise");
+      return {
+        ...base,
+        id: "enterprise" as const,
+        name: limits?.name || "ENTERPRISE",
+        tagline: limits?.name ? `Custom plan · ${limits.name}` : base.tagline,
+      };
+    }
+    return getPlanById(pid);
   };
 
   // 2. Check if user/customer is suspended or deleted
-  const isSuspended = data.customer_status === "Suspended" || data.user_status === "Suspended" ||
-                      data.customer_status === "Deleted" || data.user_status === "Deleted";
+  const isSuspended =
+    data.customer_status === "Suspended" ||
+    data.user_status === "Suspended" ||
+    data.customer_status === "Deleted" ||
+    data.user_status === "Deleted";
   if (isSuspended) {
     return {
       active: false,
       reason: "inactive",
-      plan: data.plan_id ? resolvedPlan(data.plan_id) : null,
+      plan: data.plan_id ? await resolvedPlan(data.plan_id) : null,
       expiresAt: null,
       daysRemaining: 0,
     };
@@ -81,6 +162,15 @@ export async function checkSubscription(
   // 3. Resolve plan
   const planId = data.plan_id;
   if (!planId) {
+    if (subscriptionBypassEnabled()) {
+      return {
+        active: true,
+        reason: "active",
+        plan: getPlanById("trial"),
+        expiresAt: new Date(Date.now() + 86400000 * 30).toISOString(),
+        daysRemaining: 30,
+      };
+    }
     return {
       active: false,
       reason: "missing_plan",
@@ -89,7 +179,7 @@ export async function checkSubscription(
       daysRemaining: 0,
     };
   }
-  const plan = resolvedPlan(planId);
+  const plan = await resolvedPlan(planId);
 
   // 4. Resolve expiry time
   const status = data.sub_status ? String(data.sub_status).toLowerCase().trim() : "";
@@ -105,7 +195,6 @@ export async function checkSubscription(
   const now = new Date();
   const expiresAt = expiresAtDate ? expiresAtDate.toISOString() : null;
 
-  // Calculate days remaining
   let daysRemaining = 0;
   if (expiresAtDate) {
     const diffTime = expiresAtDate.getTime() - now.getTime();
@@ -113,16 +202,30 @@ export async function checkSubscription(
   }
 
   // 5. Determine active status
-  // Active only if status is active, trialing, trial, or grace (if grace period has not expired)
-  const isStatusActive = status === "active" || status === "trialing" || status === "trial"
-    || status === "grace" || status === "past_due";
+  const isStatusActive =
+    status === "active" ||
+    status === "trialing" ||
+    status === "trial" ||
+    status === "grace" ||
+    status === "past_due";
   const isExpired = expiresAtDate ? now.getTime() > expiresAtDate.getTime() : false;
 
   if (!isStatusActive) {
+    if (subscriptionBypassEnabled()) {
+      return {
+        active: true,
+        reason: "active",
+        plan,
+        expiresAt,
+        daysRemaining: daysRemaining || 30,
+      };
+    }
     let reason: SubscriptionCheckResult["reason"] = "inactive";
     if (status === "cancelled") reason = "cancelled";
     else if (status === "expired") reason = "expired";
-    else if (status === "past_due" || status === "failed" || status === "payment_failed") reason = "payment_failed";
+    else if (status === "past_due" || status === "failed" || status === "payment_failed") {
+      reason = "payment_failed";
+    }
 
     return {
       active: false,
@@ -134,6 +237,15 @@ export async function checkSubscription(
   }
 
   if (isExpired) {
+    if (subscriptionBypassEnabled()) {
+      return {
+        active: true,
+        reason: "active",
+        plan,
+        expiresAt,
+        daysRemaining: 30,
+      };
+    }
     if (data.provider === "razorpay" && !providerReconciled) {
       try {
         const { reconcileBeforeNativeExpiry } = await import(
@@ -147,14 +259,16 @@ export async function checkSubscription(
           "UPDATE customer_subscriptions SET reconciliation_required = 1 WHERE customer_uid = ?",
           [customerUid],
         ).catch(() => undefined);
-        // A stale local date is not sufficient to revoke a paid provider subscription.
-        return {
-          active: true,
-          reason: "active",
-          plan,
-          expiresAt,
-          daysRemaining: 0,
-        };
+        const msSinceExpiry = expiresAtDate ? now.getTime() - expiresAtDate.getTime() : 0;
+        if (msSinceExpiry <= RECONCILIATION_GRACE_MS) {
+          return {
+            active: true,
+            reason: "active",
+            plan,
+            expiresAt,
+            daysRemaining: 0,
+          };
+        }
       }
     }
     return {

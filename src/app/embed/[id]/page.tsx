@@ -9,7 +9,7 @@ export default async function EmbedRoutePage({ params }: PageProps) {
   const { id } = await params;
   const headerStore = await headers();
   const referer = headerStore.get("referer") || headerStore.get("referrer") || "";
-  const allowed = await assertEmbedReferrerAllowed(id, referer).catch(() => true);
+  const allowed = await assertEmbedReferrerAllowed(id, referer).catch(() => false);
 
   if (!allowed) {
     return (

@@ -6,7 +6,6 @@ import {
   verifyCustomerProductAccess,
 } from "@/lib/customerIsolation";
 import { buildPreviewChecklist, publishCustomerProduct } from "@/lib/products/publish.service";
-import { ProductErrorCode } from "@/lib/products/product-errors";
 import { enforcePermission } from "@/lib/billing/api-permission";
 import { resolveBrandedOriginForCustomer } from "@/lib/enterprise/branded-origin";
 

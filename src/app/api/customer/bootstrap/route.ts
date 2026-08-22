@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { ensureCustomerForUser } from "@/lib/auth";
+import { extractCsrfFromCookie, generateCsrfToken, isCsrfCookieValid, setCsrfCookie } from "@/lib/csrf";
 import { requireScopedApiUser, rejectScopedApiUser } from "@/lib/user-panel/api-guard";
 import { getUserPanelSessionSummary } from "@/lib/user-panel/session-context";
 
@@ -18,7 +19,7 @@ export async function GET(request: Request) {
   const customer = await ensureCustomerForUser(user);
   const session = await getUserPanelSessionSummary({ ...user, customerUid: customer.customer_uid });
 
-  return NextResponse.json({
+  const response = NextResponse.json({
     success: true,
     authenticated: true,
     customer: {
@@ -32,4 +33,14 @@ export async function GET(request: Request) {
     },
     session,
   });
+
+  const cookieToken = extractCsrfFromCookie(request);
+  const hasValidToken = await isCsrfCookieValid(cookieToken);
+  if (!hasValidToken) {
+    const token = await generateCsrfToken();
+    const secure = new URL(request.url).protocol === "https:";
+    setCsrfCookie(response, token, secure);
+  }
+
+  return response;
 }

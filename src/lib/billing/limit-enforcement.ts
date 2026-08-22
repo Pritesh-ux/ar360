@@ -64,9 +64,13 @@ async function countArExperiences(customerUid: string) {
   return Number(rows[0]?.total || 0);
 }
 
+async function limitsForCustomer(customerUid: string, planId?: string): Promise<PlanLimits> {
+  if (planId) return resolvePlanLimits(planId);
+  return resolveCustomerPlanLimits(customerUid);
+}
+
 export async function checkProductLimit(customerUid: string, planId?: string): Promise<LimitCheckResult> {
-  const slug = planId || "trial";
-  const limits = await resolvePlanLimits(slug);
+  const limits = await limitsForCustomer(customerUid, planId);
   const limit = normalizePlanLimit(limits.products);
   if (limit == null) return { ok: true };
 
@@ -87,8 +91,7 @@ export async function checkStorageLimit(
   replaceBytes = 0,
   planId?: string,
 ): Promise<LimitCheckResult> {
-  const slug = planId || "trial";
-  const limits = await resolvePlanLimits(slug);
+  const limits = await limitsForCustomer(customerUid, planId);
   if (limits.unlimitedStorage || limits.storageMb == null) return { ok: true };
 
   const limitBytes = Math.round(Number(limits.storageMb) * 1024 * 1024);
@@ -154,8 +157,7 @@ export async function checkEnterpriseArExperienceLimit(
 }
 
 export async function checkQrLimit(customerUid: string, planId?: string): Promise<LimitCheckResult> {
-  const slug = planId || "trial";
-  const limits = await resolvePlanLimits(slug);
+  const limits = await limitsForCustomer(customerUid, planId);
   const limit = normalizePlanLimit(limits.qrCodes ?? null);
   if (limit == null) return { ok: true };
 
@@ -172,8 +174,7 @@ export async function checkQrLimit(customerUid: string, planId?: string): Promis
 }
 
 export async function checkShareLinkLimit(customerUid: string, planId?: string): Promise<LimitCheckResult> {
-  const slug = planId || "trial";
-  const limits = await resolvePlanLimits(slug);
+  const limits = await limitsForCustomer(customerUid, planId);
   const limit = normalizePlanLimit(limits.shareLinks ?? null);
   if (limit == null) return { ok: true };
 

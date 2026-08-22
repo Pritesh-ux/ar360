@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import AppImage from "@/components/shared/AppImage";
 import { useEffect, useMemo, useState } from "react";
+import { useDeferredEffect } from "@/lib/react/use-deferred-effect";
 import {
   Activity,
   Box,
@@ -14,18 +16,20 @@ import {
   QrCode,
   RotateCcw,
   Smartphone,
-  TrendingDown,
-  TrendingUp,
   Users,
 } from "lucide-react";
 import AdminPageHeader from "@/components/features/master-admin/AdminPageHeader";
-import AdminSparkline from "@/components/features/master-admin/AdminSparkline";
+import {
+  AdminAreaChart,
+  AdminBarChart,
+} from "@/components/features/master-admin/AdminSparkline";
 import {
   AdminActionMessage,
-  AdminInput,
   AdminLoadingState,
   AdminPagination,
 } from "@/components/ui/admin";
+import AdminMetricCard from "@/components/ui/admin/AdminMetricCard";
+import "@/components/dashboard/dashboard-premium.css";
 import type { PaginationMeta } from "@/lib/master-admin/pagination";
 
 type Trend = { label: string; up: boolean };
@@ -87,43 +91,16 @@ function defaultDateRange() {
 }
 
 function MiniAreaChart({ rows }: { rows: { label: string; value: number }[] }) {
-  const max = Math.max(...rows.map((r) => r.value), 1);
-  const points = rows
-    .map((row, index) => {
-      const x = (index / Math.max(rows.length - 1, 1)) * 100;
-      const y = 100 - (row.value / max) * 75 - 10;
-      return `${x},${y}`;
-    })
-    .join(" ");
-  const area = `0,100 ${points} 100,100`;
-  return (
-    <svg viewBox="0 0 100 100" className="mt-3 h-32 w-full" preserveAspectRatio="none">
-      <polygon fill="rgba(122,224,46,0.15)" points={area} />
-      <polyline fill="none" stroke="#7AE02E" strokeWidth="2" points={points} />
-    </svg>
-  );
+  return <AdminAreaChart rows={rows} />;
 }
 
 function MiniBarChart({ rows }: { rows: { label: string; value: number }[] }) {
-  const max = Math.max(...rows.map((r) => r.value), 1);
-  return (
-    <div className="mt-3 flex h-32 items-end gap-1.5">
-      {rows.map((row) => (
-        <div key={row.label} className="flex flex-1 flex-col items-center gap-1">
-          <div
-            className="w-full rounded-t bg-gradient-to-t from-[#7AE02E] to-[#A6FF2E]"
-            style={{ height: `${Math.max(8, (row.value / max) * 100)}%` }}
-          />
-          <span className="text-[8px] font-semibold text-slate-400">{row.label}</span>
-        </div>
-      ))}
-    </div>
-  );
+  return <AdminBarChart rows={rows} />;
 }
 
 function DonutPanel({ title, items }: { title: string; items: BreakdownItem[] }) {
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
+    <div className="dash-premium-card p-4">
       <h3 className="text-[14px] font-black text-slate-900">{title}</h3>
       <div className="mt-3 space-y-2">
         {items.map((item, index) => (
@@ -222,7 +199,7 @@ export default function ViewerAnalyticsPage() {
     }
   }
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     setPage(1);
   }, [search, customerUid, productUid, dateFrom, dateTo]);
 
@@ -296,7 +273,7 @@ export default function ViewerAnalyticsPage() {
   }
 
   return (
-    <div className="master-admin-panel space-y-5 pb-10">
+    <div className="master-admin-panel dash-premium animate-dash-fade-in flex min-h-0 flex-1 flex-col gap-3 pb-10">
       <AdminPageHeader
         title="Viewer Analytics"
         subtitle="Platform-wide viewer, AR, and QR performance from analytics events."
@@ -307,30 +284,26 @@ export default function ViewerAnalyticsPage() {
                 type="date"
                 value={dateFrom}
                 onChange={(e) => setDateFrom(e.target.value)}
-                className="h-10 rounded-xl border border-slate-200 px-3 text-[12px] font-semibold text-slate-700"
+                className="h-10 rounded-[14px] border border-[#ECECEC] bg-white px-3 text-[12px] font-semibold text-[#374151] outline-none focus:border-[#84D400]"
               />
-              <span className="text-[12px] text-slate-400">–</span>
+              <span className="text-[12px] text-[#9CA3AF]">–</span>
               <input
                 type="date"
                 value={dateTo}
                 onChange={(e) => setDateTo(e.target.value)}
-                className="h-10 rounded-xl border border-slate-200 px-3 text-[12px] font-semibold text-slate-700"
+                className="h-10 rounded-[14px] border border-[#ECECEC] bg-white px-3 text-[12px] font-semibold text-[#374151] outline-none focus:border-[#84D400]"
               />
             </div>
             <button
               type="button"
               onClick={() => setShowFilters((v) => !v)}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-[13px] font-bold text-slate-700"
+              className="dash-premium-btn-secondary h-10 px-3 text-[12px]"
             >
-              <Filter size={16} />
+              <Filter size={15} />
               Filters
             </button>
-            <button
-              type="button"
-              onClick={exportCsv}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#A6FF2E] px-4 py-2.5 text-[13px] font-black text-slate-900"
-            >
-              <Download size={16} />
+            <button type="button" onClick={exportCsv} className="dash-premium-btn-primary h-10 px-4 text-[12px]">
+              <Download size={15} strokeWidth={2.2} />
               Export CSV
               <ChevronDown size={14} />
             </button>
@@ -341,54 +314,69 @@ export default function ViewerAnalyticsPage() {
       {loadError ? <AdminActionMessage message={loadError} variant="error" /> : null}
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/50 p-4">
-          <div className="flex items-center gap-2 text-emerald-700">
-            <Activity size={16} />
-            <p className="text-[12px] font-bold">Live (5 min)</p>
-          </div>
-          <p className="mt-2 text-[24px] font-black text-slate-950">{realtime.activeViewers}</p>
-          <p className="text-[11px] font-semibold text-slate-500">Active viewer sessions</p>
-        </div>
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4">
-          <div className="flex items-center gap-2 text-slate-500">
-            <Eye size={16} />
-            <p className="text-[12px] font-bold">Last hour</p>
-          </div>
-          <p className="mt-2 text-[24px] font-black text-slate-950">{realtime.viewsLastHour.toLocaleString("en-IN")}</p>
-          <p className="text-[11px] font-semibold text-slate-500">Viewer opens</p>
-        </div>
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4">
-          <div className="flex items-center gap-2 text-slate-500">
-            <Users size={16} />
-            <p className="text-[12px] font-bold">Unique visitors</p>
-          </div>
-          <p className="mt-2 text-[24px] font-black text-slate-950">{(summary?.uniqueVisitors ?? 0).toLocaleString("en-IN")}</p>
-          <p className="text-[11px] font-semibold text-slate-500">In selected range</p>
-        </div>
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4">
-          <button type="button" onClick={resetFilters} className="inline-flex items-center gap-2 text-[12px] font-bold text-slate-600">
+        <AdminMetricCard
+          layout="compact"
+          title="Live (5 min)"
+          value={realtime.activeViewers}
+          note="Active viewer sessions"
+          iconComponent={Activity}
+          iconClassName="bg-emerald-50 text-emerald-600"
+        />
+        <AdminMetricCard
+          layout="compact"
+          title="Last hour"
+          value={realtime.viewsLastHour.toLocaleString("en-IN")}
+          note="Viewer opens"
+          iconComponent={Eye}
+          iconClassName="bg-sky-50 text-sky-600"
+        />
+        <AdminMetricCard
+          layout="compact"
+          title="Unique visitors"
+          value={(summary?.uniqueVisitors ?? 0).toLocaleString("en-IN")}
+          note="In selected range"
+          iconComponent={Users}
+          iconClassName="bg-violet-50 text-violet-600"
+        />
+        <div className="dash-premium-card flex flex-col justify-center p-4">
+          <button type="button" onClick={resetFilters} className="inline-flex items-center gap-2 text-[12px] font-bold text-[#374151]">
             <RotateCcw size={14} />
             Reset filters
           </button>
-          <p className="mt-3 text-[11px] font-semibold text-slate-500">
+          <p className="mt-3 text-[11px] font-semibold text-[#9CA3AF]">
             {dateFrom} – {dateTo}
           </p>
         </div>
       </section>
 
       {showFilters ? (
-        <section className="grid grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-white p-4 md:grid-cols-3">
+        <section className="dash-premium-card grid grid-cols-1 gap-3 p-4 md:grid-cols-3">
           <div>
-            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Search product / owner</label>
-            <AdminInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Product name, owner, email..." />
+            <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wide text-[#9CA3AF]">Search product / owner</label>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Product name, owner, email..."
+              className="h-10 w-full rounded-[14px] border border-[#ECECEC] bg-white px-3 text-[13px] font-medium text-[#111827] outline-none transition focus:border-[#84D400] focus:shadow-[0_0_0_3px_rgba(182,255,56,0.18)]"
+            />
           </div>
           <div>
-            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Customer UID</label>
-            <AdminInput value={customerUid} onChange={(e) => setCustomerUid(e.target.value)} placeholder="CUS-123456" />
+            <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wide text-[#9CA3AF]">Customer UID</label>
+            <input
+              value={customerUid}
+              onChange={(e) => setCustomerUid(e.target.value)}
+              placeholder="CUS-123456"
+              className="h-10 w-full rounded-[14px] border border-[#ECECEC] bg-white px-3 text-[13px] font-medium text-[#111827] outline-none transition focus:border-[#84D400] focus:shadow-[0_0_0_3px_rgba(182,255,56,0.18)]"
+            />
           </div>
           <div>
-            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-slate-500">Product UID</label>
-            <AdminInput value={productUid} onChange={(e) => setProductUid(e.target.value)} placeholder="Product ID" />
+            <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wide text-[#9CA3AF]">Product UID</label>
+            <input
+              value={productUid}
+              onChange={(e) => setProductUid(e.target.value)}
+              placeholder="Product ID"
+              className="h-10 w-full rounded-[14px] border border-[#ECECEC] bg-white px-3 text-[13px] font-medium text-[#111827] outline-none transition focus:border-[#84D400] focus:shadow-[0_0_0_3px_rgba(182,255,56,0.18)]"
+            />
           </div>
         </section>
       ) : null}
@@ -398,20 +386,17 @@ export default function ViewerAnalyticsPage() {
           const Icon = card.icon;
           const trend = card.trend;
           return (
-            <div key={card.title} className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_2px_10px_rgba(15,23,42,0.04)]">
-              <div className="flex items-center justify-between">
-                <p className="text-[11px] font-semibold text-slate-500">{card.title}</p>
-                <Icon size={18} className="text-slate-400" />
-              </div>
-              <p className="mt-1 text-[24px] font-black leading-none text-slate-950">{card.value}</p>
-              {trend ? (
-                <p className={`mt-1 flex items-center gap-0.5 text-[10px] font-semibold ${trend.up ? "text-emerald-600" : "text-red-500"}`}>
-                  {trend.up ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
-                  {trend.label}
-                </p>
-              ) : null}
-              {card.spark && card.spark.length > 0 ? <AdminSparkline values={card.spark} className="mt-3" /> : null}
-            </div>
+            <AdminMetricCard
+              key={card.title}
+              layout="compact"
+              title={card.title}
+              value={card.value}
+              change={trend?.label}
+              changeTone={trend ? (trend.up ? "positive" : "negative") : "neutral"}
+              iconComponent={Icon}
+              iconClassName="bg-[#FAFAFB] text-[#374151]"
+              sparkline={card.spark && card.spark.length > 0 ? card.spark : undefined}
+            />
           );
         })}
       </section>
@@ -420,25 +405,25 @@ export default function ViewerAnalyticsPage() {
         <AdminLoadingState label="Loading viewer analytics..." />
       ) : (
         <>
-          <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
-              <h3 className="text-[14px] font-black text-slate-900">Daily Views</h3>
-              <p className="text-[11px] font-semibold text-slate-400">Selected date range</p>
+          <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <div className="dash-premium-card p-4">
+              <h3 className="text-[14px] font-black text-[#111827]">Daily Views</h3>
+              <p className="text-[11px] font-semibold text-[#9CA3AF]">Selected date range</p>
               <MiniAreaChart rows={dailyViews.length ? dailyViews : [{ label: "—", value: 0 }]} />
             </div>
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
-              <h3 className="text-[14px] font-black text-slate-900">Monthly Views</h3>
-              <p className="text-[11px] font-semibold text-slate-400">Last 12 months</p>
+            <div className="dash-premium-card p-4">
+              <h3 className="text-[14px] font-black text-[#111827]">Monthly Views</h3>
+              <p className="text-[11px] font-semibold text-[#9CA3AF]">Last 12 months</p>
               <MiniBarChart rows={monthlyViews.length ? monthlyViews : [{ label: "—", value: 0 }]} />
             </div>
           </section>
 
-          <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
             <DonutPanel title="Device Breakdown" items={devices} />
             <DonutPanel title="Browser Breakdown" items={browsers} />
             <DonutPanel title="Top Countries" items={countries} />
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
-              <h3 className="text-[14px] font-black text-slate-900">Traffic Sources</h3>
+            <div className="dash-premium-card p-4">
+              <h3 className="text-[14px] font-black text-[#111827]">Traffic Sources</h3>
               <div className="mt-3 space-y-2">
                 {trafficSources.map((item, index) => (
                   <div key={item.referrer} className="flex items-center justify-between text-[11px]">
@@ -456,17 +441,17 @@ export default function ViewerAnalyticsPage() {
             </div>
           </section>
 
-          <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-              <h3 className="text-[15px] font-black text-slate-900">Product Ranking</h3>
-              <Link href="/master-admin/products" className="text-[12px] font-bold text-[#4D9A00]">
+          <section className="dash-premium-card overflow-hidden">
+            <div className="flex items-center justify-between border-b border-[#ECECEC] px-4 py-3">
+              <h3 className="text-[15px] font-black text-[#111827]">Product Ranking</h3>
+              <Link href="/master-admin/products" className="text-[12px] font-bold text-[#5AA700]">
                 View All Products →
               </Link>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1100px] text-left">
                 <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50/60 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                  <tr className="border-b border-[#ECECEC] bg-[#FAFAFB] text-[10px] font-bold uppercase tracking-wide text-[#9CA3AF]">
                     <th className="p-3">#</th>
                     <th className="p-3">Product</th>
                     <th className="p-3">Owner</th>
@@ -481,13 +466,13 @@ export default function ViewerAnalyticsPage() {
                 </thead>
                 <tbody>
                   {productRanking.map((row) => (
-                    <tr key={row.id} className="border-b border-slate-50 hover:bg-slate-50/70">
+                    <tr key={row.id} className="border-b border-[#F3F4F6] transition hover:bg-[#FAFAFB]">
                       <td className="p-3 text-[12px] font-bold text-slate-500">{row.rank}</td>
                       <td className="p-3">
                         <Link href={`/master-admin/products/${row.id}`} className="flex items-center gap-3">
                           <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg bg-slate-100">
                             {row.poster ? (
-                              <img src={row.poster} alt={row.name} className="h-full w-full object-cover" />
+                              <AppImage src={row.poster} alt={row.name} className="h-full w-full object-cover" />
                             ) : (
                               <Box size={16} className="text-slate-400" />
                             )}
@@ -529,7 +514,7 @@ export default function ViewerAnalyticsPage() {
                 </tbody>
               </table>
             </div>
-            <div className="border-t border-slate-100 px-4 py-3">
+            <div className="border-t border-[#ECECEC] px-4 py-3">
               <AdminPagination page={page} totalPages={pagination.totalPages} meta={pagination} onPageChange={setPage} />
             </div>
           </section>

@@ -4,10 +4,14 @@ import { useState } from "react";
 import { Plus, Minus } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { DISPLAY, SECTION_PAD } from "./landingMotion";
+import LandingContentParallax from "./LandingContentParallax";
 
-type FAQItem = { q: string; a: string };
+type FAQCard = {
+  title: string;
+  description: string;
+};
 
-const faqs: FAQItem[] = [
+const faqs = [
   {
     q: "What file types does AR360 support?",
     a: "AR360 natively supports industry-standard GLB and GLTF files. We also manage USDZ linkages for seamless Apple Quick Look previews.",
@@ -42,66 +46,75 @@ const faqs: FAQItem[] = [
   },
 ];
 
-export default function FAQSection() {
+export default function FAQSection({
+  items,
+  title,
+  subtitle,
+}: {
+  items?: FAQCard[];
+  title?: string;
+  subtitle?: string;
+}) {
   const [openIdx, setOpenIdx] = useState<number | null>(0);
+  const displayItems =
+    items && items.length > 0 ? items : faqs.map((f) => ({ title: f.q, description: f.a }));
 
   return (
-    <section id="faq" className={`border-b border-[#E8EAED] bg-white ${SECTION_PAD}`}>
-      <div className="mx-auto max-w-3xl px-6">
-        <div className="mb-9 text-center">
-          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#6B7078]">
-            Common questions
+    <section id="faq" className={`bg-transparent ${SECTION_PAD}`}>
+      <LandingContentParallax className="mx-auto max-w-5xl px-6">
+        <div className="mb-8 text-center sm:mb-9">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#6B7078] sm:text-[11px]">
+            {subtitle || "Common questions"}
           </p>
           <h2
-            className={`${DISPLAY} mt-2 text-3xl font-bold leading-[1.1] tracking-tight text-[#111111] sm:text-[40px]`}
+            className={`${DISPLAY} mt-2 text-[32px] font-bold leading-[1.08] tracking-tight text-[#111111] sm:text-[40px]`}
           >
-            Frequently asked questions
+            {title || "Frequently asked questions"}
           </h2>
         </div>
 
-        <div className="space-y-2.5">
-          {faqs.map((faq, idx) => {
+        <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 md:items-start">
+          {displayItems.map((faq, idx) => {
             const isOpen = openIdx === idx;
             return (
               <div
-                key={faq.q}
+                key={faq.title}
                 className={`overflow-hidden rounded-2xl border transition ${
                   isOpen
-                    ? "border-[#E0E3E8] bg-[#F7F8FA] shadow-[0_8px_24px_rgba(15,23,42,0.04)]"
-                    : "border-[#E8EAED] bg-white"
+                    ? "border-[#E0E3E8] bg-white/95 shadow-[0_8px_24px_rgba(15,23,42,0.04)]"
+                    : "border-[#E8EAED] bg-white/90"
                 }`}
               >
                 <button
                   type="button"
                   onClick={() => setOpenIdx(isOpen ? null : idx)}
                   className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left"
-                  aria-expanded={isOpen}
                 >
-                  <span className="text-[14px] font-bold text-[#111111]">{faq.q}</span>
+                  <span className="text-[14px] font-bold text-[#111111]">{faq.title}</span>
                   <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white text-[#8A9098] shadow-sm">
                     {isOpen ? <Minus size={14} /> : <Plus size={14} />}
                   </span>
                 </button>
-
                 <AnimatePresence initial={false}>
-                  {isOpen && (
+                  {isOpen ? (
                     <motion.div
                       initial={{ height: 0, opacity: 0 }}
                       animate={{ height: "auto", opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+                      transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                      className="overflow-hidden"
                     >
-                      <div className="px-5 pb-5 text-[13px] font-medium leading-relaxed text-[#6B7078]">
-                        {faq.a}
-                      </div>
+                      <p className="px-5 pb-5 text-[13px] font-medium leading-relaxed text-[#6B7078]">
+                        {faq.description}
+                      </p>
                     </motion.div>
-                  )}
+                  ) : null}
                 </AnimatePresence>
               </div>
             );
           })}
         </div>
-      </div>
+      </LandingContentParallax>
     </section>
   );
 }

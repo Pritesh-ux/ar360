@@ -1,29 +1,44 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { useDeferredEffect } from "@/lib/react/use-deferred-effect";
 import {
-  Calendar,
-  ChevronDown,
   CreditCard,
   Download,
   FileText,
-  Filter,
   IndianRupee,
   Mail,
   RefreshCcw,
   RotateCcw,
+  Search,
   Send,
+  X,
   XCircle,
   TrendingUp,
 } from "lucide-react";
 import AdminPageHeader from "@/components/features/master-admin/AdminPageHeader";
+import { AdminAreaChart } from "@/components/features/master-admin/AdminSparkline";
 import ConfirmModal from "@/components/features/master-admin/ConfirmModal";
 import CustomerAvatar from "@/components/features/master-admin/CustomerAvatar";
 import GenerateInvoiceModal from "@/components/features/master-admin/GenerateInvoiceModal";
 import ManualPaymentModal from "@/components/features/master-admin/ManualPaymentModal";
 import PlanBadge from "@/components/features/master-admin/PlanBadge";
-import { AdminActionMessage, AdminPagination } from "@/components/ui/admin";
+import { useMasterAdminToast } from "@/components/features/master-admin/MasterAdminToastContext";
+import {
+  AdminEmptyState,
+  AdminLoadingState,
+  AdminMetricCard,
+  AdminPagination,
+  adminTableHeadClass,
+  adminTableRowClass,
+} from "@/components/ui/admin";
+import UserFilterDropdown from "@/components/user-panel/UserFilterDropdown";
+import UserDateRangePicker, {
+  defaultDateRange,
+  type DateRangeValue,
+} from "@/components/user-panel/UserDateRangePicker";
+import "@/components/dashboard/dashboard-premium.css";
 import {
   billingStatusClass,
   fmtDateShort,
@@ -64,7 +79,7 @@ type StatusBreakdown = {
 };
 
 const PAGE_SIZE = 10;
-const planOptions = ["trial", "basic", "professional", "enterprise"];
+const planOptions = ["all", "trial", "basic", "professional", "enterprise"];
 const statusOptions = ["all", "Paid", "Pending", "Failed", "Refunded"];
 
 const statusColors: Record<string, string> = {
@@ -74,20 +89,8 @@ const statusColors: Record<string, string> = {
   Refunded: "#8B5CF6",
 };
 
-function MiniLineChart({ rows, color = "#7AE02E" }: { rows: { label: string; value: number }[]; color?: string }) {
-  const max = Math.max(...rows.map((r) => r.value), 1);
-  const points = rows
-    .map((row, index) => {
-      const x = (index / Math.max(rows.length - 1, 1)) * 100;
-      const y = 100 - (row.value / max) * 80 - 10;
-      return `${x},${y}`;
-    })
-    .join(" ");
-  return (
-    <svg viewBox="0 0 100 100" className="mt-3 h-28 w-full" preserveAspectRatio="none">
-      <polyline fill="none" stroke={color} strokeWidth="2" points={points} />
-    </svg>
-  );
+function MiniLineChart({ rows, color = "#84D400" }: { rows: { label: string; value: number }[]; color?: string }) {
+  return <AdminAreaChart rows={rows} color={color} className="mt-3 h-28 w-full" />;
 }
 
 function DonutChart({ items, total }: { items: { label: string; value: number; color: string }[]; total: number }) {
@@ -139,18 +142,12 @@ function DonutChart({ items, total }: { items: { label: string; value: number; c
   );
 }
 
-function defaultDateRange() {
-  const end = new Date();
-  const start = new Date();
-  start.setDate(start.getDate() - 7);
-  return {
-    from: start.toISOString().slice(0, 10),
-    to: end.toISOString().slice(0, 10),
-  };
+function defaultBillingDateRange(): DateRangeValue {
+  return defaultDateRange("7d");
 }
 
 export default function BillingPage() {
-  const initialRange = defaultDateRange();
+  const { showToast } = useMasterAdminToast();
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [statusBreakdown, setStatusBreakdown] = useState<StatusBreakdown[]>([]);
@@ -161,8 +158,7 @@ export default function BillingPage() {
   const [search, setSearch] = useState("");
   const [plan, setPlan] = useState("all");
   const [status, setStatus] = useState("all");
-  const [dateFrom, setDateFrom] = useState(initialRange.from);
-  const [dateTo, setDateTo] = useState(initialRange.to);
+  const [dateRange, setDateRange] = useState<DateRangeValue>(() => defaultBillingDateRange());
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, pageSize: PAGE_SIZE, total: 0, totalPages: 1 });
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -170,7 +166,24 @@ export default function BillingPage() {
   const [refundNote, setRefundNote] = useState("");
   const [generateOpen, setGenerateOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
+
+  function notify(text: string, tone: "ok" | "err" = "ok") {
+    setMessage(text);
+    showToast(text, tone);
+  }
+
+  function isErrorMessage(text: string) {
+    const lower = text.toLowerCase();
+    return (
+      lower.includes("fail") ||
+      lower.includes("not available") ||
+      lower.includes("missing") ||
+      lower.includes("unable") ||
+      lower.includes("select a") ||
+      lower.includes("only paid") ||
+      lower.includes("skipped")
+    );
+  }
 
   async function load(nextPage = page) {
     setLoading(true);
@@ -181,8 +194,8 @@ export default function BillingPage() {
     if (search) params.set("search", search);
     if (plan !== "all") params.set("plan", plan);
     if (status !== "all") params.set("status", status);
-    if (dateFrom) params.set("dateFrom", dateFrom);
-    if (dateTo) params.set("dateTo", dateTo);
+    if (dateRange.from) params.set("dateFrom", dateRange.from);
+    if (dateRange.to) params.set("dateTo", dateRange.to);
 
     try {
       const response = await fetch(`/api/master-admin/billing?${params}`, { cache: "no-store" });
@@ -196,23 +209,23 @@ export default function BillingPage() {
         setPagination(data.pagination);
         setPage(data.pagination.page);
       }
-      if (data.error) setMessage(data.error);
+      if (data.error) notify(data.error, "err");
       setSelected(new Set());
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to load billing data");
+      notify(error instanceof Error ? error.message : "Unable to load billing data", "err");
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     setPage(1);
-  }, [search, plan, status, dateFrom, dateTo]);
+  }, [search, plan, status, dateRange.from, dateRange.to, dateRange.preset]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void load(page), 250);
     return () => window.clearTimeout(timer);
-  }, [search, plan, status, dateFrom, dateTo, page]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [search, plan, status, dateRange.from, dateRange.to, dateRange.preset, page]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pageItems = invoices;
 
@@ -220,9 +233,7 @@ export default function BillingPage() {
     setSearch("");
     setPlan("all");
     setStatus("all");
-    const range = defaultDateRange();
-    setDateFrom(range.from);
-    setDateTo(range.to);
+    setDateRange(defaultBillingDateRange());
   }
 
   function exportCsv() {
@@ -231,9 +242,22 @@ export default function BillingPage() {
     if (search) params.set("search", search);
     if (plan !== "all") params.set("plan", plan);
     if (status !== "all") params.set("status", status);
-    if (dateFrom) params.set("dateFrom", dateFrom);
-    if (dateTo) params.set("dateTo", dateTo);
+    if (dateRange.from) params.set("dateFrom", dateRange.from);
+    if (dateRange.to) params.set("dateTo", dateRange.to);
     window.open(`/api/master-admin/billing?${params}`, "_blank");
+  }
+
+  function downloadAllInvoices() {
+    notify("Preparing ZIP of all invoice PDFs…");
+    const anchor = document.createElement("a");
+    anchor.href = "/api/master-admin/billing/invoices/download-all?limit=500";
+    anchor.download = "";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => {
+      notify("Invoice ZIP download started. Check your downloads folder.");
+    }, 800);
   }
 
   async function issueRefund(invoice: InvoiceRow) {
@@ -252,16 +276,16 @@ export default function BillingPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Refund failed");
       setConfirmRefund(null);
-      setMessage(data.message || "Refund processed.");
+      notify(data.message || "Refund processed.");
       await load(page);
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Refund failed");
+      notify(err instanceof Error ? err.message : "Refund failed", "err");
     }
   }
 
   async function sendInvoice(invoice: InvoiceRow) {
     if (!invoice.invoiceUid) {
-      setMessage("No invoice document is linked to this payment.");
+      notify("No invoice document is linked to this payment.", "err");
       return;
     }
     try {
@@ -270,9 +294,10 @@ export default function BillingPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Send failed");
-      setMessage(data.message || `Invoice sent to ${invoice.email}.`);
+      const text = data.message || `Invoice sent to ${invoice.email}.`;
+      notify(text, data.delivered === false || isErrorMessage(text) ? "err" : "ok");
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Send failed");
+      notify(err instanceof Error ? err.message : "Send failed", "err");
     }
   }
 
@@ -285,9 +310,9 @@ export default function BillingPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Reminder failed");
-      setMessage(data.message || "Payment reminder sent.");
+      notify(data.message || "Payment reminder sent.");
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Reminder failed");
+      notify(err instanceof Error ? err.message : "Reminder failed", "err");
     }
   }
 
@@ -295,7 +320,7 @@ export default function BillingPage() {
     const pending = pageItems.filter((row) => selected.has(row.id) && row.status === "Pending");
     const target = pending[0] || pageItems.find((row) => row.status === "Pending");
     if (!target) {
-      setMessage("Select a pending payment to send a reminder.");
+      notify("Select a pending payment to send a reminder.", "err");
       return;
     }
     try {
@@ -306,9 +331,9 @@ export default function BillingPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Reminder failed");
-      setMessage(data.message || "Payment reminder sent.");
+      notify(data.message || "Payment reminder sent.");
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Reminder failed");
+      notify(err instanceof Error ? err.message : "Reminder failed", "err");
     }
   }
 
@@ -316,11 +341,11 @@ export default function BillingPage() {
     const paidSelected = pageItems.filter((row) => selected.has(row.id) && row.status === "Paid");
     const target = paidSelected[0] || pageItems.find((row) => selected.has(row.id));
     if (!target) {
-      setMessage("Select a paid payment row to refund.");
+      notify("Select a paid payment row to refund.", "err");
       return;
     }
     if (target.status !== "Paid") {
-      setMessage("Only paid payments can be refunded.");
+      notify("Only paid payments can be refunded.", "err");
       return;
     }
     void issueRefund(target);
@@ -329,6 +354,10 @@ export default function BillingPage() {
   function handleQuickAction(label: string) {
     if (label === "Download Report") {
       exportCsv();
+      return;
+    }
+    if (label === "Download All Invoices") {
+      downloadAllInvoices();
       return;
     }
     if (label === "Generate Invoice") {
@@ -362,48 +391,48 @@ export default function BillingPage() {
     });
   }
 
-  const dateRangeLabel = `${fmtDateShort(dateFrom)} – ${fmtDateShort(dateTo)}`;
+  const dateRangeLabel =
+    dateRange.from && dateRange.to
+      ? `${fmtDateShort(dateRange.from)} – ${fmtDateShort(dateRange.to)}`
+      : "All time";
+
+  const hasFilters = Boolean(search || plan !== "all" || status !== "all" || dateRange.preset !== "7d");
 
   const statCards = [
     {
       title: "Total Revenue",
       value: fmtMoneyInr(summary?.revenue ?? 0),
-      subtitle: dateRangeLabel,
-      color: "#10B981",
+      note: dateRangeLabel,
       icon: IndianRupee,
-      iconBg: "bg-emerald-50 text-emerald-600",
+      iconClassName: "bg-emerald-50 text-emerald-600",
     },
     {
       title: "Pending Amount",
       value: fmtMoneyInr(summary?.pending ?? 0),
-      subtitle: `${summary?.totalCount ?? 0} transactions`,
-      color: "#F59E0B",
+      note: `${summary?.totalCount ?? 0} transactions`,
       icon: RefreshCcw,
-      iconBg: "bg-amber-50 text-amber-600",
+      iconClassName: "bg-amber-50 text-amber-600",
     },
     {
       title: "Paid Amount",
       value: fmtMoneyInr(summary?.paid ?? 0),
-      subtitle: "Captured payments",
-      color: "#10B981",
+      note: "Captured payments",
       icon: TrendingUp,
-      iconBg: "bg-sky-50 text-sky-600",
+      iconClassName: "bg-sky-50 text-sky-600",
     },
     {
       title: "Failed Payments",
       value: fmtMoneyInr(summary?.failed ?? 0),
-      subtitle: "Failed attempts",
-      color: "#EF4444",
+      note: "Failed attempts",
       icon: XCircle,
-      iconBg: "bg-red-50 text-red-600",
+      iconClassName: "bg-red-50 text-red-600",
     },
     {
       title: "Refunds Issued",
       value: fmtMoneyInr(summary?.refunds ?? 0),
-      subtitle: "Refunded total",
-      color: "#8B5CF6",
+      note: "Refunded total",
       icon: RotateCcw,
-      iconBg: "bg-violet-50 text-violet-600",
+      iconClassName: "bg-violet-50 text-violet-600",
     },
   ];
 
@@ -419,219 +448,225 @@ export default function BillingPage() {
     { label: "Send Payment Reminder", icon: Send },
     { label: "Add Manual Payment", icon: CreditCard },
     { label: "Process Refund", icon: RotateCcw },
-    { label: "Download Report", icon: Download },
+    { label: "Download All Invoices", icon: Download },
   ];
 
   return (
-    <div className="master-admin-panel">
-      <div className="flex flex-col gap-5 xl:flex-row">
-        <div className="min-w-0 flex-1 space-y-5">
+    <div className="master-admin-panel dash-premium animate-dash-fade-in flex min-h-0 flex-1 flex-col gap-3">
+      <div className="flex flex-col gap-3 xl:flex-row">
+        <div className="min-w-0 flex-1 flex flex-col gap-3">
           <AdminPageHeader
             title="Billing & Invoices"
             subtitle="Track all payments, invoices and refunds."
             actions={
               <>
-                <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] font-semibold text-slate-600">
-                  <Calendar size={14} className="text-slate-400" />
-                  <input
-                    type="date"
-                    value={dateFrom}
-                    onChange={(e) => setDateFrom(e.target.value)}
-                    className="border-none bg-transparent outline-none"
-                  />
-                  <span className="text-slate-300">–</span>
-                  <input
-                    type="date"
-                    value={dateTo}
-                    onChange={(e) => setDateTo(e.target.value)}
-                    className="border-none bg-transparent outline-none"
-                  />
-                </div>
+                <button
+                  type="button"
+                  onClick={downloadAllInvoices}
+                  className="dash-premium-btn-primary h-10 px-3 text-[12px]"
+                >
+                  <Download size={15} />
+                  Download all invoices
+                </button>
                 <button
                   type="button"
                   onClick={exportCsv}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-[13px] font-bold text-slate-700"
+                  className="dash-premium-btn-secondary h-10 px-3 text-[12px]"
                 >
-                  <Download size={16} />
-                  Export
-                  <ChevronDown size={14} className="text-slate-400" />
+                  <Download size={15} />
+                  Export CSV
                 </button>
               </>
             }
           />
 
           {message ? (
-            <AdminActionMessage
-              message={message}
-              variant={
-                message.toLowerCase().includes("fail") || message.toLowerCase().includes("not available")
-                  ? "error"
-                  : "success"
-              }
-            />
+            <div
+              className={`dash-premium-card flex items-center justify-between gap-3 px-4 py-3 ${
+                isErrorMessage(message)
+                  ? "border-[#FECACA] bg-[#FEF2F2]"
+                  : "border-[#DCFCE7] bg-[#F0FDF4]"
+              }`}
+            >
+              <p
+                className={`text-[13px] font-semibold ${
+                  isErrorMessage(message) ? "text-[#B91C1C]" : "text-[#166534]"
+                }`}
+              >
+                {message}
+              </p>
+              <button
+                type="button"
+                onClick={() => setMessage("")}
+                className="grid h-8 w-8 place-items-center rounded-[10px] hover:bg-white/70"
+                aria-label="Dismiss"
+              >
+                <X size={15} />
+              </button>
+            </div>
           ) : null}
 
           <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            {statCards.map((card) => {
-              const Icon = card.icon;
-              return (
-                <div
-                  key={card.title}
-                  className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_2px_10px_rgba(15,23,42,0.04)]"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${card.iconBg}`}>
-                      <Icon size={16} />
-                    </div>
-                  </div>
-                  <p className="mt-3 text-[11px] font-semibold text-slate-500">{card.title}</p>
-                  <p className="mt-0.5 text-[20px] font-black leading-none text-slate-950">{card.value}</p>
-                  <p className="mt-1 text-[10px] font-semibold text-slate-400">{card.subtitle}</p>
-                </div>
-              );
-            })}
+            {statCards.map((card) => (
+              <AdminMetricCard
+                key={card.title}
+                title={card.title}
+                value={card.value}
+                note={card.note}
+                iconComponent={card.icon}
+                iconClassName={card.iconClassName}
+                layout="compact"
+              />
+            ))}
           </section>
 
-          <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-            <div className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row lg:flex-wrap lg:items-center">
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by invoice, customer, email..."
-                className="h-10 min-w-[220px] flex-1 rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-[13px] font-medium outline-none focus:border-[#A6FF2E] focus:bg-white"
-              />
-              <select
+          <section className="dash-premium-card overflow-hidden">
+            <div className="flex flex-wrap items-center gap-2 border-b border-[#ECECEC] px-4 py-3">
+              <div className="relative min-w-[200px] flex-1 basis-[220px] max-w-sm">
+                <Search
+                  size={15}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]"
+                />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search by invoice, customer, email..."
+                  className="h-10 w-full rounded-[14px] border border-[#ECECEC] bg-white pl-9 pr-3 text-[13px] font-medium text-[#111827] outline-none transition focus:border-[#84D400] focus:shadow-[0_0_0_3px_rgba(182,255,56,0.18)]"
+                />
+              </div>
+              <UserFilterDropdown
+                hideLabel
+                compact
+                className="w-[140px] shrink-0"
+                label="Plan"
+                menuTitle="Plan"
                 value={plan}
-                onChange={(e) => setPlan(e.target.value)}
-                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-700"
-              >
-                <option value="all">All Plans</option>
-                {planOptions.map((p) => (
-                  <option key={p} value={p}>
-                    {p.charAt(0).toUpperCase() + p.slice(1)}
-                  </option>
-                ))}
-              </select>
-              <select
+                options={planOptions}
+                onChange={setPlan}
+                renderOption={(value) =>
+                  value === "all" ? "All Plans" : value.charAt(0).toUpperCase() + value.slice(1)
+                }
+                renderValue={(value) =>
+                  value === "all" ? "All Plans" : value.charAt(0).toUpperCase() + value.slice(1)
+                }
+              />
+              <UserFilterDropdown
+                hideLabel
+                compact
+                className="w-[138px] shrink-0"
+                label="Status"
+                menuTitle="Status"
                 value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-700"
-              >
-                {statusOptions.map((s) => (
-                  <option key={s} value={s}>
-                    {s === "all" ? "All Status" : s}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-bold text-slate-700"
-              >
-                <Filter size={14} />
-                Filters
-              </button>
-              <button
-                type="button"
-                onClick={resetFilters}
-                className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 text-[13px] font-bold text-slate-600"
-              >
-                Reset
-              </button>
+                options={statusOptions}
+                onChange={setStatus}
+                renderOption={(value) => (value === "all" ? "All Status" : value)}
+                renderValue={(value) => (value === "all" ? "All Status" : value)}
+              />
+              <UserDateRangePicker value={dateRange} onChange={setDateRange} />
+              {hasFilters ? (
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="ml-auto inline-flex h-10 shrink-0 items-center rounded-[14px] px-3 text-[12px] font-semibold text-[#6B7280] transition hover:bg-[#F3F4F6] hover:text-[#111827]"
+                >
+                  Clear
+                </button>
+              ) : null}
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full min-w-[960px] text-left text-[13px]">
                 <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50/60 text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                    <th className="px-4 py-3">
+                  <tr className={adminTableHeadClass}>
+                    <th className="px-3 py-3">
                       <input
                         type="checkbox"
                         checked={pageItems.length > 0 && pageItems.every((row) => selected.has(row.id))}
                         onChange={(e) => toggleAll(e.target.checked)}
-                        className="rounded border-slate-300"
+                        className="h-4 w-4 rounded border-[#D1D5DB] accent-[#84D400]"
                       />
                     </th>
-                    <th className="px-4 py-3">Invoice</th>
-                    <th className="px-4 py-3">Customer</th>
-                    <th className="px-4 py-3">Plan</th>
-                    <th className="px-4 py-3">Amount</th>
-                    <th className="px-4 py-3">Tax</th>
-                    <th className="px-4 py-3">Date</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3 text-right">Actions</th>
+                    <th className="px-3 py-3">Invoice</th>
+                    <th className="px-3 py-3">Customer</th>
+                    <th className="px-3 py-3">Plan</th>
+                    <th className="px-3 py-3">Amount</th>
+                    <th className="px-3 py-3">Tax</th>
+                    <th className="px-3 py-3">Date</th>
+                    <th className="px-3 py-3">Status</th>
+                    <th className="px-3 py-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={9} className="px-4 py-12 text-center font-semibold text-slate-400">
-                        Loading invoices...
+                      <td colSpan={9}>
+                        <AdminLoadingState label="Loading invoices..." />
                       </td>
                     </tr>
                   ) : pageItems.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="px-4 py-12 text-center font-semibold text-slate-400">
-                        No invoices found for {dateRangeLabel}.
+                      <td colSpan={9}>
+                        <AdminEmptyState title={`No invoices found for ${dateRangeLabel}.`} />
                       </td>
                     </tr>
                   ) : (
                     pageItems.map((row) => (
-                      <tr key={row.id} className="border-b border-slate-50 transition hover:bg-slate-50/60">
-                        <td className="px-4 py-3">
+                      <tr key={row.id} className={adminTableRowClass}>
+                        <td className="px-3 py-3">
                           <input
                             type="checkbox"
                             checked={selected.has(row.id)}
                             onChange={() => toggleOne(row.id)}
-                            className="rounded border-slate-300"
+                            className="h-4 w-4 rounded border-[#D1D5DB] accent-[#84D400]"
                           />
                         </td>
-                        <td className="px-4 py-3">
-                          <p className="font-bold text-slate-900">{row.invoice}</p>
+                        <td className="px-3 py-3">
+                          <p className="font-bold text-[#111827]">{row.invoice}</p>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3">
                           <div className="flex items-center gap-2.5">
                             <CustomerAvatar name={row.customer} seed={row.email} size="sm" />
                             <div className="min-w-0">
                               <Link
                                 href={`/master-admin/customers/${row.customerUid}`}
-                                className="truncate font-bold text-slate-900 hover:text-[#4D9A00]"
+                                className="truncate font-bold text-[#111827] transition hover:text-[#5AA700]"
                               >
                                 {row.customer}
                               </Link>
-                              <p className="truncate text-[11px] font-medium text-slate-400">{row.email}</p>
+                              <p className="truncate text-[11px] font-medium text-[#9CA3AF]">{row.email}</p>
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3">
                           <PlanBadge planId={row.plan || "basic"} />
                         </td>
-                        <td className="px-4 py-3 font-bold text-slate-800">{fmtMoneyInr(row.amount)}</td>
-                        <td className="px-4 py-3 font-semibold text-slate-500">{fmtMoneyInr(row.tax)}</td>
-                        <td className="px-4 py-3 font-semibold text-slate-600">{row.date}</td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3 font-bold text-[#111827]">{fmtMoneyInr(row.amount)}</td>
+                        <td className="px-3 py-3 font-semibold text-[#6B7280]">{fmtMoneyInr(row.tax)}</td>
+                        <td className="px-3 py-3 font-semibold text-[#374151]">{row.date}</td>
+                        <td className="px-3 py-3">
                           <span
                             className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ring-inset ${billingStatusClass(row.status)}`}
                           >
                             {row.status}
                           </span>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3">
                           <div className="flex items-center justify-end gap-1">
                             <a
-                              href={`/api/master-admin/billing/invoices/${row.invoiceUid}/download?format=pdf`}
+                              href={`/api/master-admin/billing/invoices/${encodeURIComponent(row.invoiceUid || row.id)}/download?format=pdf`}
                               target="_blank"
                               rel="noreferrer"
                               title="Download PDF"
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] text-[#6B7280] transition hover:bg-[#F3F4F6] hover:text-[#111827]"
                             >
                               <FileText size={15} />
                             </a>
                             <a
-                              href={`/api/master-admin/billing/invoices/${row.invoiceUid}/download`}
+                              href={`/api/master-admin/billing/invoices/${encodeURIComponent(row.invoiceUid || row.id)}/download`}
                               target="_blank"
                               rel="noreferrer"
                               title="View HTML"
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] text-[#6B7280] transition hover:bg-[#F3F4F6] hover:text-[#111827]"
                             >
                               <Download size={15} />
                             </a>
@@ -640,7 +675,7 @@ export default function BillingPage() {
                                 type="button"
                                 onClick={() => sendPaymentReminderForRow(row.id)}
                                 title="Send payment reminder"
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-amber-50 hover:text-amber-600"
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] text-[#6B7280] transition hover:bg-amber-50 hover:text-amber-600"
                               >
                                 <Send size={15} />
                               </button>
@@ -650,7 +685,7 @@ export default function BillingPage() {
                                 type="button"
                                 onClick={() => issueRefund(row)}
                                 title="Refund"
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-red-50 hover:text-red-600"
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] text-[#6B7280] transition hover:bg-red-50 hover:text-red-600"
                               >
                                 <RotateCcw size={15} />
                               </button>
@@ -659,7 +694,7 @@ export default function BillingPage() {
                               type="button"
                               onClick={() => sendInvoice(row)}
                               title="Send Invoice"
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-sky-50 hover:text-sky-600"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] text-[#6B7280] transition hover:bg-sky-50 hover:text-sky-600"
                             >
                               <Mail size={15} />
                             </button>
@@ -672,13 +707,15 @@ export default function BillingPage() {
               </table>
             </div>
 
-            <AdminPagination
-              page={page}
-              totalPages={pagination.totalPages}
-              total={pagination.total}
-              pageSize={PAGE_SIZE}
-              onPageChange={setPage}
-            />
+            <div className="border-t border-[#ECECEC] px-2">
+              <AdminPagination
+                page={page}
+                totalPages={pagination.totalPages}
+                total={pagination.total}
+                pageSize={PAGE_SIZE}
+                onPageChange={setPage}
+              />
+            </div>
           </section>
 
           <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
@@ -689,9 +726,9 @@ export default function BillingPage() {
                   key={action.label}
                   type="button"
                   onClick={() => handleQuickAction(action.label)}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 text-[11px] font-bold text-slate-700 transition hover:border-[#A6FF2E]/60 hover:bg-[#A6FF2E]/5"
+                  className="inline-flex items-center justify-center gap-2 rounded-[14px] border border-[#ECECEC] bg-white px-3 py-3 text-[11px] font-bold text-[#374151] transition hover:border-[#84D400]/60 hover:bg-[#FAFAFB]"
                 >
-                  <Icon size={14} className="text-[#4D9A00]" />
+                  <Icon size={14} className="text-[#5AA700]" />
                   {action.label}
                 </button>
               );
@@ -699,8 +736,8 @@ export default function BillingPage() {
           </section>
         </div>
 
-        <aside className="w-full shrink-0 space-y-4 xl:w-[320px]">
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
+        <aside className="w-full shrink-0 space-y-3 xl:w-[320px]">
+          <div className="dash-premium-card p-4">
             <h3 className="text-[13px] font-black text-slate-900">Payment Status</h3>
             <p className="mt-0.5 text-[11px] font-semibold text-slate-400">
               {summary?.totalCount?.toLocaleString("en-IN") ?? 0} total transactions
@@ -710,10 +747,10 @@ export default function BillingPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
+          <div className="dash-premium-card p-4">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <h3 className="text-[13px] font-black text-slate-900">Revenue Overview</h3>
+                <h3 className="text-[13px] font-black text-[#111827]">Revenue Overview</h3>
                 <p className="mt-0.5 text-[11px] font-semibold text-slate-400">This Month</p>
               </div>
               <div className="text-right">
@@ -724,8 +761,8 @@ export default function BillingPage() {
             <MiniLineChart rows={revenueDaily} />
           </div>
 
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
-            <h3 className="text-[13px] font-black text-slate-900">Recent Transactions</h3>
+          <div className="dash-premium-card p-4">
+            <h3 className="text-[13px] font-black text-[#111827]">Recent Transactions</h3>
             <div className="mt-3 space-y-3">
               {recentTransactions.length === 0 ? (
                 <p className="text-[12px] font-semibold text-slate-400">No recent transactions</p>
@@ -760,7 +797,7 @@ export default function BillingPage() {
             </div>
             <button
               type="button"
-              className="mt-4 w-full rounded-xl border border-slate-200 py-2.5 text-[12px] font-bold text-slate-700 transition hover:bg-slate-50"
+              className="mt-4 w-full rounded-[14px] border border-[#ECECEC] py-2.5 text-[12px] font-bold text-[#374151] transition hover:bg-[#FAFAFB]"
             >
               View All Transactions
             </button>
@@ -788,21 +825,21 @@ export default function BillingPage() {
 
       <GenerateInvoiceModal
         open={generateOpen}
-        saving={saving}
+        saving={false}
         onClose={() => setGenerateOpen(false)}
         onCreated={(invoiceUid) => {
           setGenerateOpen(false);
-          setMessage(invoiceUid ? `Invoice ${invoiceUid} generated.` : "Invoice generated.");
+          notify(invoiceUid ? `Invoice ${invoiceUid} generated.` : "Invoice generated.");
           void load(page);
         }}
       />
       <ManualPaymentModal
         open={manualOpen}
-        saving={saving}
+        saving={false}
         onClose={() => setManualOpen(false)}
         onCreated={() => {
           setManualOpen(false);
-          setMessage("Manual payment recorded.");
+          notify("Manual payment recorded.");
           void load(page);
         }}
       />

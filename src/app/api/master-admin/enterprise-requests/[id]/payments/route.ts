@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  advanceEnterpriseRequestStatus,
   createEnterprisePayment,
   EnterpriseSalesValidationError,
   getEnterpriseSalesRequest,
@@ -75,6 +76,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         adminId: Number(auth.admin.id),
       })
       : null;
+
+    if (!settleNow) {
+      await advanceEnterpriseRequestStatus(id, "waiting_payment", Number(auth.admin.id)).catch(() => undefined);
+    }
 
     await insertEnterpriseNote({
       requestUid: id,

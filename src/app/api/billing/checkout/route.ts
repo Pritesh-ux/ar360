@@ -10,6 +10,8 @@ import { getSubscriptionByCustomer } from "@/server/billing/subscription.reposit
 import { isEligibleLegacyRenewal, isNativeSubscriptionEligible } from "@/server/billing/checkout-rollout";
 import { createNativeSubscriptionCheckout } from "@/server/billing/native-checkout.service";
 import { guardBillingMutation } from "@/server/billing/billing-mutation-guard";
+import { ensureCouponsSchema } from "@/lib/db";
+import { validateCouponForCheckout, calculateDiscountPaise } from "@/lib/coupons/coupon-customer.service";
 
 export const runtime = "nodejs";
 
@@ -40,6 +42,15 @@ async function expireStalePendingOrders(customerUid: string) {
           OR (expires_at IS NULL AND created_at < DATE_SUB(NOW(), INTERVAL ? MINUTE))
         )`,
     [customerUid, PENDING_CHECKOUT_TTL_MINUTES],
+  ).catch(() => {});
+}
+
+async function supersedePendingOrders(customerUid: string) {
+  await query(
+    `UPDATE billing_orders
+        SET status = 'cancelled', updated_at = NOW()
+      WHERE customer_uid = ? AND status = 'created'`,
+    [customerUid],
   ).catch(() => {});
 }
 
@@ -78,7 +89,7 @@ export async function POST(req: Request) {
     const planId = mapLegacyPlanId(requestedPlanId);
     const period = (String(body.period || body.billingInterval || "monthly") as BillingPeriod);
 
-    let customerUid = String(user.customerUid || body.customerUid || "").trim();
+    let customerUid = String(user.customerUid || "").trim();
     if (!customerUid && user.id) {
       const customer = await ensureCustomerForUser({
         id: Number(user.id),
@@ -95,6 +106,23 @@ export async function POST(req: Request) {
     }
     if (period !== "monthly" && period !== "yearly") {
       return NextResponse.json(billingErrorJson(BillingErrorCode.INVALID_BILLING_INTERVAL), { status: 400 });
+    }
+
+    // Validate coupon if provided
+    const couponCode = String(body.couponCode || "").trim();
+    let couponUid: string | null = null;
+    let discountPaise = 0;
+
+    if (couponCode) {
+      await ensureCouponsSchema();
+      const couponResult = await validateCouponForCheckout(couponCode, customerUid);
+      if (!couponResult.valid) {
+        const errMsg = couponResult.valid === false ? couponResult.error : "Invalid coupon.";
+        return NextResponse.json({ error: errMsg }, { status: 400 });
+      }
+      couponUid = couponResult.couponUid;
+      const subtotalPaise = await getPlanPricePaise(planId, period);
+      discountPaise = calculateDiscountPaise(couponResult.discountType, couponResult.discountValue, subtotalPaise);
     }
 
     const { checkSubscription } = await import("@/lib/subscription/check-subscription");
@@ -158,7 +186,8 @@ export async function POST(req: Request) {
 
     await expireStalePendingOrders(customerUid);
 
-    const amount = await getPlanPricePaise(planId, period);
+    const fullAmount = await getPlanPricePaise(planId, period);
+    const amount = Math.max(1, fullAmount - discountPaise);
     const reusable = await findReusablePendingOrder(customerUid, planId, period);
     const keys = await getRazorpayKeys();
 
@@ -180,18 +209,11 @@ export async function POST(req: Request) {
       });
     }
 
-    const otherPending = await query<{ order_uid: string }>(
-      `SELECT order_uid FROM billing_orders
-        WHERE customer_uid = ? AND status = 'created'
-          AND (expires_at IS NULL OR expires_at > NOW())
-          AND created_at >= DATE_SUB(NOW(), INTERVAL ? MINUTE)
-        LIMIT 1`,
-      [customerUid, PENDING_CHECKOUT_TTL_MINUTES],
-    );
-
-    if (otherPending[0]) {
-      return NextResponse.json(billingErrorJson(BillingErrorCode.CHECKOUT_ALREADY_PENDING), { status: 409 });
-    }
+    // A leftover 'created' order (closed Razorpay modal, switched plan/period, or
+    // a re-applied coupon) must not lock the customer out for the whole TTL. The
+    // new intent wins; a late payment on the old Razorpay order still verifies,
+    // since verification looks orders up by razorpay_order_id regardless of status.
+    await supersedePendingOrders(customerUid);
 
     const razorpay = await getRazorpayClient();
     const receipt = uid("ord");
@@ -200,7 +222,13 @@ export async function POST(req: Request) {
       amount,
       currency: "INR",
       receipt,
-      notes: { customerUid, planId, period, userId: String(user.id || "") },
+      notes: {
+        customerUid,
+        planId,
+        period,
+        userId: String(user.id || ""),
+        ...(couponUid ? { couponUid, couponCode, discountPaise: String(discountPaise) } : {}),
+      },
     });
 
     const orderUid = uid("bo");
@@ -213,7 +241,22 @@ export async function POST(req: Request) {
       `INSERT INTO billing_orders
        (order_uid, customer_uid, user_id, plan_id, billing_period, razorpay_order_id, amount_paise, currency, status, metadata, expires_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, 'INR', 'created', ?, ?)`,
-      [orderUid, customerUid, user.id || null, planId, period, order.id, amount, JSON.stringify({ receipt }), expiresAt],
+      [
+        orderUid,
+        customerUid,
+        user.id || null,
+        planId,
+        period,
+        order.id,
+        amount,
+        JSON.stringify({
+          receipt,
+          ...(couponUid
+            ? { couponUid, couponCode, originalAmountPaise: fullAmount, discountPaise }
+            : {}),
+        }),
+        expiresAt,
+      ],
     );
 
     if (!keys.keyId) {
@@ -229,6 +272,9 @@ export async function POST(req: Request) {
       keyId: keys.keyId,
       planId,
       period,
+      subtotal: fullAmount,
+      gst: amount - Math.round(amount / 1.18),
+      ...(couponUid ? { couponUid, couponCode, discountPaise } : {}),
       customer: { name: user.name || "", email: user.email || "" },
     });
   } catch (error) {

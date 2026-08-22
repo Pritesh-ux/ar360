@@ -34,6 +34,7 @@ export default function LandingModelViewer(props: Props) {
     return (
       <ModelViewer
         {...props}
+        loading={props.loading || "eager"}
         autoRotate={isMobile ? false : props.autoRotate}
       />
     );

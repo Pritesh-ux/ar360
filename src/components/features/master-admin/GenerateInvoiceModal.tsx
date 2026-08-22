@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useDeferredEffect } from "@/lib/react/use-deferred-effect";
 import { X } from "lucide-react";
 import { AdminButton } from "@/components/ui/admin";
+import UserFilterDropdown from "@/components/user-panel/UserFilterDropdown";
+import ViewportPortal from "@/components/shared/ViewportPortal";
 
 type CustomerOption = {
   customer_uid: string;
@@ -29,7 +32,7 @@ export default function GenerateInvoiceModal({ open, saving, onClose, onCreated 
   const [period, setPeriod] = useState<"monthly" | "yearly">("monthly");
   const [error, setError] = useState("");
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     if (!open) return;
     setSearch("");
     setSelectedUid("");
@@ -83,7 +86,8 @@ export default function GenerateInvoiceModal({ open, saving, onClose, onCreated 
   }
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/40 p-4">
+    <ViewportPortal>
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/40 p-4">
       <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <h2 className="text-[16px] font-black text-slate-900">Generate Invoice</h2>
@@ -116,17 +120,36 @@ export default function GenerateInvoiceModal({ open, saving, onClose, onCreated 
               </button>
             ))}
           </div>
-          <select value={planId} onChange={(e) => setPlanId(e.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px]">
-            {plans.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name || p.id}
-              </option>
-            ))}
-          </select>
-          <select value={period} onChange={(e) => setPeriod(e.target.value as "monthly" | "yearly")} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px]">
-            <option value="monthly">Monthly</option>
-            <option value="yearly">Yearly</option>
-          </select>
+          <UserFilterDropdown
+            hideLabel
+            compact
+            className="w-full"
+            menuWidth={280}
+            label="Plan"
+            menuTitle="Plan"
+            value={planId || "none"}
+            options={["none", ...plans.map((p) => p.id)]}
+            onChange={(value) => setPlanId(value === "none" ? "" : value)}
+            renderOption={(value) =>
+              value === "none" ? "Select plan" : plans.find((p) => p.id === value)?.name || value
+            }
+            renderValue={(value) =>
+              value === "none" ? "Select plan" : plans.find((p) => p.id === value)?.name || value
+            }
+          />
+          <UserFilterDropdown
+            hideLabel
+            compact
+            className="w-full"
+            menuWidth={200}
+            label="Billing period"
+            menuTitle="Billing period"
+            value={period}
+            options={["monthly", "yearly"]}
+            onChange={(value) => setPeriod(value as "monthly" | "yearly")}
+            renderOption={(value) => (value === "yearly" ? "Yearly" : "Monthly")}
+            renderValue={(value) => (value === "yearly" ? "Yearly" : "Monthly")}
+          />
           {error ? <p className="text-[12px] font-semibold text-red-600">{error}</p> : null}
         </div>
         <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4">
@@ -135,5 +158,6 @@ export default function GenerateInvoiceModal({ open, saving, onClose, onCreated 
         </div>
       </div>
     </div>
+    </ViewportPortal>
   );
 }

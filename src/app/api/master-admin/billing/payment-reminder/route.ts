@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { guardAdminPermission } from "@/lib/permissions/admin-rbac";
+import { guardAdminPermission, logAdminAudit } from "@/lib/permissions/admin-rbac";
 import { sendPaymentReminder } from "@/lib/master-admin/billing-actions.service";
 
 export const runtime = "nodejs";
@@ -17,6 +17,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const result = await sendPaymentReminder({ paymentUid, adminId: admin.id });
+    await logAdminAudit(admin, "payment.reminder", "payment", paymentUid);
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     return NextResponse.json(

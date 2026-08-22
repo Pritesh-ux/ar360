@@ -14,7 +14,7 @@ export async function seedAdminRbac(connection: mysql.Connection) {
 
   if (!superAdminRoleId) {
     console.log("Seeding admin RBAC roles and permissions...");
-    const migrationPath = path.resolve(process.cwd(), "database", "migrations", "12_admin_rbac.sql");
+    const migrationPath = path.resolve("./", "database", "migrations", "12_admin_rbac.sql");
     const sql = await fs.readFile(migrationPath, "utf-8");
     if (sql.trim()) {
       await connection.query(sql);

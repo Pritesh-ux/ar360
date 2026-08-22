@@ -12,6 +12,7 @@ import {
   type WebhookEvent,
 } from "@/lib/enterprise/webhooks.service";
 import { writeAuditLog } from "@/lib/enterprise/audit.service";
+import { requireActiveSubscriptionApi } from "@/lib/subscription/api-subscription-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,6 +25,9 @@ const VALID_EVENTS: WebhookEvent[] = [
 export async function GET(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Login required." }, { status: 401 });
+
+  const gate = await requireActiveSubscriptionApi(user.customerUid ?? "");
+  if (!gate.ok) return gate.response;
 
   const p = req.nextUrl.searchParams;
   const workspaceUid = p.get("workspaceUid") ?? "";
@@ -50,6 +54,9 @@ export async function POST(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Login required." }, { status: 401 });
 
+  const gate = await requireActiveSubscriptionApi(user.customerUid ?? "");
+  if (!gate.ok) return gate.response;
+
   const body = await req.json().catch(() => ({})) as {
     workspaceUid?: string;
     name?: string;
@@ -71,13 +78,20 @@ export async function POST(req: NextRequest) {
     return rbacErrorResponse(e);
   }
 
-  const { webhook, secret } = await createWebhook({
-    workspaceUid,
-    customerUid: user.customerUid ?? "",
-    name,
-    url,
-    events: validEvents,
-  });
+  let webhook;
+  let secret: string;
+  try {
+    ({ webhook, secret } = await createWebhook({
+      workspaceUid,
+      customerUid: user.customerUid ?? "",
+      name,
+      url,
+      events: validEvents,
+    }));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Invalid webhook URL.";
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
 
   await writeAuditLog({
     workspaceUid,
@@ -97,6 +111,9 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Login required." }, { status: 401 });
+
+  const gate = await requireActiveSubscriptionApi(user.customerUid ?? "");
+  if (!gate.ok) return gate.response;
 
   const body = await req.json().catch(() => ({})) as { workspaceUid?: string; webhookUid?: string };
   const { workspaceUid = "", webhookUid = "" } = body;
@@ -127,6 +144,9 @@ export async function DELETE(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Login required." }, { status: 401 });
+
+  const gate = await requireActiveSubscriptionApi(user.customerUid ?? "");
+  if (!gate.ok) return gate.response;
 
   const body = await req.json().catch(() => ({})) as {
     workspaceUid?: string;

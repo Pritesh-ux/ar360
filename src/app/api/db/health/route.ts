@@ -1,7 +1,26 @@
-import { NextResponse } from "next/server";
+import { timingSafeEqual } from "crypto";
+import { NextRequest, NextResponse } from "next/server";
 import { ensureAppSchema, query } from "@/lib/db";
+import { verifyWorkerRequest } from "@/lib/worker-auth";
 
-export async function GET() {
+export const dynamic = "force-dynamic";
+
+function internalAccessOk(req: NextRequest): boolean {
+  if (verifyWorkerRequest(req)) return true;
+
+  const expected = process.env.AR360_INTERNAL_KEY;
+  if (!expected) return false;
+
+  const provided = req.headers.get("x-ar360-internal-key") || "";
+  if (!provided || provided.length !== expected.length) return false;
+  return timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
+}
+
+export async function GET(req: NextRequest) {
+  if (process.env.NODE_ENV === "production" && !internalAccessOk(req)) {
+    return new NextResponse(null, { status: 404 });
+  }
+
   try {
     await ensureAppSchema();
     const rows = await query<{ ok: number }>("SELECT 1 AS ok");

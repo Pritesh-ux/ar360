@@ -13,8 +13,8 @@ INSERT INTO billing_plans (
   priority_processing, priority_support, is_active, sort_order
 ) VALUES (
   'trial', 'TRIAL', 'Move your first steps with ARStudio360', 'Free plan for testing your first 3D/AR product.',
-  0.10, 1.00, 1, 0, 0, 24, 0, '24 Hours Trial', 'paper',
-  '["1 Active Product", "3D Viewer & AR", "QR Code Sharing", "Public Share Link", "Basic Analytics", "Auto delete after 24 hours if not upgraded"]',
+  0.10, 1.00, 10, 0, 0, 72, 0, '3 Days Trial', 'paper',
+  '["10 Active Products", "3D Viewer & AR", "QR Code Sharing", "Public Share Link", "Basic Analytics", "Auto delete after 3 days if not upgraded"]',
   0, 0, 0, 0, 0, 1, 0
 ), (
   'basic', 'BASIC', 'Upgrade your info-commerce', 'For small sellers who need clean 3D viewer, QR and AR.',

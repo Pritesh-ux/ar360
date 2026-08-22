@@ -21,9 +21,14 @@ export function findLocalProduct<T extends { id?: string; productUid?: string; p
   );
 }
 
-export async function fetchPublicProduct<T>(id: string): Promise<PublicProductResponse<T>> {
+export async function fetchPublicProduct<T>(
+  id: string,
+  options?: { clientUid?: string | null },
+): Promise<PublicProductResponse<T>> {
   try {
-    const response = await fetch(`/api/public-products/${encodeURIComponent(id)}`, {
+    const client = String(options?.clientUid || "").trim();
+    const qs = client ? `?client=${encodeURIComponent(client)}` : "";
+    const response = await fetch(`/api/public-products/${encodeURIComponent(id)}${qs}`, {
       cache: "no-store",
     });
 

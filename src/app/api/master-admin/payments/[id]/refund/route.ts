@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { guardAdminPermission } from "@/lib/permissions/admin-rbac";
+import { guardAdminPermission, logAdminAudit } from "@/lib/permissions/admin-rbac";
 import { ensureAppSchema, query } from "@/lib/db";
 import { getLedgerPaymentByUid } from "@/lib/billing/payment-ledger";
 import { recordBillingRefund } from "@/lib/master-admin/billing-actions.service";
@@ -111,6 +111,7 @@ export async function POST(
       }
     }
 
+    await logAdminAudit(admin, "payment.refund", "payment", payment.id, { amountPaise, refundId });
     return NextResponse.json({
       success: true,
       refundId,

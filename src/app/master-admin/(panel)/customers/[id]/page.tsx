@@ -52,8 +52,11 @@ export default async function CustomerDetailPage({
     addonRows,
     clientWorkspaces,
   ] = await Promise.all([
-    query<any>(`
-      SELECT c.customer_uid, c.contact_name, c.company_name, c.email, c.phone, c.country,
+    (async () => {
+      const { ensurePhoneVerifiedColumn } = await import("@/lib/account/verification.service");
+      await ensurePhoneVerifiedColumn();
+      return query<any>(`
+      SELECT c.customer_uid, c.contact_name, c.company_name, c.email, c.phone, c.phone_verified, c.country,
              c.plan_id, c.status, c.storage_used_mb, c.bandwidth_used_mb, c.created_at,
              u.last_login_at, u.email_verified, u.two_factor_enabled,
              s.status AS sub_status, s.trial_ends_at, s.trial_used, s.current_period_end,
@@ -62,7 +65,8 @@ export default async function CustomerDetailPage({
       LEFT JOIN users u ON u.id = c.user_id
       LEFT JOIN customer_subscriptions s ON s.customer_uid = c.customer_uid
       WHERE c.customer_uid = ? LIMIT 1
-    `, [id]),
+    `, [id]);
+    })(),
 
     query<any>(`
       SELECT id, title, category, status, views, created_at, variants, material_settings
@@ -166,6 +170,7 @@ export default async function CustomerDetailPage({
       created_at: customer.created_at,
       last_login_at: customer.last_login_at,
       email_verified: Boolean(customer.email_verified),
+      phone_verified: Boolean((customer as { phone_verified?: number | boolean }).phone_verified),
       two_factor_enabled: Boolean(customer.two_factor_enabled),
       sub_status: customer.sub_status,
       billing_period: customer.billing_period,

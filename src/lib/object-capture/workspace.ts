@@ -8,8 +8,8 @@ function safeSegment(value: string): string {
 
 export function getObjectCaptureStorageRoot(): string {
   const configured = process.env.OBJECT_CAPTURE_STORAGE_ROOT?.trim();
-  const root = path.resolve(configured || path.join(process.cwd(), "storage", "private", "object-capture"));
-  const publicRoot = path.resolve(process.env.AR360_PROJECT_ROOT || process.cwd(), "public");
+  const root = path.resolve(configured || path.join("./", "storage", "private", "object-capture"));
+  const publicRoot = path.resolve(process.env.AR360_PROJECT_ROOT || "./", "public");
   if (root === publicRoot || root.startsWith(`${publicRoot}${path.sep}`)) {
     throw new Error("OBJECT_CAPTURE_STORAGE_ROOT must be private and cannot be inside public/.");
   }

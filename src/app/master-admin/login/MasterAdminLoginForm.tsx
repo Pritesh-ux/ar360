@@ -3,8 +3,15 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { CSRF_HEADER_NAME, ensureBrowserCsrfToken } from "@/lib/csrf-client";
 
-export default function MasterAdminLoginForm({ initialError }: { initialError?: string }) {
+export default function MasterAdminLoginForm({
+  initialError,
+  initialEmail,
+}: {
+  initialError?: string;
+  initialEmail?: string;
+}) {
   const router = useRouter();
   const [error, setError] = useState(initialError || "");
   const [loading, setLoading] = useState(false);
@@ -18,8 +25,13 @@ export default function MasterAdminLoginForm({ initialError }: { initialError?: 
     const formData = new FormData(form);
 
     try {
+      const csrf = await ensureBrowserCsrfToken();
+      const headers = new Headers();
+      if (csrf) headers.set(CSRF_HEADER_NAME, csrf);
+
       const response = await fetch("/api/master-admin/auth/login", {
         method: "POST",
+        headers,
         body: formData,
         credentials: "include",
         cache: "no-store",
@@ -53,23 +65,32 @@ export default function MasterAdminLoginForm({ initialError }: { initialError?: 
       ) : null}
 
       <form onSubmit={onSubmit} className="space-y-4">
-        <input
-          name="email"
-          type="email"
-          placeholder="Admin email"
-          required
-          autoComplete="username"
-          className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-[var(--color-primary)] focus:ring-4 focus:ring-cyan-100"
-        />
+        <div>
+          <label htmlFor="ma-email" className="mb-1.5 block text-[13px] font-semibold text-slate-600">Email</label>
+          <input
+            id="ma-email"
+            name="email"
+            type="email"
+            placeholder="admin@ar360.in"
+            required
+            autoComplete="username"
+            defaultValue={initialEmail || ""}
+            className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-[15px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[var(--color-primary)] focus:ring-4 focus:ring-cyan-100"
+          />
+        </div>
 
-        <input
-          name="password"
-          type="password"
-          placeholder="Password"
-          required
-          autoComplete="current-password"
-          className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-[var(--color-primary)] focus:ring-4 focus:ring-cyan-100"
-        />
+        <div>
+          <label htmlFor="ma-password" className="mb-1.5 block text-[13px] font-semibold text-slate-600">Password</label>
+          <input
+            id="ma-password"
+            name="password"
+            type="password"
+            placeholder="Enter password"
+            required
+            autoComplete="current-password"
+            className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-[15px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[var(--color-primary)] focus:ring-4 focus:ring-cyan-100"
+          />
+        </div>
 
         <button
           type="submit"

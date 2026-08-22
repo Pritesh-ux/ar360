@@ -37,11 +37,30 @@ export function normalizeSubscriptionStatus(status: string): string {
   return normalized;
 }
 
-function customerStatusFromSubscription(status: string): "Active" | "Suspended" {
+/**
+ * Mirror subscription → customers.status.
+ * Billing end-states (`expired` / `cancelled`) stay Active so the customer can
+ * still open the panel and upgrade. Suspended is reserved for pause/halt and
+ * explicit Master Admin / security suspensions.
+ */
+export function customerStatusFromSubscription(status: string): "Active" | "Suspended" {
   const normalized = normalizeSubscriptionStatus(status);
-  return normalized === "active" || normalized === "trialing" || normalized === "grace" || normalized === "past_due"
-    ? "Active"
-    : "Suspended";
+  if (
+    normalized === "active" ||
+    normalized === "trialing" ||
+    normalized === "grace" ||
+    normalized === "past_due" ||
+    normalized === "expired" ||
+    normalized === "cancelled" ||
+    normalized === "canceled" ||
+    normalized === "completed"
+  ) {
+    return "Active";
+  }
+  if (normalized === "paused" || normalized === "halted") {
+    return "Suspended";
+  }
+  return "Active";
 }
 
 /** Mirror customers.plan_id — never update customers.plan_id outside this helper. */
@@ -134,9 +153,15 @@ export async function applySubscriptionChange(input: SubscriptionWriteInput) {
   return getSubscriptionByCustomer(input.customerUid);
 }
 
-export async function getSubscriptionByCustomer(customerUid: string) {
-  const rows = await query<BillingSubscription>(
-    `SELECT id, customer_uid, plan_id, billing_period AS period, status,
+const SUBSCRIPTION_CORE_SELECT = `SELECT id, customer_uid, plan_id, billing_period AS period, status,
+            provider_subscription_id AS razorpay_subscription_id,
+            provider_customer_id AS razorpay_customer_id,
+            current_period_start, current_period_end, trial_ends_at,
+            grace_ends_at, cancelled_at, cancel_at_period_end,
+            unlimited_storage, unlimited_bandwidth, created_at, updated_at
+     FROM customer_subscriptions WHERE customer_uid = ? LIMIT 1`;
+
+const SUBSCRIPTION_FULL_SELECT = `SELECT id, customer_uid, plan_id, billing_period AS period, status,
             provider_subscription_id AS razorpay_subscription_id,
             provider_customer_id AS razorpay_customer_id,
             provider_plan_id, provider_mode, provider_status, mandate_status,
@@ -147,10 +172,33 @@ export async function getSubscriptionByCustomer(customerUid: string) {
             current_period_start, current_period_end, trial_ends_at,
             grace_ends_at, renewal_attempt_count, next_retry_at, halted_at,
             cancelled_at, cancel_at_period_end, unlimited_storage, unlimited_bandwidth, created_at, updated_at
-     FROM customer_subscriptions WHERE customer_uid = ? LIMIT 1`,
-    [customerUid],
-  );
-  return rows[0] || null;
+     FROM customer_subscriptions WHERE customer_uid = ? LIMIT 1`;
+
+export async function getSubscriptionByCustomer(customerUid: string) {
+  try {
+    const rows = await query<BillingSubscription>(SUBSCRIPTION_FULL_SELECT, [customerUid]);
+    return rows[0] || null;
+  } catch (error) {
+    // Live DBs mid-migration may lack newer columns — fall back to core fields.
+    console.error("[getSubscriptionByCustomer] full select failed, using core columns:", error);
+    const rows = await query<BillingSubscription>(SUBSCRIPTION_CORE_SELECT, [customerUid]);
+    return rows[0] || null;
+  }
+}
+
+/** Create a trial row from Master Admin billing_plans when customer has none. */
+export async function ensureTrialSubscription(customerUid: string) {
+  const existing = await getSubscriptionByCustomer(customerUid);
+  if (existing) return existing;
+
+  try {
+    const { startTrialSubscription } = await import("./subscription.service");
+    await startTrialSubscription(customerUid);
+  } catch (error) {
+    console.error("[ensureTrialSubscription]", error);
+  }
+
+  return getSubscriptionByCustomer(customerUid);
 }
 
 export async function upsertSubscription(input: {

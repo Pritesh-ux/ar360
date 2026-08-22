@@ -38,12 +38,24 @@ export function trackAnalyticsEvent({
     referrer: document.referrer || "direct",
     url: window.location.href,
   };
+  const body = JSON.stringify(payload);
+  const url = "/api/analytics/event";
 
-  void fetch("/api/analytics/event", {
+  try {
+    if (navigator.sendBeacon) {
+      const blob = new Blob([body], { type: "application/json" });
+      if (navigator.sendBeacon(url, blob)) return;
+    }
+  } catch {
+    // Fall through to fetch.
+  }
+
+  void fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body,
     keepalive: true,
+    credentials: "same-origin",
   }).catch(() => {
     // Analytics must not block UX.
   });
@@ -63,6 +75,7 @@ export function mapARExperienceEventToAnalytics(
 
   const direct: Record<string, AnalyticsEventName> = {
     ar_onboarding_open: "ar_button_click",
+    ar_launch_attempt: "ar_button_click",
     ar_launch_success: "ar_launch_success",
     ar_launch_failed: "ar_launch_failed",
     ar_link_copy: "copy_link",

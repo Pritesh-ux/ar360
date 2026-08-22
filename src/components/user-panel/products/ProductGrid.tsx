@@ -17,7 +17,7 @@ export default function ProductGrid({ children, viewMode }: Props) {
   }
 
   return (
-    <div className="grid grid-cols-2 items-start gap-3 lg:grid-cols-3 xl:grid-cols-4">
+    <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {children}
     </div>
   );

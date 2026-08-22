@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { query } from "@/lib/db";
-import { hasClientAddon } from "@/lib/billing/addons";
+import { hasClientManagementAccess } from "@/lib/billing/addons";
 
 export const runtime = "nodejs";
 
@@ -23,7 +23,7 @@ export async function GET() {
       return NextResponse.json({ error: "Login required." }, { status: 401 });
     }
 
-    const active = await hasClientAddon(user.customerUid);
+    const active = await hasClientManagementAccess(user.customerUid);
     if (!active) {
       return NextResponse.json({ error: "Client Management module is not active." }, { status: 403 });
     }

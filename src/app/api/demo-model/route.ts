@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 const CANDIDATES = ["chair_01.glb", "chair.glb", "LOCK GLB.glb"];
 
 async function readDemoModel(): Promise<Buffer> {
-  const modelsDir = path.join(process.cwd(), "public", "models");
+  const modelsDir = path.join("./", "public", "models");
   for (const name of CANDIDATES) {
     try {
       const data = await readFile(path.join(modelsDir, name));

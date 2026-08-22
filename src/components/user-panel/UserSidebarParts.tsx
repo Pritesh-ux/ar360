@@ -1,9 +1,48 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
+import { filterDashboardNavItems, type DashboardNavAccess } from "@/config/dashboard-navigation";
+import { useUserPanelSession } from "@/components/user-panel/UserPanelContext";
 import { USER_BILLING_NAV, USER_PRIMARY_NAV, isNavActive, type UserNavItem } from "./nav";
+
+function filterUserNavItems(items: UserNavItem[], access: DashboardNavAccess): UserNavItem[] {
+  const filtered = filterDashboardNavItems(
+    items.map((item) => ({
+      label: item.name,
+      href: item.href,
+      icon: item.icon,
+      exact: item.matchPrefix === false,
+    })),
+    access,
+  );
+  const allowed = new Set(filtered.map((item) => item.href));
+  return items.filter((item) => allowed.has(item.href));
+}
+
+function useNavAccess(): DashboardNavAccess {
+  const session = useUserPanelSession();
+  const features = session?.features;
+  const accountSuspended = session?.accountSuspended === true;
+  return {
+    objectCaptureEnabled: session?.platformFlags?.objectCaptureEnabled ?? true,
+    clientManagement: session?.addons?.clientManagement ?? false,
+    teamManagement: session?.addons?.teamManagement ?? false,
+    allowQr: features?.allowQr,
+    allowShare: features?.allowShare,
+    allowEmbed: features?.allowEmbed,
+    allowAnalytics: features?.allowAnalytics,
+    allowCustomBranding: features?.allowCustomBranding,
+    allowObjectCapture: features?.allowObjectCapture,
+    allowProductContact: features?.allowProductContact,
+    accountSuspended,
+  };
+}
+
+function useFilteredUserNavItems(items: UserNavItem[]): UserNavItem[] {
+  const access = useNavAccess();
+  return filterUserNavItems(items, access);
+}
 
 export const USER_RAIL_WIDTH = 68;
 export const USER_NAV_WIDTH = 186;
@@ -20,7 +59,6 @@ function RailLink({ item, active, light }: { item: UserNavItem; active: boolean;
   return (
     <Link
       href={item.href}
-      title={item.name}
       aria-label={item.name}
       className={`flex h-11 w-11 items-center justify-center rounded-[14px] transition ${
         light
@@ -57,36 +95,6 @@ function NavLink({ item, active }: { item: UserNavItem; active: boolean }) {
   );
 }
 
-function NavGroup({
-  items,
-  pathname,
-  showLabels,
-}: {
-  items: UserNavItem[];
-  pathname: string;
-  showLabels: boolean;
-}) {
-  return (
-    <div className="space-y-0.5">
-      {items.map((item) => {
-        const active = isNavActive(pathname, item);
-        return (
-          <div key={item.href} className="flex items-stretch">
-            <div className="flex w-[72px] shrink-0 items-center justify-center lg:hidden">
-              <RailLink item={item} active={active} />
-            </div>
-            {showLabels ? (
-              <div className="hidden min-w-0 flex-1 lg:block">
-                <NavLink item={item} active={active} />
-              </div>
-            ) : null}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 /** Icon rail — standalone in product editor or legacy layouts. */
 export function UserIconRail({
   items,
@@ -97,7 +105,7 @@ export function UserIconRail({
   pathname: string;
   variant?: "dark" | "light";
 }) {
-  const navItems = items ?? [...USER_PRIMARY_NAV, ...USER_BILLING_NAV];
+  const navItems = useFilteredUserNavItems(items ?? [...USER_PRIMARY_NAV, ...USER_BILLING_NAV]);
   const light = variant === "light";
   return (
     <div
@@ -131,16 +139,19 @@ export default function UserSidebarSections({ items, pathname, railOnly = false 
 }
 
 export function UserSidebarNav({ pathname }: { pathname: string }) {
+  const primaryItems = useFilteredUserNavItems(USER_PRIMARY_NAV);
+  const billingItems = useFilteredUserNavItems(USER_BILLING_NAV);
+
   return (
     <nav className="flex-1 space-y-4 overflow-y-auto px-1 py-2">
       <div className="space-y-0.5">
-        {USER_PRIMARY_NAV.map((item) => (
+        {primaryItems.map((item) => (
           <NavLink key={item.href} item={item} active={isNavActive(pathname, item)} />
         ))}
       </div>
       <div className="mx-3 h-px bg-[var(--ar-border)]" />
       <div className="space-y-0.5">
-        {USER_BILLING_NAV.map((item) => (
+        {billingItems.map((item) => (
           <NavLink key={item.href} item={item} active={isNavActive(pathname, item)} />
         ))}
       </div>
@@ -149,7 +160,7 @@ export function UserSidebarNav({ pathname }: { pathname: string }) {
 }
 
 export function UserSidebarRailIcons({ pathname }: { pathname: string }) {
-  const all = [...USER_PRIMARY_NAV, ...USER_BILLING_NAV];
+  const all = useFilteredUserNavItems([...USER_PRIMARY_NAV, ...USER_BILLING_NAV]);
   return (
     <nav className="flex flex-1 flex-col items-center gap-2 overflow-y-auto py-2">
       {all.map((item) => (

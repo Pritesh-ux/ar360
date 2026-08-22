@@ -1,6 +1,6 @@
 import { query } from "@/lib/db";
 import { getPlanById } from "@/lib/billing/plans";
-import { getSubscriptionByCustomer } from "./subscription.repository";
+import { ensureTrialSubscription, getSubscriptionByCustomer } from "./subscription.repository";
 
 type ScheduledChangeRow = {
   change_uid: string;
@@ -30,12 +30,24 @@ type PriceRow = {
   currency: string;
 };
 
+async function safeQuery<T>(sql: string, values: (string | number | null)[] = []): Promise<T[]> {
+  try {
+    return await query<T>(sql, values);
+  } catch (error) {
+    console.error("[subscription-experience] query failed:", error);
+    return [];
+  }
+}
+
 export async function getSubscriptionExperience(customerUid: string) {
-  const subscription = await getSubscriptionByCustomer(customerUid);
+  let subscription = await getSubscriptionByCustomer(customerUid);
+  if (!subscription) {
+    subscription = await ensureTrialSubscription(customerUid);
+  }
   if (!subscription) return null;
 
   const [changes, attempts, prices] = await Promise.all([
-    query<ScheduledChangeRow>(
+    safeQuery<ScheduledChangeRow>(
       `SELECT change_uid, change_type, from_plan_id, to_plan_id, effective_at, status, failure_reason
          FROM billing_scheduled_changes
         WHERE customer_uid = ?
@@ -43,7 +55,7 @@ export async function getSubscriptionExperience(customerUid: string) {
         LIMIT 5`,
       [customerUid],
     ),
-    query<PaymentAttemptRow>(
+    safeQuery<PaymentAttemptRow>(
       `SELECT payment_uid, status, amount_paise, currency, failure_code, failure_description, created_at
          FROM billing_payments
         WHERE customer_uid = ? AND provider_subscription_id = ?
@@ -52,12 +64,12 @@ export async function getSubscriptionExperience(customerUid: string) {
       [customerUid, subscription.razorpay_subscription_id || ""],
     ),
     subscription.price_version_id
-      ? query<PriceRow>(
+      ? safeQuery<PriceRow>(
           `SELECT subtotal_paise, gst_paise, total_paise, gst_rate, currency
              FROM billing_plan_price_versions WHERE id = ? LIMIT 1`,
           [subscription.price_version_id],
         )
-      : Promise.resolve([]),
+      : Promise.resolve([] as PriceRow[]),
   ]);
 
   const fallbackPlan = getPlanById(subscription.plan_id);
@@ -69,16 +81,29 @@ export async function getSubscriptionExperience(customerUid: string) {
   return {
     subscription: {
       ...subscription,
-      renewal_attempt_count: Number((subscription as typeof subscription & { renewal_attempt_count?: number }).renewal_attempt_count || 0),
-      next_retry_at: (subscription as typeof subscription & { next_retry_at?: string | null }).next_retry_at || null,
+      renewal_attempt_count: Number(
+        (subscription as typeof subscription & { renewal_attempt_count?: number }).renewal_attempt_count || 0,
+      ),
+      next_retry_at:
+        (subscription as typeof subscription & { next_retry_at?: string | null }).next_retry_at || null,
       halted_at: (subscription as typeof subscription & { halted_at?: string | null }).halted_at || null,
-      mandate_status: (subscription as typeof subscription & { mandate_status?: string | null }).mandate_status || null,
+      mandate_status: (() => {
+        const raw =
+          (subscription as typeof subscription & { mandate_status?: string | null }).mandate_status || null;
+        // Active paid plans should not surface a stale pending mandate from checkout.
+        if (String(subscription.status).toLowerCase() === "active" && raw === "pending") {
+          return "authorized";
+        }
+        return raw;
+      })(),
     },
     scheduledChange: changes.find((change) => change.status === "scheduled") || null,
     recentChanges: changes,
     attempts,
     nextDebit:
-      totalPaise > 0 && subscription.current_period_end && !["cancelled", "completed", "expired"].includes(subscription.status)
+      totalPaise > 0 &&
+      subscription.current_period_end &&
+      !["cancelled", "completed", "expired"].includes(subscription.status)
         ? {
             dueAt: subscription.current_period_end,
             subtotalPaise,
@@ -90,7 +115,9 @@ export async function getSubscriptionExperience(customerUid: string) {
           }
         : null,
     manualEnterprise:
-      subscription.plan_id === "enterprise" &&
-      (subscription.sales_channel === "manual" || subscription.classification_status === "contract_confirmed"),
+      String(subscription.plan_id || "").toLowerCase().startsWith("ecp_") ||
+      (subscription.plan_id === "enterprise" &&
+        (subscription.sales_channel === "manual" ||
+          subscription.classification_status === "contract_confirmed")),
   };
 }

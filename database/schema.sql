@@ -112,7 +112,7 @@ CREATE TABLE IF NOT EXISTS products (
   thumbnail_url TEXT NULL,
   qr_url TEXT NULL,
   product_folder TEXT NULL,
-  status ENUM('Draft', 'draft', 'published') NOT NULL DEFAULT 'Draft',
+  status ENUM('Draft', 'published') NOT NULL DEFAULT 'Draft',
   views INT NOT NULL DEFAULT 0,
   settings JSON NULL,
   material_settings JSON NULL,
@@ -121,13 +121,20 @@ CREATE TABLE IF NOT EXISTS products (
   viewer_slug VARCHAR(180) NULL,
   public_id VARCHAR(180) NULL,
   version INT NOT NULL DEFAULT 1,
+  active_config_revision_id BIGINT UNSIGNED NULL,
+  active_material_revision_id BIGINT UNSIGNED NULL,
+  active_lighting_revision_id BIGINT UNSIGNED NULL,
+  active_viewer_revision_id BIGINT UNSIGNED NULL,
+  active_ar_revision_id BIGINT UNSIGNED NULL,
+  active_geometry_revision_id BIGINT UNSIGNED NULL,
   published_at DATETIME NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_products_user_id (user_id),
   INDEX idx_products_customer_uid (customer_uid),
   INDEX idx_products_public_id (public_id),
-  INDEX idx_products_viewer_slug (viewer_slug)
+  INDEX idx_products_viewer_slug (viewer_slug),
+  INDEX idx_products_active_config_rev (active_config_revision_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS product_versions (
@@ -600,4 +607,85 @@ CREATE TABLE IF NOT EXISTS custom_domains (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_cd_workspace (workspace_uid),
   INDEX idx_cd_customer (customer_uid)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =============================================================================
+-- SECTION: AR360 PLATFORM VERSIONING FOUNDATION (Phase 1)
+-- Additive. Viewer/QR/subscriptions do not consume these yet.
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS ar360_release_channels (
+  id TINYINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  code VARCHAR(32) NOT NULL,
+  display_name VARCHAR(80) NOT NULL,
+  is_default TINYINT(1) NOT NULL DEFAULT 0,
+  is_customer_facing TINYINT(1) NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_ar360_release_channel_code (code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS ar360_platform_releases (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  version VARCHAR(32) NOT NULL,
+  major INT UNSIGNED NOT NULL,
+  minor INT UNSIGNED NOT NULL,
+  patch INT UNSIGNED NOT NULL,
+  channel_code VARCHAR(32) NOT NULL DEFAULT 'stable',
+  status ENUM('draft', 'published', 'archived', 'retired') NOT NULL DEFAULT 'draft',
+  title VARCHAR(160) NOT NULL DEFAULT '',
+  release_notes TEXT NULL,
+  metadata JSON NULL,
+  created_by_admin_id BIGINT UNSIGNED NULL,
+  created_by_name VARCHAR(160) NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  published_at DATETIME NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_ar360_platform_release_ver_channel (version, channel_code),
+  INDEX idx_ar360_platform_release_semver (major, minor, patch),
+  INDEX idx_ar360_platform_release_channel (channel_code),
+  INDEX idx_ar360_platform_release_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS ar360_feature_flags (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  flag_key VARCHAR(80) NOT NULL,
+  description VARCHAR(255) NOT NULL DEFAULT '',
+  enabled TINYINT(1) NOT NULL DEFAULT 0,
+  targeting JSON NULL,
+  metadata JSON NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_ar360_feature_flag_key (flag_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS ar360_product_config_revisions (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  product_uid VARCHAR(160) NOT NULL,
+  customer_uid VARCHAR(40) NOT NULL DEFAULT '',
+  revision_number INT UNSIGNED NOT NULL,
+  config_json JSON NOT NULL,
+  asset_refs_json JSON NOT NULL,
+  material_revision_id BIGINT UNSIGNED NULL,
+  lighting_revision_id BIGINT UNSIGNED NULL,
+  viewer_revision_id BIGINT UNSIGNED NULL,
+  ar_revision_id BIGINT UNSIGNED NULL,
+  geometry_revision_id BIGINT UNSIGNED NULL,
+  renderer_compat_label VARCHAR(64) NOT NULL DEFAULT 'legacy-current',
+  platform_release_id BIGINT UNSIGNED NULL,
+  source ENUM(
+    'legacy_backfill',
+    'editor_save',
+    'migration',
+    'rollback',
+    'manual'
+  ) NOT NULL DEFAULT 'legacy_backfill',
+  reason VARCHAR(255) NOT NULL DEFAULT '',
+  created_by_user_id BIGINT UNSIGNED NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_ar360_pcr_product_revision (product_uid, revision_number),
+  INDEX idx_ar360_pcr_customer (customer_uid),
+  INDEX idx_ar360_pcr_product (product_uid),
+  INDEX idx_ar360_pcr_compat (renderer_compat_label),
+  INDEX idx_ar360_pcr_source (source),
+  INDEX idx_ar360_pcr_platform_release (platform_release_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

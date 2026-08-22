@@ -2,10 +2,15 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
-import UserButton from "@/components/user-panel/UserButton";
+import { Box, Loader2 } from "lucide-react";
 
-export default function SampleProductButton({ label = "Try Sample Product" }: { label?: string }) {
+export default function SampleProductButton({
+  label = "Try Sample Product",
+  className = "dash-premium-btn-ghost",
+}: {
+  label?: string;
+  className?: string;
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -26,10 +31,15 @@ export default function SampleProductButton({ label = "Try Sample Product" }: { 
 
   return (
     <div className="inline-flex flex-col gap-2">
-      <UserButton variant="outline" onClick={() => void createSample()} disabled={busy}>
-        {busy ? <Loader2 size={16} className="animate-spin" /> : null}
+      <button
+        type="button"
+        onClick={() => void createSample()}
+        disabled={busy}
+        className={className}
+      >
+        {busy ? <Loader2 size={16} className="animate-spin" /> : <Box size={16} />}
         {label}
-      </UserButton>
+      </button>
       {error ? <span className="text-xs font-semibold text-red-600">{error}</span> : null}
     </div>
   );

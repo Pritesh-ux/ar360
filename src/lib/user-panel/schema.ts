@@ -261,7 +261,8 @@ export async function ensureUserPanelSchema() {
     "idx_products_customer_category",
     "CREATE INDEX idx_products_customer_category ON products (customer_uid, category)",
   );
-  await addColumnIfMissing("product_qr_codes", "qr_code", "VARCHAR(16) NULL");
+  await addColumnIfMissing("product_qr_codes", "qr_code", "VARCHAR(64) NULL");
+  await query(`ALTER TABLE product_qr_codes MODIFY COLUMN qr_code VARCHAR(64) NULL`).catch(() => undefined);
   await addColumnIfMissing("product_qr_codes", "unique_scans", "BIGINT UNSIGNED NOT NULL DEFAULT 0");
   await addColumnIfMissing("product_qr_codes", "last_scan_at", "DATETIME NULL");
   await addColumnIfMissing("product_qr_codes", "ar_launches", "BIGINT UNSIGNED NOT NULL DEFAULT 0");

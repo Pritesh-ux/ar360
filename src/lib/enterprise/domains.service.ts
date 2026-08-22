@@ -280,12 +280,9 @@ export async function resolveBrandedOrigin(params: {
 }): Promise<string> {
   const custom = await getPrimaryCustomDomainOrigin(params.customerUid).catch(() => null);
   if (custom) return custom.replace(/\/$/, "");
-  const fallback =
-    params.fallbackOrigin ||
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.APP_URL ||
-    "http://localhost:3000";
-  return String(fallback).replace(/\/$/, "");
+  const { getAppUrl, sanitizeOrigin } = await import("@/lib/url");
+  const fallback = params.fallbackOrigin || getAppUrl();
+  return sanitizeOrigin(fallback);
 }
 
 export function markSslActiveFromHttpsHost(domain: string) {

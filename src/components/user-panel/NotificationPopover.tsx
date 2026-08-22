@@ -29,17 +29,31 @@ export default function NotificationPopover({
   const [error, setError] = useState<string | null>(null);
   const anchorRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const [coords, setCoords] = useState({ bottom: 0, left: 0 });
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
   const hasPolled = useRef(false);
 
   const updatePosition = useCallback(() => {
-    if (!anchorRef.current) return;
-    const rect = anchorRef.current.getBoundingClientRect();
-    const width = Math.min(window.innerWidth - 32, 360);
-    setCoords({
-      bottom: Math.max(16, window.innerHeight - rect.top + 8),
-      left: Math.min(Math.max(16, rect.right - width), window.innerWidth - width - 16),
-    });
+    const anchor = anchorRef.current;
+    if (!anchor) return;
+
+    const margin = 12;
+    const gap = 8;
+    const rect = anchor.getBoundingClientRect();
+    const width = Math.min(window.innerWidth - margin * 2, 360);
+    const left = Math.min(Math.max(margin, rect.right - width), window.innerWidth - width - margin);
+
+    const height = panelRef.current?.offsetHeight || 420;
+    const spaceBelow = window.innerHeight - rect.bottom - gap - margin;
+    const spaceAbove = rect.top - gap - margin;
+
+    // The bell also lives in the sidebar footer, where there is no room below.
+    // Flip above instead of clamping, which used to push the panel off-screen.
+    const top =
+      spaceBelow >= height || spaceBelow >= spaceAbove
+        ? Math.min(rect.bottom + gap, window.innerHeight - height - margin)
+        : rect.top - gap - height;
+
+    setCoords({ top: Math.max(margin, top), left });
   }, []);
 
   const load = useCallback(async () => {
@@ -72,16 +86,31 @@ export default function NotificationPopover({
     return () => window.clearInterval(timer);
   }, [load]);
 
+  const closePanel = useCallback(() => {
+    setOpen(false);
+    setCoords(null);
+  }, []);
+
   useEffect(() => {
     if (!open) return;
+
     const initial = window.setTimeout(() => {
       void load();
       updatePosition();
     }, 0);
     window.addEventListener("resize", updatePosition);
     window.addEventListener("scroll", updatePosition, true);
+
+    // The panel grows as notifications arrive, so re-anchor whenever it resizes.
+    let observer: ResizeObserver | null = null;
+    if (panelRef.current && typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(() => updatePosition());
+      observer.observe(panelRef.current);
+    }
+
     return () => {
       window.clearTimeout(initial);
+      observer?.disconnect();
       window.removeEventListener("resize", updatePosition);
       window.removeEventListener("scroll", updatePosition, true);
     };
@@ -89,14 +118,14 @@ export default function NotificationPopover({
 
   useEffect(() => {
     if (!open) return;
-    function onPointerDown(e: MouseEvent) {
+    function onPointerDown(e: PointerEvent) {
       const t = e.target as Node;
       if (panelRef.current?.contains(t) || anchorRef.current?.contains(t)) return;
-      setOpen(false);
+      closePanel();
     }
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
-  }, [open]);
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [open, closePanel]);
 
   async function markAllRead() {
     if (marking) return;
@@ -195,10 +224,15 @@ export default function NotificationPopover({
     open && typeof document !== "undefined" ? (
       <div
         ref={panelRef}
-        className="up-notification-panel fixed z-[200] w-[min(100vw-2rem,360px)] overflow-hidden rounded-[16px] border border-[var(--ar-border)] bg-white shadow-xl"
-        style={{ bottom: coords.bottom, left: coords.left }}
+        className="up-notification-panel fixed z-[99990] w-[min(100vw-1.5rem,360px)] overflow-hidden rounded-[16px] border-2 border-[#D1D5DB] bg-white shadow-[0_16px_40px_rgba(15,23,42,0.18)]"
+        style={{
+          top: coords?.top ?? 0,
+          left: coords?.left ?? 0,
+          // Hide the first frame: the panel must be measured before it can be anchored.
+          visibility: coords ? "visible" : "hidden",
+        }}
       >
-        <div className="flex items-center justify-between border-b border-[var(--ar-border)] px-4 py-3">
+        <div className="flex items-center justify-between border-b-2 border-[#E5E7EB] px-4 py-3">
           <div className="flex items-center gap-2">
             <Bell size={16} />
             <p className="text-sm font-black">Notifications</p>
@@ -234,7 +268,7 @@ export default function NotificationPopover({
             )}
             <button
               type="button"
-              onClick={() => setOpen(false)}
+              onClick={closePanel}
               className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--ar-text-muted)] hover:bg-[var(--ar-surface-soft)]"
               aria-label="Close"
             >
@@ -242,9 +276,9 @@ export default function NotificationPopover({
             </button>
           </div>
         </div>
-        <div className="max-h-[min(50vh,360px)] overflow-y-auto">
+        <div className="max-h-[min(55vh,400px)] space-y-2.5 overflow-y-auto bg-[#F7F8F9] p-3">
           {error ? (
-            <p className="border-b border-red-100 bg-red-50 px-4 py-2 text-xs font-semibold text-red-700">{error}</p>
+            <p className="rounded-[12px] border border-red-100 bg-red-50 px-4 py-2 text-xs font-semibold text-red-700">{error}</p>
           ) : null}
           {loading && (
             <div className="flex items-center justify-center gap-2 py-10 text-sm text-[var(--ar-text-muted)]">
@@ -253,7 +287,7 @@ export default function NotificationPopover({
             </div>
           )}
           {!loading && items.length === 0 && (
-            <p className="px-4 py-10 text-center text-sm font-medium text-[var(--ar-text-muted)]">
+            <p className="rounded-[14px] border border-[#ECECEC] bg-white px-4 py-10 text-center text-sm font-medium text-[var(--ar-text-muted)]">
               You&apos;re all caught up.
             </p>
           )}
@@ -267,7 +301,7 @@ export default function NotificationPopover({
                   onClick={() => {
                     if (!item.isRead) void markOneRead(item.id);
                     if (item.href) {
-                      setOpen(false);
+                      closePanel();
                       router.push(item.href);
                     }
                   }}
@@ -277,19 +311,19 @@ export default function NotificationPopover({
                       event.currentTarget.click();
                     }
                   }}
-                  className={`relative border-b border-[var(--ar-border)]/60 px-4 py-3 pr-12 hover:bg-[var(--ar-surface-soft)] ${
-                    !item.isRead ? "bg-[var(--ar-primary-soft)]/40" : ""
+                  className={`relative rounded-[14px] border border-[#E5E7EB] bg-white px-3.5 py-3 pr-11 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${
+                    !item.isRead ? "border-[#C8E6A0] bg-[#F7FCE8]" : ""
                   }`}
                 >
                   <div className="mb-1 flex items-center gap-2">
-                    <span className="rounded-md bg-[var(--ar-surface-soft)] px-2 py-0.5 text-[10px] font-bold uppercase text-[var(--ar-text-muted)]">{item.category}</span>
-                    <span className="text-[10px] font-semibold text-[var(--ar-text-muted)]">
+                    <span className="rounded-md bg-[#F4F5F6] px-2 py-0.5 text-[10px] font-bold uppercase text-[#6B7280]">{item.category}</span>
+                    <span className="text-[10px] font-semibold text-[#9CA3AF]">
                       {new Date(item.createdAt).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
                     </span>
                   </div>
-                  <p className="text-sm font-bold text-[var(--ar-text)]">{item.title}</p>
+                  <p className="text-sm font-bold text-[#111111]">{item.title}</p>
                   {item.body ? (
-                    <p className="mt-0.5 text-xs font-medium text-[var(--ar-text-muted)]">{item.body}</p>
+                    <p className="mt-0.5 text-xs font-medium text-[#6B7280]">{item.body}</p>
                   ) : null}
                   <button
                     type="button"
@@ -298,7 +332,7 @@ export default function NotificationPopover({
                       event.stopPropagation();
                       void deleteOne(item.id);
                     }}
-                    className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-[var(--ar-text-muted)] hover:bg-red-50 hover:text-red-600"
+                    className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-lg text-[#9CA3AF] hover:bg-red-50 hover:text-red-600"
                   >
                     <Trash2 size={14} />
                   </button>
@@ -314,7 +348,7 @@ export default function NotificationPopover({
       <button
         ref={anchorRef}
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => (open ? closePanel() : setOpen(true))}
         className={
           buttonClassName ||
           "relative flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--ar-border)] bg-white text-[var(--ar-text-muted)] transition hover:bg-[var(--ar-surface-soft)]"

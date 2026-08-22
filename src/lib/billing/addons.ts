@@ -33,6 +33,14 @@ export type UserAddon = {
   created_at?: string;
 };
 
+function isAddonIncludedByPlan(planId: string, slug: string) {
+  const key = String(planId || "").trim().toLowerCase();
+  if ((key === "business" || key === "enterprise") && slug === "client-management") {
+    return true;
+  }
+  return false;
+}
+
 /** Get the primary owner user_id for a given customer_uid */
 export async function getCustomerOwnerUserId(customerUid: string): Promise<number | null> {
   const rows = await query<{ user_id: number | null }>(
@@ -42,7 +50,16 @@ export async function getCustomerOwnerUserId(customerUid: string): Promise<numbe
   return rows[0]?.user_id || null;
 }
 
+/** Add-on modules ride on the base subscription — a lapsed plan disables them too. */
+async function hasActiveSubscription(customerUid: string): Promise<boolean> {
+  const { checkSubscription } = await import("@/lib/subscription/check-subscription");
+  const subscription = await checkSubscription(customerUid).catch(() => null);
+  return Boolean(subscription?.active);
+}
+
 async function hasActiveAddon(customerUid: string, slug: string): Promise<boolean> {
+  if (!(await hasActiveSubscription(customerUid))) return false;
+
   const ownerUserId = await getCustomerOwnerUserId(customerUid);
   if (!ownerUserId) return false;
 
@@ -63,9 +80,76 @@ export async function hasClientAddon(customerUid: string): Promise<boolean> {
   return hasActiveAddon(customerUid, "client-management");
 }
 
+/**
+ * Client Management access: Business/Organisation plan, active enterprise contract,
+ * or purchased client-management addon (for lower tiers).
+ */
+export async function hasClientManagementAccess(customerUid: string): Promise<boolean> {
+  if (!(await hasActiveSubscription(customerUid))) return false;
+
+  if (await hasClientAddon(customerUid)) return true;
+
+  try {
+    const { mapLegacyPlanId } = await import("@/lib/billing/plan-enforcement");
+    const { resolveCustomerPlanLimits } = await import("@/lib/billing/resolve-plan-limits");
+    const limits = await resolveCustomerPlanLimits(customerUid);
+    const planId = mapLegacyPlanId(String(limits.planId || ""));
+    if (planId === "business" || planId === "enterprise") return true;
+    if (String(limits.planId || "").toLowerCase().startsWith("ecp_")) return true;
+    if (limits.isEnterpriseCustom) return true;
+  } catch {
+    // fall through
+  }
+
+  try {
+    const { hasActiveEnterpriseContract } = await import(
+      "@/lib/enterprise-sales/customer-dashboard.service"
+    );
+    if (await hasActiveEnterpriseContract(customerUid)) return true;
+  } catch {
+    // fall through
+  }
+
+  return false;
+}
+
 /** Check if a customer has an active team-management addon */
 export async function hasTeamAddon(customerUid: string): Promise<boolean> {
   return hasActiveAddon(customerUid, "team-management");
+}
+
+/**
+ * Team Management access: active team-management addon, or Business/Organisation plan /
+ * active enterprise custom contract (same gates as Client Management).
+ */
+export async function hasTeamManagementAccess(customerUid: string): Promise<boolean> {
+  if (!(await hasActiveSubscription(customerUid))) return false;
+
+  if (await hasTeamAddon(customerUid)) return true;
+
+  try {
+    const { mapLegacyPlanId } = await import("@/lib/billing/plan-enforcement");
+    const { resolveCustomerPlanLimits } = await import("@/lib/billing/resolve-plan-limits");
+    const limits = await resolveCustomerPlanLimits(customerUid);
+    const planId = mapLegacyPlanId(String(limits.planId || ""));
+    if (planId === "business" || planId === "enterprise") return true;
+    // Custom enterprise plan UIDs (ecp_…) are not collapsed by mapLegacyPlanId.
+    if (String(limits.planId || "").toLowerCase().startsWith("ecp_")) return true;
+    if (limits.isEnterpriseCustom) return true;
+  } catch {
+    // fall through
+  }
+
+  try {
+    const { hasActiveEnterpriseContract } = await import(
+      "@/lib/enterprise-sales/customer-dashboard.service"
+    );
+    if (await hasActiveEnterpriseContract(customerUid)) return true;
+  } catch {
+    // fall through
+  }
+
+  return false;
 }
 
 /** Enforce plan gating eligibility */
@@ -111,6 +195,7 @@ export async function getAddonsForCustomer(customerUid: string, planId?: string 
 
   return addons
     .filter((addon) => {
+      if (isAddonIncludedByPlan(planKey, addon.slug)) return true;
       if (!planKey || planKey === "starter" || planKey === "trial" || planKey === "free" || planKey === "pro") {
         // Already purchased still surfaces so Manage works after upgrade/downgrade edge cases
         return activeSlugs.has(addon.slug);
@@ -120,6 +205,7 @@ export async function getAddonsForCustomer(customerUid: string, planId?: string 
     .map((addon) => ({
       ...addon,
       purchased: activeSlugs.has(addon.slug),
+      includedByPlan: isAddonIncludedByPlan(planKey, addon.slug),
       activeAddonDetails: userAddons.find((ua) => ua.addon_slug === addon.slug) || null,
     }));
 }

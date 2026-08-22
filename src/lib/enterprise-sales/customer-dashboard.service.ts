@@ -109,7 +109,22 @@ async function getActiveContract(customerUid: string): Promise<ContractRow | nul
 }
 
 export async function hasActiveEnterpriseContract(customerUid: string): Promise<boolean> {
-  return Boolean(await getActiveContract(customerUid));
+  if (await getActiveContract(customerUid)) return true;
+
+  // Legacy safety net: catalog plan_id=enterprise without a contract still intended
+  // Enterprise access. Prefer converting via Master Admin save; until then, expose nav.
+  const orphan = await query<{ plan_id: string }>(
+    `SELECT plan_id FROM customer_subscriptions
+      WHERE customer_uid = ?
+        AND LOWER(status) IN ('active', 'paused', 'past_due', 'grace')
+        AND (
+          plan_id IN ('enterprise', 'organisation', 'organization')
+          OR LEFT(plan_id, 4) = 'ecp_'
+        )
+      LIMIT 1`,
+    [customerUid],
+  ).catch(() => []);
+  return Boolean(orphan[0]);
 }
 
 async function safeCount(sql: string, customerUid: string): Promise<number> {

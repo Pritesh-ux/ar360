@@ -32,7 +32,8 @@ export type AdminPermission =
   | "object_capture.read"
   | "object_capture.manage"
   | "object_capture.download"
-  | "exports.download";
+  | "exports.download"
+  | "database.query";
 
 export type AdminRoleCode =
   | "super_admin"
@@ -76,6 +77,7 @@ export const ALL_ADMIN_PERMISSIONS: AdminPermission[] = [
   "object_capture.manage",
   "object_capture.download",
   "exports.download",
+  "database.query",
 ];
 
 export const SUPER_ADMIN_ROLE: AdminRoleCode = "super_admin";

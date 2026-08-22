@@ -1,5 +1,6 @@
 import { randomBytes, createHmac } from "crypto";
 import { query } from "@/lib/db";
+import { assertSafeOutboundUrl } from "@/lib/security/ssrf";
 
 export type WebhookEvent =
   | "product.created" | "product.updated" | "product.published" | "product.deleted"
@@ -59,6 +60,11 @@ export async function createWebhook(params: {
   url: string;
   events: WebhookEvent[];
 }): Promise<{ webhook: WebhookPublic; secret: string }> {
+  const safeUrl = await assertSafeOutboundUrl(params.url);
+  if (safeUrl.ok === false) {
+    throw new Error(safeUrl.error);
+  }
+
   const uid = generateWebhookUid();
   const secret = `whsec_${randomBytes(24).toString("base64url")}`;
   const secretHash = hashSecret(secret);
@@ -66,7 +72,7 @@ export async function createWebhook(params: {
   await query(
     `INSERT INTO webhooks (webhook_uid, workspace_uid, customer_uid, name, url, secret_hash, events, status)
      VALUES (?, ?, ?, ?, ?, ?, ?, 'active')`,
-    [uid, params.workspaceUid, params.customerUid, params.name, params.url, secretHash, JSON.stringify(params.events)],
+    [uid, params.workspaceUid, params.customerUid, params.name, safeUrl.href, secretHash, JSON.stringify(params.events)],
   );
 
   const rows = await query<WebhookRow>(
@@ -137,7 +143,12 @@ export async function dispatchWebhookEvent(
 async function deliverWebhook(hook: WebhookRow, body: string): Promise<void> {
   const sig = signPayload(hook.secret_hash, body);
   try {
-    const res = await fetch(hook.url, {
+    const safeUrl = await assertSafeOutboundUrl(hook.url);
+    if (safeUrl.ok === false) {
+      throw new Error(safeUrl.error);
+    }
+
+    const res = await fetch(safeUrl.href, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -145,6 +156,7 @@ async function deliverWebhook(hook: WebhookRow, body: string): Promise<void> {
         "X-ARStudio-Event": "webhook",
       },
       body,
+      redirect: "error",
       signal: AbortSignal.timeout(10000),
     });
 

@@ -16,11 +16,10 @@ SET @sql := IF(@has_editor = 0, 'ALTER TABLE products ADD COLUMN last_editor_use
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 ALTER TABLE products
-  MODIFY COLUMN status VARCHAR(32) NOT NULL DEFAULT 'draft';
+  MODIFY COLUMN status ENUM('Draft', 'published') NOT NULL DEFAULT 'Draft';
 
-UPDATE products SET status = 'draft' WHERE LOWER(status) IN ('draft', '');
+UPDATE products SET status = 'Draft' WHERE LOWER(status) IN ('draft', '', 'archived', 'archive', 'disabled', 'unpublished');
 UPDATE products SET status = 'published' WHERE LOWER(status) IN ('published', 'active', 'publish');
-UPDATE products SET status = 'archived' WHERE LOWER(status) IN ('archived', 'archive', 'disabled', 'unpublished');
 
 CREATE TABLE IF NOT EXISTS product_edit_log (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,

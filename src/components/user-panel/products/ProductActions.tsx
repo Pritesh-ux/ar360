@@ -10,18 +10,21 @@ type Props = {
   productTitle?: string;
   onMore: (e: MouseEvent) => void;
   qrRecordId?: number | null;
+  /** When set, Viewer opens with client branding / catalog. */
+  clientUid?: string | null;
 };
 
 const ACTION_CLASS =
-  "up-product-card-action flex flex-col items-center justify-center gap-0.5 py-1 text-[#737373] no-underline transition-colors hover:text-[#111111]";
+  "up-product-card-action flex min-h-12 flex-col items-center justify-center gap-0.5 py-1.5 text-[#737373] no-underline transition-colors hover:text-[#111111] md:min-h-0 md:py-1";
 
 export default function ProductActions({
   productId,
   productTitle,
   onMore,
   qrRecordId,
+  clientUid,
 }: Props) {
-  const links = productHubLinks({ productId, productTitle, qrRecordId });
+  const links = productHubLinks({ productId, productTitle, qrRecordId, clientUid });
   const qrHref = qrRecordId != null ? links.qrEdit : links.qrCenter;
   function handleMoreKeyDown(event: KeyboardEvent<HTMLSpanElement>) {
     if (event.key === "Enter" || event.key === " ") {

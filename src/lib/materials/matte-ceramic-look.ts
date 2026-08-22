@@ -1,0 +1,48 @@
+import type { MaterialSetting } from "@/components/features/editor/types";
+
+/** Satin terracotta ceramic — darker clay color with a soft glossy coat. */
+export const TERRACOTTA_MATTE_LOOK: MaterialSetting = {
+  baseColor: "#6B3A2A",
+  metalness: 0,
+  roughness: 0.34,
+  emissiveColor: "#000000",
+  occlusionStrength: 1,
+  opacity: 1,
+  alphaMode: "OPAQUE",
+  transmission: 0,
+  ior: 1.5,
+  thickness: 0,
+  attenuationDistance: 0,
+  attenuationColor: "#ffffff",
+  specularIntensity: 0.92,
+  specularColor: "#ffffff",
+  envMapIntensity: 1.2,
+  reflectionIntensity: 1.15,
+  reflectionBlur: 0,
+  reflectionTint: "#ffffff",
+  fresnelStrength: 1,
+  clearcoat: 0.32,
+  clearcoatRoughness: 0.2,
+  normalScale: 1,
+  bumpScale: 1,
+  bumpSoftness: 0,
+  doubleSided: false,
+  depthWrite: true,
+  depthTest: true,
+  castShadow: true,
+  receiveShadow: true,
+  renderOrder: 0,
+};
+
+export const TERRACOTTA_STUDIO_LIGHTING = {
+  environmentImage: "/hdr/studio.hdr",
+  environmentSaturation: 1,
+  environmentTint: "#ffffff",
+  exposure: 0.85,
+  useSkybox: false,
+  backgroundColor: "#0B0B0B",
+  backgroundType: "solid" as const,
+  transparent: false,
+  shadowIntensity: 1.15,
+  shadowSoftness: 0.8,
+};

@@ -1,4 +1,6 @@
 import type { LogoDecal } from "@/components/shared/ModelViewer";
+import type { LogoDesign } from "@/lib/branding/logo-design";
+import type { TextureTransform } from "@/lib/materials/texture-transform";
 
 export type MaterialLogoLayer = {
   name?: string;
@@ -22,6 +24,17 @@ export type MaterialSetting = {
   normalTexture?: string;
   emissiveTexture?: string;
   occlusionTexture?: string;
+  occlusionStrength?: number;
+  normalScale?: number;
+  bumpTexture?: string;
+  bumpScale?: number;
+  bumpSoftness?: number;
+  baseColorMapTransform?: TextureTransform;
+  metallicRoughnessMapTransform?: TextureTransform;
+  normalMapTransform?: TextureTransform;
+  emissiveMapTransform?: TextureTransform;
+  occlusionMapTransform?: TextureTransform;
+  bumpMapTransform?: TextureTransform;
   logoLayer?: MaterialLogoLayer;
 };
 
@@ -40,6 +53,9 @@ export type ProductVariant = {
   occlusionTexture?: string;
   environmentImage?: string;
   exposure?: number;
+  environmentSaturation?: number;
+  environmentTint?: string;
+  useSkybox?: boolean;
   backgroundColor?: string;
   transparent?: boolean;
   shadowIntensity?: number;
@@ -61,7 +77,11 @@ export type ViewerProduct = {
   category?: string;
   description?: string;
   modelUrl?: string;
+  /** Mobile AR lite GLB (Scene Viewer) when the main model is large. */
+  arModelUrl?: string;
   usdzUrl?: string;
+  /** Full model size in bytes — used to gate in-page AR on mobile. */
+  modelBytes?: number;
   fileName?: string;
   poster?: string;
   thumbnailUrl?: string;
@@ -72,6 +92,7 @@ export type ViewerProduct = {
   brandName?: string;
   brandLogo?: string;
   brandLogoUrl?: string;
+  logoDesign?: LogoDesign;
   companyLogo?: string;
   companyLogoUrl?: string;
   logoUrl?: string;
@@ -90,8 +111,11 @@ export type ViewerProduct = {
   faviconUrl?: string;
   showProductTitle?: boolean;
   hideInteractionHint?: boolean;
+  poweredByLabel?: string | null;
   environmentImage?: string;
   exposure?: number;
+  environmentTint?: string;
+  environmentSaturation?: number;
   backgroundColor?: string;
   transparent?: boolean;
   shadowIntensity?: number;
@@ -103,6 +127,10 @@ export type ViewerProduct = {
   autoPlay?: boolean;
   fov?: number;
   realScale?: boolean;
+  /** auto | m | cm | mm — authored units of the GLB (AR uses meters). */
+  arModelUnit?: "auto" | "m" | "cm" | "mm";
+  /** Explicit uniform scale override (meters per authored unit). */
+  arModelScale?: number | null;
   arPlacement?: "floor" | "wall";
   activeVariantId?: string;
   variants?: ProductVariant[];
@@ -117,10 +145,22 @@ export type ViewerProduct = {
   emissiveTexture?: string;
   occlusionTexture?: string;
   logoDecals?: LogoDecal[];
+  hotspots?: Array<{
+    id: string;
+    title?: string;
+    description?: string;
+    position: string;
+    normal?: string;
+    actionType?: string;
+    actionValue?: string;
+  }>;
+  useSkybox?: boolean;
   isPasswordProtected?: boolean;
   sharePassword?: string;
   shareExpiry?: string;
   allowEmbed?: boolean;
+  /** Owner plan gate — when false, public AR launch is hidden. */
+  allowAr?: boolean;
   createdAt?: string;
   updatedAt?: string;
   settings?: Record<string, unknown>;
@@ -131,8 +171,25 @@ export type ViewerProduct = {
   backgroundGradientEnd?: string;
   environmentRotation?: number;
   ctaEnabled?: boolean;
-  ctaType?: "buy_now" | "visit_website" | "whatsapp" | "contact_seller" | "request_quote";
+  ctaType?:
+    | "buy_now"
+    | "visit_website"
+    | "whatsapp"
+    | "contact_seller"
+    | "request_quote"
+    | "tel"
+    | "mailto"
+    | "pdf"
+    | "custom"
+    | "url";
   ctaUrl?: string;
+  viewerContact?: {
+    enquireEnabled?: boolean;
+    enquireLabel?: string;
+    whatsappEnabled?: boolean;
+    whatsappLabel?: string;
+    whatsappNumber?: string;
+  };
 };
 
 export type Notice = { type: "success" | "error" | "info"; message: string };

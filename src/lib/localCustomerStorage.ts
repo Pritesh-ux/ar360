@@ -89,15 +89,24 @@ export async function ensureCustomerFolder(input: {
 
   const index = await readJson<CustomerIndex>(getIndexFile(), {});
   const normalizedEmail = input.email?.toLowerCase();
-  const existing = Object.values(index).find((item) => {
-    if (input.customerUid && item.customerUid === input.customerUid) return true;
-    if (input.userId && item.userId === input.userId) return true;
-    if (normalizedEmail && item.email?.toLowerCase() === normalizedEmail) return true;
-    return false;
-  });
+  const requestedUid = String(input.customerUid || "").trim();
+
+  // Session customerUid is canonical. Never remap uploads to a stale disk UID
+  // matched only by email/userId (that orphaned products after customer recreate).
+  let existing = requestedUid
+    ? Object.values(index).find((item) => item.customerUid === requestedUid)
+    : undefined;
+
+  if (!existing && !requestedUid) {
+    existing = Object.values(index).find((item) => {
+      if (input.userId && item.userId === input.userId) return true;
+      if (normalizedEmail && item.email?.toLowerCase() === normalizedEmail) return true;
+      return false;
+    });
+  }
 
   const now = new Date().toISOString();
-  const customerUid = existing?.customerUid || input.customerUid || createCustomerUid();
+  const customerUid = requestedUid || existing?.customerUid || createCustomerUid();
   const folderPath = getCustomerFolder(customerUid);
   const publicFolder = getCustomerPublicFolder(customerUid);
 
@@ -113,6 +122,17 @@ export async function ensureCustomerFolder(input: {
     createdAt: existing?.createdAt || now,
     updatedAt: now,
   };
+
+  // Drop stale index entries for the same email/user that point at a different UID.
+  for (const [key, item] of Object.entries(index)) {
+    const sameEmail =
+      normalizedEmail && item.email?.toLowerCase() === normalizedEmail && item.customerUid !== customerUid;
+    const sameUser =
+      input.userId && item.userId === input.userId && item.customerUid !== customerUid;
+    if (sameEmail || sameUser) {
+      delete index[key];
+    }
+  }
 
   index[customerUid] = customer;
   await writeJson(getIndexFile(), index);
@@ -190,12 +210,31 @@ export async function saveQrPng(input: {
   customerUid: string;
   productUid: string;
   destination: string;
+  /** Effective center logo URL (AR360 default or allowed custom). */
+  logoUrl?: string | null;
+  logoSize?: number | null;
 }) {
-  const png = await QRCode.toBuffer(input.destination, {
+  const {
+    stampQrCenterLogo,
+    AR360_QR_CENTER_LOGO_PATH,
+    AR360_QR_CENTER_LOGO_SIZE,
+  } = await import("@/lib/growth/qr-logo");
+
+  let png = await QRCode.toBuffer(input.destination, {
     type: "png",
     width: 1024,
     margin: 2,
     errorCorrectionLevel: "H",
+  });
+
+  const logoUrl = String(input.logoUrl || "").trim() || AR360_QR_CENTER_LOGO_PATH;
+  const size = Number(input.logoSize);
+  const logoSize = Number.isFinite(size) && size >= 12 && size <= 40 ? size : AR360_QR_CENTER_LOGO_SIZE;
+
+  png = await stampQrCenterLogo({
+    qrPng: png,
+    logoUrl,
+    logoSizePercent: logoSize,
   });
 
   return saveFileToProduct({

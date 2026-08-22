@@ -1,5 +1,8 @@
+"use client";
+
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { paginationRange, type PaginationMeta } from "@/lib/master-admin/pagination";
+import UserFilterDropdown from "@/components/user-panel/UserFilterDropdown";
 
 type Props = {
   page: number;
@@ -60,28 +63,29 @@ export default function AdminPagination({
 
   return (
     <div
-      className={`flex flex-col gap-3 border-t border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between ${className}`}
+      className={`flex flex-col gap-3 border-t border-[#ECECEC] px-4 py-3 sm:flex-row sm:items-center sm:justify-between ${className}`}
     >
       {summary ? (
-        <p className="text-[12px] font-semibold text-slate-500">{summary}</p>
+        <p className="text-[12px] font-semibold text-[#6B7280]">{summary}</p>
       ) : (
         <span />
       )}
 
       <div className="flex flex-wrap items-center justify-end gap-2">
         {pageSizeOptions && onPageSizeChange && pageSize ? (
-          <select
-            value={pageSize}
-            onChange={(e) => onPageSizeChange(Number(e.target.value))}
-            className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-[12px] font-semibold text-slate-600"
-            aria-label="Rows per page"
-          >
-            {pageSizeOptions.map((size) => (
-              <option key={size} value={size}>
-                {size} / page
-              </option>
-            ))}
-          </select>
+          <UserFilterDropdown
+            hideLabel
+            compact
+            className="min-w-[110px]"
+            menuWidth={140}
+            label="Rows per page"
+            menuTitle="Rows per page"
+            value={String(pageSize)}
+            options={pageSizeOptions.map(String)}
+            onChange={(value) => onPageSizeChange(Number(value))}
+            renderOption={(value) => `${value} / page`}
+            renderValue={(value) => `${value} / page`}
+          />
         ) : null}
 
         {safeTotalPages > 1 ? (
@@ -90,7 +94,7 @@ export default function AdminPagination({
             type="button"
             onClick={() => onPageChange(1)}
             disabled={page <= 1}
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-9 w-9 items-center justify-center rounded-[12px] border border-[#ECECEC] text-[#6B7280] transition hover:bg-[#FAFAFB] disabled:cursor-not-allowed disabled:opacity-40"
             aria-label="First page"
           >
             <ChevronsLeft size={16} />
@@ -99,7 +103,7 @@ export default function AdminPagination({
             type="button"
             onClick={() => onPageChange(Math.max(1, page - 1))}
             disabled={page <= 1}
-            className="flex h-9 items-center gap-1 rounded-lg border border-slate-200 px-2.5 text-[12px] font-bold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-9 items-center gap-1 rounded-[12px] border border-[#ECECEC] px-2.5 text-[12px] font-bold text-[#4B5563] transition hover:bg-[#FAFAFB] disabled:cursor-not-allowed disabled:opacity-40"
             aria-label="Previous page"
           >
             <ChevronLeft size={16} />
@@ -111,10 +115,10 @@ export default function AdminPagination({
               key={n}
               type="button"
               onClick={() => onPageChange(n)}
-              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border text-[12px] font-bold transition ${
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] border text-[12px] font-bold transition ${
                 page === n
-                  ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-slate-900"
-                  : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                  ? "border-[#B6FF38] bg-[#B6FF38] text-[#102000]"
+                  : "border-[#ECECEC] text-[#4B5563] hover:bg-[#FAFAFB]"
               }`}
             >
               {n}
@@ -125,7 +129,7 @@ export default function AdminPagination({
             type="button"
             onClick={() => onPageChange(Math.min(safeTotalPages, page + 1))}
             disabled={page >= safeTotalPages}
-            className="flex h-9 items-center gap-1 rounded-lg border border-slate-200 px-2.5 text-[12px] font-bold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-9 items-center gap-1 rounded-[12px] border border-[#ECECEC] px-2.5 text-[12px] font-bold text-[#4B5563] transition hover:bg-[#FAFAFB] disabled:cursor-not-allowed disabled:opacity-40"
             aria-label="Next page"
           >
             <span className="hidden sm:inline">Next</span>
@@ -135,7 +139,7 @@ export default function AdminPagination({
             type="button"
             onClick={() => onPageChange(safeTotalPages)}
             disabled={page >= safeTotalPages}
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-9 w-9 items-center justify-center rounded-[12px] border border-[#ECECEC] text-[#6B7280] transition hover:bg-[#FAFAFB] disabled:cursor-not-allowed disabled:opacity-40"
             aria-label="Last page"
           >
             <ChevronsRight size={16} />
@@ -143,7 +147,7 @@ export default function AdminPagination({
           </div>
         ) : null}
 
-        <span className="whitespace-nowrap rounded-lg bg-slate-50 px-2.5 py-2 text-[11px] font-semibold text-slate-500">
+        <span className="whitespace-nowrap rounded-[12px] bg-[#FAFAFB] px-2.5 py-2 text-[11px] font-semibold text-[#6B7280]">
           Page {page} of {safeTotalPages}
         </span>
       </div>

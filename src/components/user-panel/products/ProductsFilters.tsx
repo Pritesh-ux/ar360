@@ -1,33 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
-
-type FilterSelectProps = {
-  label: string;
-  value: string;
-  options: string[];
-  onChange: (value: string) => void;
-  renderOption?: (value: string) => ReactNode;
-};
-
-function FilterSelect({ label, value, options, onChange, renderOption }: FilterSelectProps) {
-  return (
-    <label className="flex min-w-[150px] flex-col gap-1.5">
-      <span className="text-[11px] font-semibold uppercase tracking-wide text-[#525252]">{label}</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-11 rounded-[14px] border border-[#C8CDD4] bg-white px-3 text-[13px] font-medium text-[#111111] outline-none transition focus:border-[#84D400] focus:ring-2 focus:ring-[#84D400]/20"
-      >
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {renderOption ? renderOption(option) : option}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
+import UserFilterDropdown from "@/components/user-panel/UserFilterDropdown";
 
 type Props = {
   folder: string;
@@ -41,8 +14,13 @@ type Props = {
   onStatusChange: (value: string) => void;
   onCategoryChange: (value: string) => void;
   onSortChange: (value: string) => void;
-  embedded?: boolean;
+  /** Optional counts for mobile status tabs */
+  statusCounts?: { all?: number; published?: number; drafts?: number };
 };
+
+function folderLabel(value: string) {
+  return value === "All" ? "All Folders" : value;
+}
 
 export default function ProductsFilters({
   folder,
@@ -56,27 +34,87 @@ export default function ProductsFilters({
   onStatusChange,
   onCategoryChange,
   onSortChange,
-  embedded = false,
+  statusCounts,
 }: Props) {
+  const tabs = [
+    { key: "All", label: `All${statusCounts?.all != null ? ` (${statusCounts.all})` : ""}` },
+    {
+      key: "Saved",
+      label: "Saved",
+    },
+    {
+      key: "Archived",
+      label: "Archived",
+    },
+  ] as const;
+
   return (
-    <div
-      className={
-        embedded
-          ? "flex flex-wrap items-end gap-3 p-3 md:p-4"
-          : "flex flex-wrap items-end gap-3 rounded-[20px] border border-[#ECECEC] bg-white p-3 shadow-sm md:p-4"
-      }
-    >
-      <FilterSelect label="Folder" value={folder} options={folders} onChange={onFolderChange} />
-      <FilterSelect
-        label="Status"
-        value={status}
-        options={["All", "Draft", "Published", "Processing", "Archived"]}
-        onChange={onStatusChange}
-      />
-      <FilterSelect label="Category" value={category} options={categories} onChange={onCategoryChange} />
-      <div className="ml-auto min-w-[180px]">
-        <FilterSelect label="Sort by" value={sortBy} options={sortOptions} onChange={onSortChange} />
+    <>
+      {/* Mobile status tabs — mockup style */}
+      <div className="flex gap-5 overflow-x-auto border-b border-[#E8EBE8] md:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {tabs.map((tab) => {
+          const active = status === tab.key || (tab.key === "All" && status === "All");
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => onStatusChange(tab.key)}
+              className={[
+                "shrink-0 border-b-2 pb-2 text-[14px] font-semibold transition",
+                active
+                  ? "border-[#84D400] text-[#111111]"
+                  : "border-transparent text-[#737373]",
+              ].join(" ")}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
-    </div>
+
+      {/* Desktop filters */}
+      <div className="dash-premium-card hidden flex-wrap items-end gap-2 p-3 md:flex md:gap-3 md:p-4">
+        <div className="hidden xl:block">
+          <UserFilterDropdown
+            label="Folder"
+            menuTitle="Folder"
+            value={folder}
+            options={folders}
+            onChange={onFolderChange}
+            renderOption={folderLabel}
+            renderValue={folderLabel}
+            menuWidth={240}
+          />
+        </div>
+
+        <UserFilterDropdown
+          label="Status"
+          menuTitle="Status"
+          value={status}
+          options={["All", "Saved", "Processing", "Archived"]}
+          onChange={onStatusChange}
+        />
+
+        <UserFilterDropdown
+          label="Category"
+          menuTitle="Category"
+          value={category}
+          options={categories}
+          onChange={onCategoryChange}
+          menuWidth={240}
+        />
+
+        <div className="w-full min-w-0 sm:ml-auto sm:w-auto sm:min-w-[180px]">
+          <UserFilterDropdown
+            label="Sort by"
+            menuTitle="Sort by"
+            value={sortBy}
+            options={sortOptions}
+            onChange={onSortChange}
+            menuWidth={240}
+          />
+        </div>
+      </div>
+    </>
   );
 }

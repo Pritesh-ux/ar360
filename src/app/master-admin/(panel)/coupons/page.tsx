@@ -1,26 +1,42 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useDeferredEffect } from "@/lib/react/use-deferred-effect";
 import {
-  CalendarClock,
-  ChevronDown,
   Copy,
   Download,
   Edit3,
   Eye,
   IndianRupee,
   Plus,
+  Search,
   Tag,
+  Trash2,
   TrendingUp,
+  X,
   XCircle,
   Zap,
 } from "lucide-react";
 import AdminPageHeader from "@/components/features/master-admin/AdminPageHeader";
+import { AdminAreaChart } from "@/components/features/master-admin/AdminSparkline";
 import CouponFormModal, { type CouponFormValues } from "@/components/features/master-admin/CouponFormModal";
 import CouponRedemptionsModal from "@/components/features/master-admin/CouponRedemptionsModal";
 import ConfirmModal from "@/components/features/master-admin/ConfirmModal";
-import { AdminActionMessage, AdminPagination } from "@/components/ui/admin";
-import { paginationRange, type PaginationMeta } from "@/lib/master-admin/pagination";
+import {
+  AdminEmptyState,
+  AdminLoadingState,
+  AdminMetricCard,
+  AdminPagination,
+  adminTableHeadClass,
+  adminTableRowClass,
+} from "@/components/ui/admin";
+import UserFilterDropdown from "@/components/user-panel/UserFilterDropdown";
+import UserDateRangePicker, {
+  defaultDateRange,
+  type DateRangeValue,
+} from "@/components/user-panel/UserDateRangePicker";
+import type { PaginationMeta } from "@/lib/master-admin/pagination";
+import "@/components/dashboard/dashboard-premium.css";
 import {
   couponStatusClass,
   couponTypeClass,
@@ -53,17 +69,11 @@ type Summary = {
   redemptionValueInRange?: number;
 };
 
-function defaultDateRange() {
-  const to = new Date();
-  const from = new Date();
-  from.setDate(from.getDate() - 29);
-  return {
-    from: from.toISOString().slice(0, 10),
-    to: to.toISOString().slice(0, 10),
-  };
+function defaultCouponDateRange(): DateRangeValue {
+  return defaultDateRange("30d");
 }
 
-const initialRange = defaultDateRange();
+const initialRange = defaultCouponDateRange();
 
 type TypeBreakdown = {
   type: string;
@@ -84,6 +94,8 @@ const statusOptions = [
   { label: "Expired", value: "expired" },
   { label: "Disabled", value: "disabled" },
 ];
+const statusFilterOptions = statusOptions.map((s) => s.value);
+const typeFilterOptions = typeOptions.map((t) => t.value);
 
 const typeColors: Record<string, string> = {
   percentage: "#10B981",
@@ -92,19 +104,7 @@ const typeColors: Record<string, string> = {
 };
 
 function MiniLineChart({ rows, color = "#8B5CF6" }: { rows: { label: string; value: number }[]; color?: string }) {
-  const max = Math.max(...rows.map((r) => r.value), 1);
-  const points = rows
-    .map((row, index) => {
-      const x = (index / Math.max(rows.length - 1, 1)) * 100;
-      const y = 100 - (row.value / max) * 80 - 10;
-      return `${x},${y}`;
-    })
-    .join(" ");
-  return (
-    <svg viewBox="0 0 100 100" className="mt-3 h-28 w-full" preserveAspectRatio="none">
-      <polyline fill="none" stroke={color} strokeWidth="2" points={points} />
-    </svg>
-  );
+  return <AdminAreaChart rows={rows} color={color} className="mt-3 h-28 w-full" />;
 }
 
 function DonutChart({ items, total }: { items: { label: string; value: number; color: string }[]; total: number }) {
@@ -168,8 +168,7 @@ export default function CouponsPage() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [type, setType] = useState("all");
-  const [createdFrom, setCreatedFrom] = useState("");
-  const [createdTo, setCreatedTo] = useState("");
+  const [createdDateRange, setCreatedDateRange] = useState<DateRangeValue>(() => defaultCouponDateRange());
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState<PaginationMeta>({ page: 1, pageSize: PAGE_SIZE, total: 0, totalPages: 1 });
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -178,6 +177,8 @@ export default function CouponsPage() {
   const [disableId, setDisableId] = useState<string | null>(null);
   const [redemptionsCoupon, setRedemptionsCoupon] = useState<Coupon | null>(null);
   const [saving, setSaving] = useState(false);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [clearAllOpen, setClearAllOpen] = useState(false);
 
   async function load(nextPage = page) {
     setLoading(true);
@@ -188,8 +189,8 @@ export default function CouponsPage() {
     if (search) params.set("search", search);
     if (status !== "all") params.set("status", status);
     if (type !== "all") params.set("type", type);
-    if (createdFrom) params.set("createdFrom", createdFrom);
-    if (createdTo) params.set("createdTo", createdTo);
+    if (createdDateRange.from) params.set("createdFrom", createdDateRange.from);
+    if (createdDateRange.to) params.set("createdTo", createdDateRange.to);
 
     try {
       const response = await fetch(`/api/master-admin/coupons?${params}`, { cache: "no-store" });
@@ -215,17 +216,16 @@ export default function CouponsPage() {
     }
   }
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     setPage(1);
-  }, [search, status, type, createdFrom, createdTo]);
+  }, [search, status, type, createdDateRange.from, createdDateRange.to, createdDateRange.preset]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void load(page), 250);
     return () => window.clearTimeout(timer);
-  }, [search, status, type, createdFrom, createdTo, page]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [search, status, type, createdDateRange.from, createdDateRange.to, createdDateRange.preset, page]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pageItems = coupons;
-  const range = paginationRange(pagination);
 
   async function saveCoupon(values: CouponFormValues) {
     setSaving(true);
@@ -317,12 +317,55 @@ export default function CouponsPage() {
     }
   }
 
+  async function deleteSelected() {
+    const ids = Array.from(selected);
+    if (!ids.length) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/master-admin/coupons", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Delete failed");
+      setMessage(`${data.deleted || ids.length} coupon(s) deleted.`);
+      setSelected(new Set());
+      setBulkDeleteOpen(false);
+      await load(1);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Delete failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function clearAllCoupons() {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/master-admin/coupons", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deleteAll: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Clear failed");
+      setMessage(`${data.deleted || 0} coupon(s) deleted.`);
+      setSelected(new Set());
+      setClearAllOpen(false);
+      await load(1);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Clear failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function resetFilters() {
     setSearch("");
     setStatus("all");
     setType("all");
-    setCreatedFrom("");
-    setCreatedTo("");
+    setCreatedDateRange(defaultCouponDateRange());
   }
 
   function exportCsv() {
@@ -331,8 +374,8 @@ export default function CouponsPage() {
     if (search) params.set("search", search);
     if (status !== "all") params.set("status", status);
     if (type !== "all") params.set("type", type);
-    if (createdFrom) params.set("createdFrom", createdFrom);
-    if (createdTo) params.set("createdTo", createdTo);
+    if (createdDateRange.from) params.set("createdFrom", createdDateRange.from);
+    if (createdDateRange.to) params.set("createdTo", createdDateRange.to);
     window.open(`/api/master-admin/coupons?${params}`, "_blank");
   }
 
@@ -356,46 +399,40 @@ export default function CouponsPage() {
   }
 
   const filterLabel =
-    createdFrom || createdTo
-      ? `${fmtDateShort(createdFrom || chartRange.from)} – ${fmtDateShort(createdTo || chartRange.to)}`
+    createdDateRange.from || createdDateRange.to
+      ? `${fmtDateShort(createdDateRange.from || chartRange.from)} – ${fmtDateShort(createdDateRange.to || chartRange.to)}`
       : `${summary?.totalCount ?? 0} matching filters`;
+
+  const hasFilters = Boolean(search || status !== "all" || type !== "all" || createdDateRange.preset !== "30d");
 
   const statCards = [
     {
       title: "Active Coupons",
       value: summary?.activeCoupons ?? 0,
-      subtitle: filterLabel,
-      color: "#10B981",
+      note: filterLabel,
       icon: Tag,
-      iconBg: "bg-emerald-50 text-emerald-600",
-      isText: false,
+      iconClassName: "bg-emerald-50 text-emerald-600",
     },
     {
       title: "Total Used",
       value: (summary?.totalUsed ?? 0).toLocaleString("en-IN"),
-      subtitle: "Redemptions across filtered coupons",
-      color: "#0EA5E9",
+      note: "Redemptions across filtered coupons",
       icon: TrendingUp,
-      iconBg: "bg-sky-50 text-sky-600",
-      isText: true,
+      iconClassName: "bg-sky-50 text-sky-600",
     },
     {
       title: "Expired Coupons",
       value: summary?.expiredCoupons ?? 0,
-      subtitle: "Past expiry or marked expired",
-      color: "#F59E0B",
+      note: "Past expiry or marked expired",
       icon: XCircle,
-      iconBg: "bg-amber-50 text-amber-600",
-      isText: false,
+      iconClassName: "bg-amber-50 text-amber-600",
     },
     {
       title: "Customer Discounts",
       value: fmtMoneyInr(summary?.revenueSaved ?? 0),
-      subtitle: "Lifetime discount value (not platform revenue)",
-      color: "#8B5CF6",
+      note: "Lifetime discount value (not platform revenue)",
       icon: IndianRupee,
-      iconBg: "bg-violet-50 text-violet-600",
-      isText: true,
+      iconClassName: "bg-violet-50 text-violet-600",
     },
   ];
 
@@ -433,22 +470,38 @@ export default function CouponsPage() {
   }
 
   return (
-    <div className="master-admin-panel">
-      <div className="flex flex-col gap-5 xl:flex-row">
-        <div className="min-w-0 flex-1 space-y-5">
+    <div className="master-admin-panel dash-premium animate-dash-fade-in flex min-h-0 flex-1 flex-col gap-3">
+      <div className="flex flex-col gap-3 xl:flex-row">
+        <div className="min-w-0 flex-1 flex flex-col gap-3">
           <AdminPageHeader
             title="Coupons & Promotions"
             subtitle="Create and manage discount codes, usage limits, and promotional offers."
             actions={
               <>
+                {selected.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setBulkDeleteOpen(true)}
+                    className="inline-flex h-10 items-center gap-2 rounded-[14px] border border-[#FECACA] bg-[#FEF2F2] px-3 text-[12px] font-semibold text-[#B91C1C] transition hover:bg-[#FEE2E2]"
+                  >
+                    <Trash2 size={15} />
+                    Delete Selected ({selected.size})
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setClearAllOpen(true)}
+                  className="dash-premium-btn-secondary h-10 px-3 text-[12px]"
+                >
+                  Clear Demo Data
+                </button>
                 <button
                   type="button"
                   onClick={exportCsv}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-[13px] font-bold text-slate-700"
+                  className="dash-premium-btn-secondary h-10 px-3 text-[12px]"
                 >
-                  <Download size={16} />
+                  <Download size={15} />
                   Export
-                  <ChevronDown size={14} className="text-slate-400" />
                 </button>
                 <button
                   type="button"
@@ -456,9 +509,9 @@ export default function CouponsPage() {
                     setEditingCoupon(null);
                     setFormOpen(true);
                   }}
-                  className="inline-flex items-center gap-2 rounded-xl bg-[#A6FF2E] px-4 py-2.5 text-[13px] font-black text-slate-900"
+                  className="dash-premium-btn-primary h-10 px-4 text-[12px]"
                 >
-                  <Plus size={16} />
+                  <Plus size={15} strokeWidth={2.2} />
                   Create Coupon
                 </button>
               </>
@@ -466,150 +519,145 @@ export default function CouponsPage() {
           />
 
           {message ? (
-            <AdminActionMessage
-              message={message}
-              variant={message.toLowerCase().includes("fail") ? "error" : "success"}
-            />
+            <div
+              className={`dash-premium-card flex items-center justify-between gap-3 px-4 py-3 ${
+                message.toLowerCase().includes("fail")
+                  ? "border-[#FECACA] bg-[#FEF2F2]"
+                  : "border-[#DCFCE7] bg-[#F0FDF4]"
+              }`}
+            >
+              <p
+                className={`text-[13px] font-semibold ${
+                  message.toLowerCase().includes("fail") ? "text-[#B91C1C]" : "text-[#166534]"
+                }`}
+              >
+                {message}
+              </p>
+              <button
+                type="button"
+                onClick={() => setMessage("")}
+                className="grid h-8 w-8 place-items-center rounded-[10px] hover:bg-white/70"
+                aria-label="Dismiss"
+              >
+                <X size={15} />
+              </button>
+            </div>
           ) : null}
 
           <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {statCards.map((card) => {
-              const Icon = card.icon;
-              return (
-                <div
-                  key={card.title}
-                  className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_2px_10px_rgba(15,23,42,0.04)]"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${card.iconBg}`}>
-                      <Icon size={16} />
-                    </div>
-                  </div>
-                  <p className="mt-3 text-[11px] font-semibold text-slate-500">{card.title}</p>
-                  <p className="mt-0.5 text-[20px] font-black leading-none text-slate-950">
-                    {card.isText ? card.value : Number(card.value).toLocaleString("en-IN")}
-                  </p>
-                  <p className="mt-1 text-[10px] font-semibold text-slate-400">{card.subtitle}</p>
-                </div>
-              );
-            })}
+            {statCards.map((card) => (
+              <AdminMetricCard
+                key={card.title}
+                title={card.title}
+                value={card.value}
+                note={card.note}
+                iconComponent={card.icon}
+                iconClassName={card.iconClassName}
+                layout="compact"
+              />
+            ))}
           </section>
 
-          <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-            <div className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row lg:flex-wrap lg:items-center">
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by code or description..."
-                className="h-10 min-w-[220px] flex-1 rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-[13px] font-medium outline-none focus:border-[#A6FF2E] focus:bg-white"
-              />
-              <select
+          <section className="dash-premium-card overflow-hidden">
+            <div className="flex flex-wrap items-center gap-2 border-b border-[#ECECEC] px-4 py-3">
+              <div className="relative min-w-[220px] flex-1 basis-[240px] max-w-sm">
+                <Search
+                  size={15}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]"
+                />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search by code or description..."
+                  className="h-10 w-full rounded-[14px] border border-[#ECECEC] bg-white pl-9 pr-3 text-[13px] font-medium text-[#111827] outline-none transition focus:border-[#84D400] focus:shadow-[0_0_0_3px_rgba(182,255,56,0.18)]"
+                />
+              </div>
+              <UserFilterDropdown
+                hideLabel
+                compact
+                className="w-[138px] shrink-0"
+                label="Status"
+                menuTitle="Status"
                 value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-700"
-              >
-                {statusOptions.map((s) => (
-                  <option key={s.value} value={s.value}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-              <select
+                options={statusFilterOptions}
+                onChange={setStatus}
+                renderOption={(value) => statusOptions.find((s) => s.value === value)?.label || value}
+                renderValue={(value) => statusOptions.find((s) => s.value === value)?.label || value}
+              />
+              <UserFilterDropdown
+                hideLabel
+                compact
+                className="w-[148px] shrink-0"
+                label="Type"
+                menuTitle="Type"
                 value={type}
-                onChange={(e) => setType(e.target.value)}
-                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-700"
-              >
-                {typeOptions.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-              <input
-                type="date"
-                value={createdFrom}
-                onChange={(e) => setCreatedFrom(e.target.value)}
-                title="Created from"
-                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-700"
+                options={typeFilterOptions}
+                onChange={setType}
+                renderOption={(value) => typeOptions.find((t) => t.value === value)?.label || value}
+                renderValue={(value) => typeOptions.find((t) => t.value === value)?.label || value}
               />
-              <input
-                type="date"
-                value={createdTo}
-                onChange={(e) => setCreatedTo(e.target.value)}
-                title="Created to"
-                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-700"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  const range = defaultDateRange();
-                  setCreatedFrom(range.from);
-                  setCreatedTo(range.to);
-                }}
-                className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-bold text-slate-700"
-              >
-                <CalendarClock size={14} />
-                Last 30 days
-              </button>
-              <button
-                type="button"
-                onClick={resetFilters}
-                className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 text-[13px] font-bold text-slate-600"
-              >
-                Reset
-              </button>
+              <UserDateRangePicker value={createdDateRange} onChange={setCreatedDateRange} />
+              {hasFilters ? (
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="ml-auto inline-flex h-10 shrink-0 items-center rounded-[14px] px-3 text-[12px] font-semibold text-[#6B7280] transition hover:bg-[#F3F4F6] hover:text-[#111827]"
+                >
+                  Clear
+                </button>
+              ) : null}
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full min-w-[980px] text-left text-[13px]">
                 <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50/60 text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                    <th className="px-4 py-3">
+                  <tr className={adminTableHeadClass}>
+                    <th className="px-3 py-3">
                       <input
                         type="checkbox"
                         checked={pageItems.length > 0 && pageItems.every((row) => selected.has(row.id))}
                         onChange={(e) => toggleAll(e.target.checked)}
-                        className="rounded border-slate-300"
+                        className="h-4 w-4 rounded border-[#D1D5DB] accent-[#84D400]"
                       />
                     </th>
-                    <th className="px-4 py-3">Code</th>
-                    <th className="px-4 py-3">Description</th>
-                    <th className="px-4 py-3">Discount</th>
-                    <th className="px-4 py-3">Type</th>
-                    <th className="px-4 py-3">Usage</th>
-                    <th className="px-4 py-3">Usage Limit</th>
-                    <th className="px-4 py-3">Expiry</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3 text-right">Actions</th>
+                    <th className="px-3 py-3">Code</th>
+                    <th className="px-3 py-3">Description</th>
+                    <th className="px-3 py-3">Discount</th>
+                    <th className="px-3 py-3">Type</th>
+                    <th className="px-3 py-3">Usage</th>
+                    <th className="px-3 py-3">Usage Limit</th>
+                    <th className="px-3 py-3">Expiry</th>
+                    <th className="px-3 py-3">Status</th>
+                    <th className="px-3 py-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={10} className="px-4 py-12 text-center font-semibold text-slate-400">
-                        Loading coupons...
+                      <td colSpan={10}>
+                        <AdminLoadingState label="Loading coupons..." />
                       </td>
                     </tr>
                   ) : pageItems.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="px-4 py-12 text-center font-semibold text-slate-400">
-                        No coupons found.
+                      <td colSpan={10}>
+                        <AdminEmptyState title="No coupons found." />
                       </td>
                     </tr>
                   ) : (
                     pageItems.map((row) => {
                       const pct = usagePercent(row.usageCount, row.usageLimit);
                       return (
-                        <tr key={row.id} className="border-b border-slate-50 transition hover:bg-slate-50/60">
-                          <td className="px-4 py-3">
+                        <tr key={row.id} className={adminTableRowClass}>
+                          <td className="px-3 py-3">
                             <input
                               type="checkbox"
                               checked={selected.has(row.id)}
                               onChange={() => toggleOne(row.id)}
-                              className="rounded border-slate-300"
+                              className="h-4 w-4 rounded border-[#D1D5DB] accent-[#84D400]"
                             />
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-3 py-3">
                             <div className="flex items-center gap-2">
                               <span className="font-black tracking-wide text-slate-900">{row.code}</span>
                               <button
@@ -718,12 +766,14 @@ export default function CouponsPage() {
               </table>
             </div>
 
-            <AdminPagination
-              page={page}
-              totalPages={pagination.totalPages}
-              meta={pagination}
-              onPageChange={setPage}
-            />
+            <div className="border-t border-[#ECECEC] px-2">
+              <AdminPagination
+                page={page}
+                totalPages={pagination.totalPages}
+                meta={pagination}
+                onPageChange={setPage}
+              />
+            </div>
           </section>
 
           <section className="grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -734,9 +784,9 @@ export default function CouponsPage() {
                   key={action.label}
                   type="button"
                   onClick={() => handleQuickAction(action.label)}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 text-[12px] font-bold text-slate-700 transition hover:border-[#A6FF2E]/60 hover:bg-[#A6FF2E]/5"
+                  className="inline-flex items-center justify-center gap-2 rounded-[14px] border border-[#ECECEC] bg-white px-3 py-3 text-[12px] font-bold text-[#374151] transition hover:border-[#84D400]/60 hover:bg-[#FAFAFB]"
                 >
-                  <Icon size={14} className="text-[#4D9A00]" />
+                  <Icon size={14} className="text-[#5AA700]" />
                   {action.label}
                 </button>
               );
@@ -744,8 +794,8 @@ export default function CouponsPage() {
           </section>
         </div>
 
-        <aside className="w-full shrink-0 space-y-4 xl:w-[320px]">
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
+        <aside className="w-full shrink-0 space-y-3 xl:w-[320px]">
+          <div className="dash-premium-card p-4">
             <h3 className="text-[13px] font-black text-slate-900">Coupon Types</h3>
             <p className="mt-0.5 text-[11px] font-semibold text-slate-400">
               {donutTotal} total coupons
@@ -755,8 +805,8 @@ export default function CouponsPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
-            <h3 className="text-[13px] font-black text-slate-900">Top Performing Coupons</h3>
+          <div className="dash-premium-card p-4">
+            <h3 className="text-[13px] font-black text-[#111827]">Top Performing Coupons</h3>
             <div className="mt-3 space-y-2">
               {topPerforming.length === 0 ? (
                 <p className="text-[12px] font-semibold text-slate-400">No usage data yet</p>
@@ -778,10 +828,10 @@ export default function CouponsPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
+          <div className="dash-premium-card p-4">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <h3 className="text-[13px] font-black text-slate-900">Customer Discounts</h3>
+                <h3 className="text-[13px] font-black text-[#111827]">Customer Discounts</h3>
                 <p className="mt-0.5 text-[11px] font-semibold text-slate-400">
                   {fmtDateShort(chartRange.from)} – {fmtDateShort(chartRange.to)}
                 </p>
@@ -836,6 +886,26 @@ export default function CouponsPage() {
         onConfirm={() => {
           if (disableId) void disableCoupon(disableId);
         }}
+      />
+
+      <ConfirmModal
+        open={bulkDeleteOpen}
+        title={`Delete ${selected.size} coupon(s)?`}
+        description="This will permanently remove the selected coupons and all their redemption records. This action cannot be undone."
+        confirmText="Delete"
+        danger
+        onCancel={() => setBulkDeleteOpen(false)}
+        onConfirm={() => void deleteSelected()}
+      />
+
+      <ConfirmModal
+        open={clearAllOpen}
+        title="Delete ALL coupons?"
+        description="This will permanently remove every coupon and all redemption records from the database. This action cannot be undone."
+        confirmText="Delete All"
+        danger
+        onCancel={() => setClearAllOpen(false)}
+        onConfirm={() => void clearAllCoupons()}
       />
     </div>
   );

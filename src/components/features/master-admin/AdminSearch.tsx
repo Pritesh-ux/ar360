@@ -13,20 +13,21 @@ export default function AdminSearch({
   value,
   onChange,
   placeholder = "Search...",
+  className = "",
   ...props
 }: AdminSearchProps) {
   return (
-    <div className="relative w-full sm:w-[390px]">
+    <div className={`relative w-full sm:max-w-md ${className}`}>
       <Search
-        size={18}
-        className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+        size={15}
+        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]"
       />
       <input
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="h-12 w-full rounded-[14px] border border-slate-200 bg-white pl-11 pr-4 text-sm font-semibold text-slate-900 placeholder:text-slate-400 placeholder:font-semibold outline-none focus:border-[#A6FF2E] focus:ring-2 focus:ring-[#A6FF2E] transition-all"
+        className="h-10 w-full rounded-[14px] border border-[#ECECEC] bg-white pl-9 pr-3 text-[13px] font-medium text-[#111827] outline-none transition placeholder:font-medium placeholder:text-[#9CA3AF] focus:border-[#84D400] focus:shadow-[0_0_0_3px_rgba(182,255,56,0.18)]"
         {...props}
       />
     </div>

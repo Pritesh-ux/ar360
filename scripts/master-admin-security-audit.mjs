@@ -26,6 +26,8 @@ const AUTH_PATTERNS = [
   /requireApiAdminPermission\s*\(/,
 ];
 
+const AUDIT_PATTERNS = [/writeMasterAdminAudit\s*\(/, /logAdminAudit\s*\(/];
+
 const FORBIDDEN_PATTERNS = [
   { name: "coupon auto-seed", re: /seedCoupons|coupon-seed/ },
   { name: "ticket auto-seed", re: /seedSupportTickets|ticket-seed/ },
@@ -60,11 +62,11 @@ for (const file of routes) {
     findings.push({ severity: "warn", file: rel, issue: "CSV export may lack exports.download permission check" });
   }
 
-  if (/writeMasterAdminAudit\s*\(/.test(source) && /PATCH|POST|DELETE/.test(methods.join(","))) {
+  if (AUDIT_PATTERNS.some((re) => re.test(source)) && /PATCH|POST|DELETE/.test(methods.join(","))) {
     // informational pass — mutation routes with audit are good
   } else if (/PATCH|POST|DELETE/.test(methods.join(",")) && !/test-email/.test(rel)) {
     const isReadOnlyPost = /action\s*===\s*["']retry["']|action\s*===\s*["']send["']/.test(source);
-    if (!isReadOnlyPost && !/writeMasterAdminAudit\s*\(/.test(source) && !/impersonat/.test(rel)) {
+    if (!isReadOnlyPost && !AUDIT_PATTERNS.some((re) => re.test(source)) && !/impersonat/.test(rel)) {
       findings.push({ severity: "info", file: rel, issue: "Mutation route without writeMasterAdminAudit (review manually)" });
     }
   }

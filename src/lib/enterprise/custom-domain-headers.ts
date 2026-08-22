@@ -6,6 +6,7 @@ export const CUSTOM_DOMAIN_HOST_HEADER = "x-ar360-custom-domain";
 export function isPublicCustomDomainPath(pathname: string): boolean {
   return (
     pathname.startsWith("/viewer") ||
+    pathname.startsWith("/c/") ||
     pathname.startsWith("/embed") ||
     pathname.startsWith("/s/") ||
     pathname.startsWith("/qr/") ||

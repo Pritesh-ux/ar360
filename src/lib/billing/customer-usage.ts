@@ -3,7 +3,8 @@ import { getCustomerBillingPeriod } from "@/lib/billing/billing-period";
 import { getPlanLevel } from "@/lib/billing/plan-levels";
 import { getPlanBySlug } from "@/lib/billing/plan-service";
 import { mapLegacyPlanId } from "@/lib/billing/plan-enforcement";
-import { resolvePlanLimits } from "@/lib/billing/resolve-plan-limits";
+import { resolveCustomerPlanLimits } from "@/lib/billing/resolve-plan-limits";
+import { getPlanDisplayName } from "@/lib/billing/plans";
 import {
   isExceeded,
   normalizePlanLimit,
@@ -157,7 +158,7 @@ function dateToIso(value: Date | string | null | undefined): string | null {
 
 /** Canonical customer usage snapshot — single source for dashboard, subscription, admin. */
 export async function getCustomerUsage(customerUid: string): Promise<CustomerUsage> {
-  const [subscriptionRows, subCheck, billingPeriod] = await Promise.all([
+  const [subscriptionRows, subCheck, billingPeriod, customerLimits] = await Promise.all([
     query<SubscriptionRow>(
       `SELECT plan_id, status, billing_period, current_period_start, current_period_end, cancel_at_period_end
          FROM customer_subscriptions WHERE customer_uid = ? LIMIT 1`,
@@ -165,16 +166,19 @@ export async function getCustomerUsage(customerUid: string): Promise<CustomerUsa
     ).catch(() => []),
     checkSubscription(customerUid),
     getCustomerBillingPeriod(customerUid),
+    resolveCustomerPlanLimits(customerUid),
   ]);
 
   const subscription = subscriptionRows[0];
-  const rawPlanId = subscription?.plan_id || subCheck.plan?.id || "trial";
-  const planSlug = mapLegacyPlanId(rawPlanId);
+  const rawPlanId = customerLimits.planId || subscription?.plan_id || subCheck.plan?.id || "trial";
+  const planSlug = mapLegacyPlanId(String(rawPlanId));
 
   const [limits, canonicalPlan, products, storageBytes, bandwidthBytes, qrCodes, shareLinks] =
     await Promise.all([
-      resolvePlanLimits(rawPlanId),
-      getPlanBySlug(planSlug),
+      Promise.resolve(customerLimits),
+      String(rawPlanId).toLowerCase().startsWith("ecp_")
+        ? Promise.resolve(null)
+        : getPlanBySlug(planSlug),
       countBillableProducts(customerUid),
       sumStorageBytes(customerUid),
       getBandwidthUsedBytesInPeriod(customerUid, billingPeriod.periodKey),
@@ -200,7 +204,7 @@ export async function getCustomerUsage(customerUid: string): Promise<CustomerUsa
     customerId: customerUid,
     plan: {
       id: limits.planId,
-      name: canonicalPlan?.name || limits.name || planSlug,
+      name: getPlanDisplayName(String(limits.planId), limits.name),
       slug: String(limits.planId),
       level: limits.isEnterpriseCustom ? getPlanLevel("enterprise") : getPlanLevel(planSlug),
     },

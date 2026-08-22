@@ -1,44 +1,30 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import PricingPlanPanel from "./PricingPlanPanel";
-import { AlertCircle, Building2, Check, RefreshCw, Users } from "lucide-react";
+import { AlertCircle, RefreshCw } from "lucide-react";
+import { resolveYearlyDiscountPercent } from "@/lib/billing/plans";
 import { DISPLAY, SECTION_PAD } from "./landingMotion";
+import LandingContentParallax from "./LandingContentParallax";
 
-function gridClassForCount(count: number) {
-  if (count <= 1) return "mx-auto max-w-md grid-cols-1";
-  if (count === 2) return "mx-auto max-w-4xl grid-cols-1 md:grid-cols-2";
-  if (count === 3) return "mx-auto max-w-6xl grid-cols-1 md:grid-cols-3";
-  if (count === 4) return "mx-auto max-w-[1500px] grid-cols-1 md:grid-cols-2 lg:grid-cols-4";
-  return "mx-auto max-w-[1600px] grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5";
+function isOrganisationPlan(plan: { id?: string; salesChannel?: string; name?: string }) {
+  const id = String(plan.id || "").toLowerCase();
+  if (id === "enterprise" || id === "organisation" || id === "organization" || id === "agency") {
+    return true;
+  }
+  return String(plan.salesChannel || "").toLowerCase() === "manual";
 }
 
-type PublicAddon = {
-  name: string;
-  slug: string;
-  description: string | null;
-  monthlyPrice: number;
-  yearlyPrice: number;
-  availableOn: string[];
-};
-
-function formatInr(value: number) {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-  }).format(value);
-}
-
-function addonIcon(slug: string) {
-  if (slug === "team-management") return Users;
-  return Building2;
-}
-
-export default function PricingSection() {
+export default function PricingSection({
+  title,
+  subtitle,
+  description,
+}: {
+  title?: string;
+  subtitle?: string;
+  description?: string;
+}) {
   const [plans, setPlans] = useState<any[]>([]);
-  const [addons, setAddons] = useState<PublicAddon[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [cycle, setCycle] = useState<"monthly" | "yearly">("monthly");
@@ -47,21 +33,16 @@ export default function PricingSection() {
     setLoading(true);
     setError(false);
     try {
-      const [plansRes, addonsRes] = await Promise.all([
-        fetch("/api/billing/plans", { cache: "no-store" }),
-        fetch("/api/billing/addons/public", { cache: "no-store" }).catch(() => null),
-      ]);
+      const plansRes = await fetch("/api/billing/plans", {
+        next: { revalidate: 60 },
+      });
       if (!plansRes.ok) throw new Error("Failed to fetch billing plans");
       const data = await plansRes.json();
       if (data.success && Array.isArray(data.plans)) {
-        const activePlans = data.plans.filter((p: any) => p.isActive !== false);
+        const activePlans = data.plans.filter((p: any) => p.isActive !== false && p.id !== "trial");
         setPlans(activePlans);
       } else {
         throw new Error("Invalid plans data structure");
-      }
-      if (addonsRes?.ok) {
-        const addonBody = await addonsRes.json();
-        setAddons(Array.isArray(addonBody.addons) ? addonBody.addons : []);
       }
     } catch (err) {
       console.error("Error loading plans:", err);
@@ -78,28 +59,42 @@ export default function PricingSection() {
     return () => window.clearTimeout(timer);
   }, []);
 
-  const sortedPlans = useMemo(
-    () => [...plans].sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)),
-    [plans],
-  );
+  const { selfServicePlans, organisationPlan, yearlySavePercent } = useMemo(() => {
+    const sorted = [...plans].sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+    const organisation = sorted.find((plan) => isOrganisationPlan(plan)) || null;
+    const selfService = sorted.filter((plan) => !isOrganisationPlan(plan));
+    const percents = selfService
+      .map((plan) => resolveYearlyDiscountPercent(plan))
+      .filter((pct): pct is number => pct != null && pct > 0);
+    const savePercent = percents.length ? Math.max(...percents) : null;
+    return {
+      selfServicePlans: selfService,
+      organisationPlan: organisation,
+      yearlySavePercent: savePercent,
+    };
+  }, [plans]);
 
   return (
-    <section id="pricing" className={`border-b border-[#E8EAED] bg-white ${SECTION_PAD}`}>
-      <div className="mx-auto max-w-[1440px] px-4 sm:px-6">
-        <div className="mx-auto mb-9 max-w-2xl text-center">
-          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#6B7078]">
-            Flexible billing
+    <section
+      id="pricing"
+      className={`relative overflow-x-clip bg-transparent ${SECTION_PAD}`}
+    >
+      <LandingContentParallax className="relative mx-auto max-w-[1500px] px-4 sm:px-6">
+        <div className="mx-auto mb-1 max-w-2xl text-center sm:mb-2">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#6B7078] sm:text-[11px]">
+            {subtitle || "Flexible billing"}
           </p>
           <h2
-            className={`${DISPLAY} mt-2 text-3xl font-bold leading-[1.1] tracking-tight text-[#111111] sm:text-[40px]`}
+            className={`${DISPLAY} mt-2 text-[32px] font-bold leading-[1.08] tracking-tight text-[#111111] sm:text-[40px]`}
           >
-            Choose your launch mode.
+            {title || "Choose your launch mode."}
           </h2>
-          <p className="mt-3 text-sm font-medium text-[#6B7078]">
-            Simple monthly and annual options. Storage stays with the plan; monthly bandwidth reset is optional per plan.
+          <p className="mx-auto mt-3 max-w-md text-[15px] font-medium leading-relaxed text-[#6B7078] sm:max-w-lg sm:text-sm">
+            {description ||
+              "Clear limits, alphabetised features, and a custom Enterprise path when you need more."}
           </p>
 
-          <div className="mx-auto mt-8 flex w-fit items-center gap-1 rounded-full border border-[#E8EAED] bg-[#F7F8FA] p-1.5">
+          <div className="mx-auto mt-5 flex w-fit items-center gap-1 rounded-full border border-[#E8EAED] bg-white/80 p-1.5 shadow-sm backdrop-blur">
             <button
               type="button"
               onClick={() => setCycle("monthly")}
@@ -112,21 +107,26 @@ export default function PricingSection() {
             <button
               type="button"
               onClick={() => setCycle("yearly")}
-              className={`rounded-full px-5 py-2 text-xs font-bold transition hover:scale-[1.02] ${
+              className={`inline-flex items-center gap-2 rounded-full px-5 py-2 text-xs font-bold transition hover:scale-[1.02] ${
                 cycle === "yearly" ? "bg-[#111111] text-white shadow-sm" : "text-[#6B7078]"
               }`}
             >
               Yearly
+              {yearlySavePercent != null ? (
+                <span className="rounded-full bg-[#B6FF38] px-2.5 py-1 text-[11px] font-black tracking-wide text-[#102000] ring-2 ring-[#B6FF38]/40">
+                  Save {yearlySavePercent}%
+                </span>
+              ) : null}
             </button>
           </div>
         </div>
 
         {loading ? (
-          <div className="mx-auto grid max-w-[1500px] grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {[1, 2, 3, 4].map((n) => (
               <div
                 key={n}
-                className="h-[420px] animate-pulse rounded-[28px] border border-[#E8EAED] bg-white p-7"
+                className="h-[380px] animate-pulse rounded-[28px] border border-[#E8EAED] bg-white/70"
               />
             ))}
           </div>
@@ -142,111 +142,30 @@ export default function PricingSection() {
               <RefreshCw size={12} /> Retry
             </button>
           </div>
-        ) : sortedPlans.length === 0 ? (
-          <div className="mx-auto max-w-md rounded-2xl border border-[#E8EAED] p-8 text-center">
+        ) : selfServicePlans.length === 0 && !organisationPlan ? (
+          <div className="mx-auto max-w-md rounded-2xl border border-[#E8EAED] bg-white p-8 text-center">
             <h3 className="text-sm font-bold text-[#111111]">No active public plans</h3>
           </div>
         ) : (
-          <div className={`grid items-stretch gap-5 ${gridClassForCount(sortedPlans.length)}`}>
-            {sortedPlans.map((plan) => (
-              <PricingPlanPanel key={plan.id} plan={plan} cycle={cycle} />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 items-stretch gap-5 overflow-visible pt-4 sm:grid-cols-2 sm:gap-x-4 sm:gap-y-6 sm:pt-5 xl:grid-cols-4 xl:gap-5">
+              {selfServicePlans.map((plan) => (
+                <PricingPlanPanel key={plan.id} plan={plan} cycle={cycle} />
+              ))}
+            </div>
+
+            {organisationPlan ? (
+              <div className="mt-6">
+                <PricingPlanPanel
+                  plan={organisationPlan}
+                  cycle={cycle}
+                  variant="organisation"
+                />
+              </div>
+            ) : null}
+          </>
         )}
-
-        {!loading && !error && addons.length > 0 ? (
-          <div className="mx-auto mt-14 max-w-5xl">
-            <div className="mx-auto mb-8 max-w-2xl text-center">
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#6B7078]">
-                Premium modules
-              </p>
-              <h3
-                className={`${DISPLAY} mt-2 text-2xl font-bold tracking-tight text-[#111111] sm:text-[32px]`}
-              >
-                Optional add-ons for Business & Enterprise.
-              </h3>
-              <p className="mt-3 text-sm font-medium text-[#6B7078]">
-                Unlock Client CRM and Team seats after you choose a qualifying plan. Add them anytime from Billing.
-              </p>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              {addons.map((addon) => {
-                const Icon = addonIcon(addon.slug);
-                const price = cycle === "yearly" ? addon.yearlyPrice : addon.monthlyPrice;
-                const unit = cycle === "yearly" ? "/ year" : "/ month";
-                return (
-                  <div
-                    key={addon.slug}
-                    className="flex flex-col rounded-[24px] border border-[#E8EAED] bg-[#FAFBFC] p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]"
-                  >
-                    <div className="flex items-start gap-3">
-                      <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#F3FBE6] text-[#4D8500]">
-                        <Icon size={20} />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h4 className="text-lg font-bold text-[#111111]">{addon.name}</h4>
-                          <span className="rounded-full bg-[#C9FF57] px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-[#102000]">
-                            Add-on
-                          </span>
-                        </div>
-                        <p className="mt-1.5 text-sm font-medium leading-relaxed text-[#6B7078]">
-                          {addon.description}
-                        </p>
-                      </div>
-                    </div>
-
-                    <ul className="mt-5 space-y-2 text-xs font-semibold text-[#6B7078]">
-                      {(addon.slug === "client-management"
-                        ? [
-                            "Client CRM workspace & timelines",
-                            "Link products, QR codes & domains",
-                            "Analytics views and CSV export",
-                          ]
-                        : [
-                            "Seat invites & role controls",
-                            "Workspace permission management",
-                            "Member activity timeline",
-                          ]
-                      ).map((line) => (
-                        <li key={line} className="flex items-start gap-2">
-                          <Check size={14} className="mt-0.5 shrink-0 text-[#84D400]" />
-                          <span>{line}</span>
-                        </li>
-                      ))}
-                    </ul>
-
-                    <div className="mt-6 flex flex-wrap items-end justify-between gap-3 border-t border-[#E8EAED] pt-5">
-                      <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wide text-[#8A9098]">
-                          From
-                        </p>
-                        <p className="text-2xl font-bold tracking-tight text-[#111111]">
-                          {formatInr(price)}{" "}
-                          <span className="text-xs font-bold text-[#6B7078]">{unit}</span>
-                        </p>
-                        <p className="mt-1 text-[11px] font-semibold text-[#6B7078]">
-                          Available on{" "}
-                          {addon.availableOn
-                            .map((id) => id.charAt(0).toUpperCase() + id.slice(1))
-                            .join(" · ") || "Business & Enterprise"}
-                        </p>
-                      </div>
-                      <Link
-                        href="/signup"
-                        className="inline-flex h-11 items-center rounded-full border border-[#111111] bg-white px-5 text-xs font-bold text-[#111111] transition hover:bg-[#111111] hover:text-white"
-                      >
-                        Get started
-                      </Link>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ) : null}
-      </div>
+      </LandingContentParallax>
     </section>
   );
 }

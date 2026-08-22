@@ -1,7 +1,8 @@
 import fs from "fs/promises";
 import path from "path";
 import { ensureProductSchema, query } from "@/lib/db";
-import { resolveStorageRoot, STORAGE_PUBLIC_PREFIX } from "@/lib/storage/paths";
+import { resolveLogicalProductFolder } from "@/lib/products/logical-folder";
+import { urlColumnValue } from "@/lib/products/asset-url-column";
 import { getStorageRootsForScan } from "@/lib/storage/locate-asset";
 
 export type DiskProductRecord = {
@@ -98,6 +99,13 @@ export async function scanCustomerProductsFromDisk(customerUid: string) {
   return results;
 }
 
+async function knownCustomerUids(): Promise<Set<string>> {
+  const rows = await query<{ customer_uid: string | null }>(
+    "SELECT customer_uid FROM customers WHERE status <> 'Deleted'",
+  ).catch(() => []);
+  return new Set(rows.map((row) => String(row.customer_uid || "")).filter(Boolean));
+}
+
 export async function syncProductJsonToMysql(record: DiskProductRecord) {
   const { customerUid, productUid, json } = record;
   if (!customerUid || !productUid) return;
@@ -133,18 +141,20 @@ export async function syncProductJsonToMysql(record: DiskProductRecord) {
       customerUid,
       String(json.title || "Untitled"),
       String(json.category || "Uncategorized"),
-      String(json.modelUrl || ""),
+      urlColumnValue(json.modelUrl),
       String(json.fileName || ""),
-      String(json.poster || ""),
-      String(json.thumbnailUrl || ""),
-      String(json.qrUrl || ""),
-      String(json.publicFolder || ""),
+      urlColumnValue(json.poster),
+      urlColumnValue(json.thumbnailUrl),
+      urlColumnValue(json.qrUrl),
+      resolveLogicalProductFolder(json, "All"),
       String(json.status || "Draft"),
       Number(json.views || 0),
       json.settings ? JSON.stringify(json.settings) : null,
       json.materialSettings ? JSON.stringify(json.materialSettings) : null,
       json.variants ? JSON.stringify(json.variants) : null,
-      json.hotspots ? JSON.stringify(json.hotspots) : null,
+      json.hotspots != null && Array.isArray(json.hotspots)
+        ? JSON.stringify(json.hotspots)
+        : null,
       json.createdAt ? new Date(String(json.createdAt)) : null,
       json.updatedAt ? new Date(String(json.updatedAt)) : null,
     ],
@@ -153,12 +163,24 @@ export async function syncProductJsonToMysql(record: DiskProductRecord) {
 
 export async function syncAllProductsFromDiskToMysql() {
   const scanned = await scanAllProductsFromDisk();
+  const liveCustomers = await knownCustomerUids();
+  const existingIds = new Set(
+    (
+      await query<{ id: string }>("SELECT id FROM products WHERE deleted_at IS NULL").catch(() => [])
+    ).map((row) => String(row.id)),
+  );
+
+  let synced = 0;
   for (const record of scanned) {
+    // Never recreate products that were deleted from MySQL.
+    if (!liveCustomers.has(record.customerUid)) continue;
+    if (!existingIds.has(record.productUid)) continue;
     try {
       await syncProductJsonToMysql(record);
+      synced += 1;
     } catch (error) {
       console.warn("[disk-sync] product sync failed:", record.productUid, error);
     }
   }
-  return scanned.length;
+  return synced;
 }

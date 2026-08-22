@@ -1,5 +1,5 @@
 import { query } from "@/lib/db";
-import { hasClientAddon } from "@/lib/billing/addons";
+import { hasClientManagementAccess } from "@/lib/billing/addons";
 
 export type AdminClientWorkspaceProduct = {
   id: string;
@@ -31,7 +31,7 @@ export type AdminClientWorkspacesSummary = {
 export async function getAdminClientWorkspacesSummary(
   customerUid: string,
 ): Promise<AdminClientWorkspacesSummary> {
-  const addonActive = await hasClientAddon(customerUid).catch(() => false);
+  const addonActive = await hasClientManagementAccess(customerUid).catch(() => false);
 
   const clients = await query<{
     client_uid: string;

@@ -6,15 +6,34 @@ const PLAN_LEVEL_BY_ID: Record<string, number> = {
   free: 0,
   starter: 1,
   basic: 1,
-  pro: 2,
-  professional: 2,
-  business: 3,
-  enterprise: 4,
-  agency: 4,
+  intermediate: 2,
+  pro: 3,
+  professional: 3,
+  business: 4,
+  enterprise: 5,
+  organisation: 5,
+  organization: 5,
+  agency: 5,
 };
 
+/** Enterprise / sales-managed custom plan ids (ECP_… / ecp_…). */
+export function isCustomOrEnterpriseManagedPlan(planId: string | null | undefined): boolean {
+  const raw = String(planId || "").trim();
+  if (!raw) return false;
+  const lower = raw.toLowerCase();
+  if (lower.startsWith("ecp_")) return true;
+  if (lower === "enterprise" || lower === "organisation" || lower === "organization") return true;
+  if (lower.includes("custom") && lower.includes("enterprise")) return true;
+  return false;
+}
+
 export function getPlanLevel(planId: string | null | undefined): number {
-  const mapped = mapLegacyPlanId(String(planId || "trial").trim());
+  const raw = String(planId || "trial").trim();
+  // Custom / sales-managed plans sit at enterprise floor so Starter/Pro stay locked.
+  if (isCustomOrEnterpriseManagedPlan(raw)) {
+    return PLAN_LEVEL_BY_ID.enterprise;
+  }
+  const mapped = mapLegacyPlanId(raw);
   return PLAN_LEVEL_BY_ID[mapped] ?? 0;
 }
 
@@ -28,7 +47,11 @@ export function isSamePlanLevel(currentPlanId: string, targetPlanId: string): bo
 
 export type UpgradeValidationResult =
   | { ok: true }
-  | { ok: false; error: string; code: "downgrade" | "same_plan" | "invalid_plan" | "inactive" | "not_public" | "no_payment" };
+  | {
+      ok: false;
+      error: string;
+      code: "downgrade" | "same_plan" | "invalid_plan" | "inactive" | "not_public" | "no_payment" | "custom_locked";
+    };
 
 export function validatePlanUpgrade(input: {
   currentPlanId: string;
@@ -39,6 +62,14 @@ export function validatePlanUpgrade(input: {
 }): UpgradeValidationResult {
   const current = mapLegacyPlanId(input.currentPlanId);
   const target = mapLegacyPlanId(input.targetPlanId);
+
+  if (isCustomOrEnterpriseManagedPlan(input.currentPlanId)) {
+    return {
+      ok: false,
+      error: "Your custom / enterprise plan is sales-managed. Contact your account manager to change plans.",
+      code: "custom_locked",
+    };
+  }
 
   if (!target || target === "trial") {
     return { ok: false, error: "Selected plan is not available for upgrade.", code: "invalid_plan" };

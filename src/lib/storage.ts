@@ -45,13 +45,23 @@ export function getStorageRoot() {
 export { STORAGE_PUBLIC_PREFIX };
 
 /** File extensions that may be stored.  Checked against the original filename. */
-export const ALLOWED_EXTENSIONS = new Set([".glb", ".gltf", ".usdz", ".png", ".jpg", ".jpeg", ".webp"]);
+export const ALLOWED_EXTENSIONS = new Set([
+  ".glb",
+  ".gltf",
+  ".usdz",
+  ".hdr",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".webp",
+]);
 
 /** Per-extension maximum upload size in bytes. */
 export const MAX_FILE_SIZES: Record<string, number> = {
   ".glb":  2 * 1024 * 1024 * 1024, // 2 GB — allow large authored models
   ".gltf": 2 * 1024 * 1024 * 1024,
   ".usdz": 2 * 1024 * 1024 * 1024,
+  ".hdr":  80 * 1024 * 1024,
   ".png":   20 * 1024 * 1024,
   ".jpg":   20 * 1024 * 1024,
   ".jpeg":  20 * 1024 * 1024,
@@ -181,6 +191,8 @@ export async function writeProductFile(input: {
   productUid: string;
   fileName: string;
   data: Buffer;
+  /** When true, skip synchronous disk walk (caller should recalc later). */
+  deferStorageRecalc?: boolean;
 }): Promise<string> {
   const { getStorageAdapter, ensureActiveStorageRoot } = await import("@/lib/storage/adapter");
   await ensureActiveStorageRoot();
@@ -196,14 +208,32 @@ export async function writeProductFile(input: {
     console.error("[storage] Failed to write product_asset to DB:", err);
   });
 
-  await recalculateCustomerStorage(input.customerUid).catch((err) =>
-    console.warn("[storage] Recalculation failed during write:", err)
-  );
+  if (!input.deferStorageRecalc) {
+    void recalculateCustomerStorage(input.customerUid).catch((err) =>
+      console.warn("[storage] Recalculation failed during write:", err),
+    );
+  }
 
   return cdnUrl;
 }
 
 // ─── Secure delete ────────────────────────────────────────────────────────────
+
+/**
+ * A product folder can also exist under the legacy public root. Disk sync scans
+ * every root, so any leftover copy would recreate the product row after delete.
+ */
+async function purgeProductFolderFromAllRoots(customerUid: string, productUid: string): Promise<void> {
+  assertSafeSegment(customerUid, "customerUid");
+  assertSafeSegment(productUid, "productUid");
+
+  const { getStorageRootsForScan } = await import("@/lib/storage/locate-asset");
+  for (const root of getStorageRootsForScan()) {
+    const resolved = path.resolve(root, customerUid, "Products", productUid);
+    if (!resolved.startsWith(root + path.sep)) continue;
+    await fs.rm(resolved, { recursive: true, force: true }).catch(() => {});
+  }
+}
 
 /**
  * Deletes an entire product folder from disk.
@@ -212,6 +242,7 @@ export async function writeProductFile(input: {
 export async function deleteProductFolder(customerUid: string, productUid: string): Promise<void> {
   const { getStorageAdapter } = await import("@/lib/storage/adapter");
   await (await getStorageAdapter()).deleteProductFolder(customerUid, productUid);
+  await purgeProductFolderFromAllRoots(customerUid, productUid);
 
   await query(
     "DELETE FROM product_assets WHERE customer_uid = ? AND product_uid = ?",

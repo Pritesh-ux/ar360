@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 import type { UserPanelSessionSummary } from "@/lib/user-panel/session-context";
 import { AppSidebar } from "@/components/user-panel/sidebar";
 import { SIDEBAR_WIDTH } from "@/config/dashboard-navigation";
+import ViewportPortal from "@/components/shared/ViewportPortal";
 
 type Props = {
   open: boolean;
@@ -41,15 +42,16 @@ export default function UserMobileNav({ open, onClose, session }: Props) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[300] md:hidden">
+    <ViewportPortal lockScroll={false}>
+    <div className="fixed inset-0 z-[99999] md:hidden">
       <button
         type="button"
-        className="absolute inset-0 bg-black/30 transition-opacity duration-200"
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity duration-200"
         aria-label="Close menu"
         onClick={onClose}
       />
       <div
-        className="absolute inset-y-0 left-0 shadow-2xl"
+        className="absolute inset-y-0 left-0 shadow-[8px_0_30px_rgba(0,0,0,0.15)]"
         style={{ width: SIDEBAR_WIDTH }}
         role="dialog"
         aria-modal="true"
@@ -59,7 +61,7 @@ export default function UserMobileNav({ open, onClose, session }: Props) {
           <button
             type="button"
             onClick={onClose}
-            className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-2xl border border-[#ECECEC] bg-white text-[#737373]"
+            className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--ar-border)] bg-white/90 text-[var(--ar-text-muted)] backdrop-blur-sm transition-colors hover:bg-white hover:text-[var(--ar-text)]"
             aria-label="Close navigation"
           >
             <X size={18} />
@@ -68,5 +70,6 @@ export default function UserMobileNav({ open, onClose, session }: Props) {
         </div>
       </div>
     </div>
+    </ViewportPortal>
   );
 }

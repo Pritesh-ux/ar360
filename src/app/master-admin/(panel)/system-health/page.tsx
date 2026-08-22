@@ -1,10 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { useDeferredEffect } from "@/lib/react/use-deferred-effect";
 import { Activity, RefreshCw } from "lucide-react";
 import AdminPageHeader from "@/components/features/master-admin/AdminPageHeader";
+import AdminMetricCard from "@/components/ui/admin/AdminMetricCard";
 import { fmtDateTime } from "@/components/features/master-admin/support-tickets-utils";
+import "@/components/dashboard/dashboard-premium.css";
 
 type HealthItem = {
   label: string;
@@ -33,11 +36,6 @@ type Snapshot = {
   checkedAt: string;
 };
 
-function statusBadge(status: string) {
-  if (status === "healthy") return "bg-emerald-100 text-emerald-700";
-  if (status === "warning") return "bg-amber-100 text-amber-700";
-  return "bg-red-100 text-red-700";
-}
 
 export default function SystemHealthPage() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
@@ -59,7 +57,7 @@ export default function SystemHealthPage() {
     }
   }, []);
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     load();
     const timer = setInterval(load, 60_000);
     return () => clearInterval(timer);
@@ -68,7 +66,7 @@ export default function SystemHealthPage() {
   const resources = snapshot?.resources;
 
   return (
-    <div className="master-admin-panel space-y-6">
+    <div className="master-admin-panel dash-premium animate-dash-fade-in flex min-h-0 flex-1 flex-col gap-3">
       <AdminPageHeader
         title="System Health"
         subtitle={
@@ -78,19 +76,12 @@ export default function SystemHealthPage() {
         }
         actions={
           <div className="flex flex-wrap gap-2">
-            <button
-              onClick={load}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700"
-            >
-              <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+            <button type="button" onClick={load} className="dash-premium-btn-secondary h-10 px-3 text-[12px]">
+              <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
               Refresh
             </button>
-            <Link
-              href="/api/health"
-              target="_blank"
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700"
-            >
-              <Activity size={16} />
+            <Link href="/api/health" target="_blank" className="dash-premium-btn-secondary h-10 px-3 text-[12px]">
+              <Activity size={15} />
               Public Health API
             </Link>
           </div>
@@ -98,34 +89,40 @@ export default function SystemHealthPage() {
       />
 
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+        <div className="dash-premium-card border-[#FEE2E2] bg-[#FEF2F2] px-4 py-3 text-[13px] font-semibold text-[#991B1B]">
           {error}
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {(snapshot?.checks || []).map((item) => (
-          <div key={item.label} className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-bold text-slate-700">{item.label}</p>
-              <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${statusBadge(item.status)}`}>
-                {item.status}
-              </span>
-            </div>
-            <p className="mt-2 text-xs font-medium text-slate-500">{item.note}</p>
-          </div>
+          <AdminMetricCard
+            key={item.label}
+            layout="compact"
+            title={item.label}
+            value={item.status}
+            note={item.note}
+            changeTone={item.status === "healthy" ? "positive" : item.status === "warning" ? "neutral" : "negative"}
+            iconComponent={Activity}
+            iconClassName={
+              item.status === "healthy"
+                ? "bg-emerald-50 text-emerald-600"
+                : item.status === "warning"
+                  ? "bg-amber-50 text-amber-600"
+                  : "bg-red-50 text-red-600"
+            }
+          />
         ))}
-        {loading && !snapshot && (
+        {loading && !snapshot &&
           Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="h-24 animate-pulse rounded-2xl bg-slate-100" />
-          ))
-        )}
+            <div key={i} className="dash-premium-card h-24 animate-pulse bg-[#FAFAFB]" />
+          ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-black text-slate-900">Resource Usage</h2>
-          <div className="mt-4 space-y-3">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        <div className="dash-premium-card p-5">
+          <h2 className="text-[15px] font-black text-[#111827]">Resource Usage</h2>
+          <div className="mt-4 space-y-2">
             {[
               { label: "Storage Used", value: resources ? `${Math.round(resources.storageUsedMB / 1024)} GB (${resources.storageUsedPct}%)` : "—" },
               { label: "Bandwidth Used", value: resources ? `${Math.round(resources.bandwidthUsedMB / 1024)} GB` : "—" },
@@ -136,16 +133,16 @@ export default function SystemHealthPage() {
               { label: "Process Uptime", value: resources ? `${Math.floor(resources.uptimeSec / 3600)}h ${Math.floor((resources.uptimeSec % 3600) / 60)}m` : "—" },
               { label: "DB Latency", value: snapshot?.db.connected ? `${snapshot.db.latencyMs ?? "—"}ms` : "Unreachable" },
             ].map((row) => (
-              <div key={row.label} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5 text-sm">
-                <span className="font-semibold text-slate-600">{row.label}</span>
-                <span className="font-black text-slate-900">{row.value}</span>
+              <div key={row.label} className="flex items-center justify-between rounded-[14px] bg-[#FAFAFB] px-3 py-2.5 text-[13px]">
+                <span className="font-semibold text-[#6B7280]">{row.label}</span>
+                <span className="font-black text-[#111827]">{row.value}</span>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-black text-slate-900">Related Monitoring</h2>
+        <div className="dash-premium-card p-5">
+          <h2 className="text-[15px] font-black text-[#111827]">Related Monitoring</h2>
           <div className="mt-4 space-y-2">
             {[
               { label: "Audit Logs", href: "/master-admin/audit-logs" },
@@ -157,10 +154,10 @@ export default function SystemHealthPage() {
               <Link
                 key={link.href}
                 href={link.href}
-                className="flex items-center justify-between rounded-xl border border-slate-100 px-3 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+                className="flex items-center justify-between rounded-[14px] border border-[#ECECEC] px-3 py-2.5 text-[13px] font-bold text-[#374151] transition hover:bg-[#FAFAFB]"
               >
                 {link.label}
-                <span className="text-slate-400">→</span>
+                <span className="text-[#9CA3AF]">→</span>
               </Link>
             ))}
           </div>
@@ -168,15 +165,15 @@ export default function SystemHealthPage() {
       </div>
 
       {snapshot && (
-        <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm">
+        <div className="dash-premium-card p-5">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-black text-slate-900">Object Capture Operations</h2>
-              <p className="text-xs font-medium text-slate-500">
+              <h2 className="text-[15px] font-black text-[#111827]">Object Capture Operations</h2>
+              <p className="text-[12px] font-medium text-[#6B7280]">
                 Worker, queue, reliability, duration, and private capture storage.
               </p>
             </div>
-            <Link href="/master-admin/object-capture" className="text-xs font-bold text-[#4D9A00]">
+            <Link href="/master-admin/object-capture" className="text-[12px] font-bold text-[#5AA700]">
               Open queue →
             </Link>
           </div>
@@ -191,14 +188,15 @@ export default function SystemHealthPage() {
               ["Average duration", `${Math.round(snapshot.objectCapture.averageDurationSec24h / 60)}m`],
               ["Capture storage", `${(snapshot.objectCapture.storageUsedBytes / 1024 / 1024 / 1024).toFixed(2)} GB`],
             ].map(([label, value]) => (
-              <div key={label} className="rounded-xl bg-slate-50 px-3 py-3">
-                <p className="text-[11px] font-bold uppercase text-slate-400">{label}</p>
-                <p className="mt-1 text-lg font-black text-slate-900">{value}</p>
+              <div key={String(label)} className="rounded-[14px] bg-[#FAFAFB] px-3 py-3">
+                <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">{label}</p>
+                <p className="mt-1 text-lg font-black text-[#111827]">{value}</p>
               </div>
             ))}
           </div>
-          <p className="mt-3 text-xs text-slate-500">
-            Latest worker heartbeat: {snapshot.objectCapture.latestHeartbeatAt
+          <p className="mt-3 text-[12px] text-[#6B7280]">
+            Latest worker heartbeat:{" "}
+            {snapshot.objectCapture.latestHeartbeatAt
               ? fmtDateTime(snapshot.objectCapture.latestHeartbeatAt)
               : "none recorded"}
           </p>

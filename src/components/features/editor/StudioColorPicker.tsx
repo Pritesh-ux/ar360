@@ -7,9 +7,10 @@ import {
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
-  type RefObject,
 } from "react";
+import { useDeferredEffect } from "@/lib/react/use-deferred-effect";
 import { createPortal } from "react-dom";
+import CopyPasteContextTarget from "./CopyPasteContextTarget";
 
 type Props = {
   value: string;
@@ -111,7 +112,7 @@ export default function StudioColorPicker({
   const svRef = useRef<HTMLDivElement>(null);
   const hueRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     const next = normalizeHex(value);
     setHexDraft(next);
     setHsv(rgbToHsv(hexToRgb(next)));
@@ -164,18 +165,23 @@ export default function StudioColorPicker({
     };
   }, [open, updatePosition]);
 
-  function bindDrag(
-    ref: RefObject<HTMLDivElement | null>,
-    handler: (clientX: number, clientY: number) => void,
-  ) {
-    return (event: ReactPointerEvent<HTMLDivElement>) => {
+  const onSvPointer = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
       event.preventDefault();
       event.stopPropagation();
-      const el = ref.current;
+      const el = svRef.current;
       if (!el) return;
       el.setPointerCapture(event.pointerId);
-      handler(event.clientX, event.clientY);
-      const onMove = (e: PointerEvent) => handler(e.clientX, e.clientY);
+      const apply = (clientX: number, clientY: number) => {
+        const target = svRef.current;
+        if (!target) return;
+        const rect = target.getBoundingClientRect();
+        const s = clamp((clientX - rect.left) / rect.width, 0, 1);
+        const v = clamp(1 - (clientY - rect.top) / rect.height, 0, 1);
+        emit({ ...hsv, s, v });
+      };
+      apply(event.clientX, event.clientY);
+      const onMove = (e: PointerEvent) => apply(e.clientX, e.clientY);
       const onUp = () => {
         el.releasePointerCapture(event.pointerId);
         window.removeEventListener("pointermove", onMove);
@@ -183,25 +189,36 @@ export default function StudioColorPicker({
       };
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
-    };
-  }
+    },
+    [emit, hsv],
+  );
 
-  const onSvPointer = bindDrag(svRef, (clientX, clientY) => {
-    const el = svRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const s = clamp((clientX - rect.left) / rect.width, 0, 1);
-    const v = clamp(1 - (clientY - rect.top) / rect.height, 0, 1);
-    emit({ ...hsv, s, v });
-  });
-
-  const onHuePointer = bindDrag(hueRef, (clientX) => {
-    const el = hueRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const h = clamp(((clientX - rect.left) / rect.width) * 360, 0, 359.999);
-    emit({ ...hsv, h });
-  });
+  const onHuePointer = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const el = hueRef.current;
+      if (!el) return;
+      el.setPointerCapture(event.pointerId);
+      const apply = (clientX: number) => {
+        const target = hueRef.current;
+        if (!target) return;
+        const rect = target.getBoundingClientRect();
+        const h = clamp(((clientX - rect.left) / rect.width) * 360, 0, 359.999);
+        emit({ ...hsv, h });
+      };
+      apply(event.clientX);
+      const onMove = (e: PointerEvent) => apply(e.clientX);
+      const onUp = () => {
+        el.releasePointerCapture(event.pointerId);
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    },
+    [emit, hsv],
+  );
 
   const swatchSize =
     size === "sm" ? "h-10 w-10" : size === "md" ? "h-12 w-12" : "h-14 w-14";
@@ -213,10 +230,19 @@ export default function StudioColorPicker({
 
   return (
     <>
+    <CopyPasteContextTarget
+      className="inline-flex"
+      channel="color"
+      getCopy={() => ({ value: hex })}
+      onPaste={(payload) => {
+        const next = normalizeHex(payload.value);
+        onChange(next);
+      }}
+    >
       <button
         ref={triggerRef}
         type="button"
-        title={title}
+        title={`${title} · right-click copy / paste`}
         onClick={() => {
           if (open) {
             setOpen(false);
@@ -225,23 +251,21 @@ export default function StudioColorPicker({
           updatePosition();
           setOpen(true);
         }}
-        className={`studio-color-swatch ${swatchSize} relative shrink-0 overflow-hidden rounded-md border-2 border-[#6B7280] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.65)] transition hover:border-[#111111] hover:ring-2 hover:ring-[#84D400]/40 ${className}`.trim()}
-        style={{
-          backgroundColor: hex,
-          backgroundImage: isNearWhite
-            ? "linear-gradient(45deg, #d4d4d4 25%, transparent 25%), linear-gradient(-45deg, #d4d4d4 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #d4d4d4 75%), linear-gradient(-45deg, transparent 75%, #d4d4d4 75%)"
-            : undefined,
-          backgroundSize: isNearWhite ? "10px 10px" : undefined,
-          backgroundPosition: isNearWhite ? "0 0, 0 5px, 5px -5px, -5px 0" : undefined,
-        }}
+        className={`studio-color-swatch ${swatchSize} relative shrink-0 overflow-hidden rounded-xl border border-[#D1D5DB] shadow-none transition hover:border-[#B8FF3C] hover:ring-2 hover:ring-[#B8FF3C]/30 ${className}`.trim()}
+        style={{ backgroundColor: hex }}
         aria-label={`${title} color picker`}
         aria-haspopup="dialog"
         aria-expanded={open}
       >
         {isNearWhite ? (
-          <span className="absolute inset-[3px] rounded-[2px]" style={{ backgroundColor: hex }} />
+          <span
+            className="pointer-events-none absolute inset-[3px] rounded-lg border border-[#E5E7EB]"
+            style={{ backgroundColor: hex }}
+            aria-hidden
+          />
         ) : null}
       </button>
+    </CopyPasteContextTarget>
 
       {open && typeof document !== "undefined"
         ? createPortal(
@@ -249,14 +273,14 @@ export default function StudioColorPicker({
               ref={panelRef}
               role="dialog"
               aria-label="Color picker"
-              className="fixed z-[99999] w-[232px] overflow-hidden rounded-[14px] border border-[#2A2E33] bg-[#1C1F24] p-3 shadow-[0_16px_40px_rgba(0,0,0,0.45)]"
+              className="fixed z-[99999] w-[232px] overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white p-3 shadow-[0_12px_32px_rgba(15,23,42,0.14)]"
               style={{ top: coords.top, left: coords.left }}
               onClick={(e) => e.stopPropagation()}
             >
               <div
                 ref={svRef}
                 onPointerDown={onSvPointer}
-                className="relative h-[168px] cursor-crosshair overflow-hidden rounded-none border border-[#4B5563]"
+                className="relative aspect-square w-full cursor-crosshair overflow-hidden rounded-none border border-[#E5E7EB]"
                 style={{
                   background: `
                     linear-gradient(to top, #000, transparent),
@@ -273,7 +297,7 @@ export default function StudioColorPicker({
               <div
                 ref={hueRef}
                 onPointerDown={onHuePointer}
-                className="relative mt-3 h-3 cursor-ew-resize rounded-full border border-[#4B5563]"
+                className="relative mt-3 h-3 cursor-ew-resize rounded-full border border-[#E5E7EB]"
                 style={{
                   background:
                     "linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)",
@@ -303,7 +327,7 @@ export default function StudioColorPicker({
                   }}
                   spellCheck={false}
                   placeholder="#ffffff"
-                  className="studio-color-hex h-9 min-w-0 flex-1 rounded-md border-2 border-[#6B7280] bg-[#F9FAFB] px-3 font-mono text-[13px] font-semibold text-[#111111] outline-none placeholder:text-[#9CA3AF] focus:border-[#84D400]"
+                  className="studio-color-hex h-9 min-w-0 flex-1 rounded-xl border border-[#D1D5DB] bg-[#F9FAFB] px-3 font-mono text-[13px] font-semibold text-[#111111] outline-none placeholder:text-[#9CA3AF] focus:border-[#B8FF3C]"
                   aria-label="Hex color"
                 />
                 {onReset ? (
@@ -313,7 +337,7 @@ export default function StudioColorPicker({
                       onReset();
                       setOpen(false);
                     }}
-                    className="h-9 shrink-0 rounded-md border-2 border-[#6B7280] bg-[#F3F4F6] px-2.5 text-[11px] font-bold text-[#111111] hover:bg-white"
+                    className="h-9 shrink-0 rounded-xl border border-[#D1D5DB] bg-[#F3F4F6] px-2.5 text-[11px] font-bold text-[#111111] hover:bg-white"
                   >
                     Reset
                   </button>

@@ -1,9 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { useDeferredEffect } from "@/lib/react/use-deferred-effect";
 import { PackagePlus, RefreshCw, Save } from "lucide-react";
 import AdminPageHeader from "@/components/features/master-admin/AdminPageHeader";
 import { AdminActionMessage } from "@/components/ui/admin";
+import { adminInputClass, adminTableHeadClass } from "@/components/ui/admin/tokens";
+import "@/components/dashboard/dashboard-premium.css";
 
 type AddonModule = {
   id: number;
@@ -66,7 +69,7 @@ export default function MasterAdminAddonsPage() {
     }
   }, []);
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     void load();
   }, [load]);
 
@@ -114,7 +117,7 @@ export default function MasterAdminAddonsPage() {
   }
 
   return (
-    <div className="master-admin-panel space-y-6">
+    <div className="master-admin-panel dash-premium animate-dash-fade-in flex min-h-0 flex-1 flex-col gap-3">
       <AdminPageHeader
         title="Premium Add-ons"
         subtitle="Configure Client Management and Team Management pricing, plan eligibility, and review active licenses."
@@ -122,7 +125,7 @@ export default function MasterAdminAddonsPage() {
           <button
             type="button"
             onClick={() => void load()}
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            className="dash-premium-btn-secondary h-10 px-3 text-[12px]"
           >
             <RefreshCw size={15} />
             Refresh
@@ -133,89 +136,90 @@ export default function MasterAdminAddonsPage() {
       {notice ? <AdminActionMessage variant={notice.type} message={notice.message} /> : null}
 
       {loading ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-8 text-sm text-slate-500">Loading add-ons…</div>
+        <div className="dash-premium-card p-8 text-[13px] font-medium text-[#9CA3AF]">Loading add-ons…</div>
       ) : (
-        <div className="space-y-4">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {modules.map((module) => (
-            <section key={module.slug} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <PackagePlus size={18} className="text-[#84D400]" />
-                    <h2 className="text-lg font-bold text-slate-900">{module.name}</h2>
-                    <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                      {module.slug}
-                    </span>
+            <section key={module.slug} className="dash-premium-card flex flex-col justify-between p-5">
+              <div>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <PackagePlus size={18} className="text-[#84D400]" />
+                      <h2 className="text-lg font-bold text-slate-900">{module.name}</h2>
+                      <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                        {module.slug}
+                      </span>
+                    </div>
                   </div>
-                  <p className="mt-1 max-w-3xl text-sm text-slate-500">{module.description}</p>
+                  <button
+                    type="button"
+                    disabled={busySlug === module.slug}
+                    onClick={() => void saveModule(module)}
+                    className="dash-premium-btn-primary h-9 px-3 text-[11px] disabled:opacity-60"
+                  >
+                    <Save size={14} />
+                    {busySlug === module.slug ? "Saving…" : "Save"}
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  disabled={busySlug === module.slug}
-                  onClick={() => void saveModule(module)}
-                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#84D400] px-4 text-sm font-bold text-[#102000] hover:bg-[#78C400] disabled:opacity-60"
-                >
-                  <Save size={15} />
-                  {busySlug === module.slug ? "Saving…" : "Save"}
-                </button>
+
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label className="text-xs font-semibold text-slate-500">
+                    Monthly price (INR)
+                    <input
+                      type="number"
+                      value={module.monthly_price}
+                      onChange={(e) => patchLocal(module.slug, { monthly_price: Number(e.target.value) })}
+                      className={`mt-1 w-full ${adminInputClass}`}
+                    />
+                  </label>
+                  <label className="text-xs font-semibold text-slate-500">
+                    Yearly price (INR)
+                    <input
+                      type="number"
+                      value={module.yearly_price}
+                      onChange={(e) => patchLocal(module.slug, { yearly_price: Number(e.target.value) })}
+                      className={`mt-1 w-full ${adminInputClass}`}
+                    />
+                  </label>
+                  <label className="text-xs font-semibold text-slate-500">
+                    One-time price (INR)
+                    <input
+                      type="number"
+                      value={module.one_time_price ?? ""}
+                      onChange={(e) =>
+                        patchLocal(module.slug, {
+                          one_time_price: e.target.value === "" ? null : Number(e.target.value),
+                        })
+                      }
+                      className={`mt-1 w-full ${adminInputClass}`}
+                    />
+                  </label>
+                  <label className="text-xs font-semibold text-slate-500">
+                    Trial days
+                    <input
+                      type="number"
+                      value={module.trial_days}
+                      onChange={(e) => patchLocal(module.slug, { trial_days: Number(e.target.value) })}
+                      className={`mt-1 w-full ${adminInputClass}`}
+                    />
+                  </label>
+                </div>
+
+                <div className="mt-4">
+                  <label className="text-xs font-semibold text-slate-500">
+                    Description
+                    <textarea
+                      value={module.description || ""}
+                      onChange={(e) => patchLocal(module.slug, { description: e.target.value })}
+                      rows={3}
+                      className={`mt-1 w-full rounded-[14px] border border-[#ECECEC] bg-white px-3 py-2 text-[13px] font-medium text-[#111827] outline-none transition focus:border-[#84D400] focus:shadow-[0_0_0_3px_rgba(182,255,56,0.18)]`}
+                    />
+                  </label>
+                </div>
               </div>
 
-              <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <label className="text-xs font-semibold text-slate-500">
-                  Monthly price (INR)
-                  <input
-                    type="number"
-                    value={module.monthly_price}
-                    onChange={(e) => patchLocal(module.slug, { monthly_price: Number(e.target.value) })}
-                    className="mt-1 h-10 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-900"
-                  />
-                </label>
-                <label className="text-xs font-semibold text-slate-500">
-                  Yearly price (INR)
-                  <input
-                    type="number"
-                    value={module.yearly_price}
-                    onChange={(e) => patchLocal(module.slug, { yearly_price: Number(e.target.value) })}
-                    className="mt-1 h-10 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-900"
-                  />
-                </label>
-                <label className="text-xs font-semibold text-slate-500">
-                  One-time price (INR)
-                  <input
-                    type="number"
-                    value={module.one_time_price ?? ""}
-                    onChange={(e) =>
-                      patchLocal(module.slug, {
-                        one_time_price: e.target.value === "" ? null : Number(e.target.value),
-                      })
-                    }
-                    className="mt-1 h-10 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-900"
-                  />
-                </label>
-                <label className="text-xs font-semibold text-slate-500">
-                  Trial days
-                  <input
-                    type="number"
-                    value={module.trial_days}
-                    onChange={(e) => patchLocal(module.slug, { trial_days: Number(e.target.value) })}
-                    className="mt-1 h-10 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-900"
-                  />
-                </label>
-              </div>
-
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
-                <label className="text-xs font-semibold text-slate-500 md:col-span-2">
-                  Description
-                  <textarea
-                    value={module.description || ""}
-                    onChange={(e) => patchLocal(module.slug, { description: e.target.value })}
-                    rows={3}
-                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-800"
-                  />
-                </label>
-              </div>
-
-              <div className="mt-4 flex flex-wrap gap-4 text-sm font-semibold text-slate-700">
+              <div className="mt-4 flex flex-wrap gap-4 border-t border-[#ECECEC] pt-3 text-[13px] font-semibold text-[#374151]">
                 {(
                   [
                     ["enabled", "Enabled"],
@@ -224,12 +228,12 @@ export default function MasterAdminAddonsPage() {
                     ["custom_available", "Custom (ecp_*)"],
                   ] as const
                 ).map(([key, label]) => (
-                  <label key={key} className="inline-flex items-center gap-2">
+                  <label key={key} className="inline-flex items-center gap-2 cursor-pointer select-none">
                     <input
                       type="checkbox"
                       checked={asBool(module[key])}
                       onChange={(e) => patchLocal(module.slug, { [key]: e.target.checked })}
-                      className="h-4 w-4 accent-[#84D400]"
+                      className="h-4 w-4 accent-[#84D400] cursor-pointer"
                     />
                     {label}
                   </label>
@@ -240,42 +244,42 @@ export default function MasterAdminAddonsPage() {
         </div>
       )}
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-base font-bold text-slate-900">Active / recent licenses</h2>
-        <p className="mt-1 text-sm text-slate-500">Purchases recorded in `user_addons`.</p>
+      <section className="dash-premium-card overflow-hidden p-5">
+        <h2 className="text-[15px] font-black text-[#111827]">Active / recent licenses</h2>
+        <p className="mt-1 text-[12px] font-medium text-[#6B7280]">Purchases recorded in `user_addons`.</p>
         <div className="mt-4 overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
-            <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-2 py-2">Customer</th>
-                <th className="px-2 py-2">Add-on</th>
-                <th className="px-2 py-2">Billing</th>
-                <th className="px-2 py-2">Status</th>
-                <th className="px-2 py-2">Activated</th>
-                <th className="px-2 py-2">Expires</th>
+          <table className="min-w-full text-left text-[13px]">
+            <thead>
+              <tr className={adminTableHeadClass}>
+                <th className="px-3 py-2.5">Customer</th>
+                <th className="px-3 py-2.5">Add-on</th>
+                <th className="px-3 py-2.5">Billing</th>
+                <th className="px-3 py-2.5">Status</th>
+                <th className="px-3 py-2.5">Activated</th>
+                <th className="px-3 py-2.5">Expires</th>
               </tr>
             </thead>
             <tbody>
               {licenses.map((row) => (
-                <tr key={row.id} className="border-b border-slate-100">
-                  <td className="px-2 py-2.5">
-                    <div className="font-semibold text-slate-900">{row.customer_name || "—"}</div>
-                    <div className="text-xs text-slate-500">{row.email || row.customer_uid || `user #${row.user_id}`}</div>
+                <tr key={row.id} className="border-b border-[#F3F4F6] transition hover:bg-[#FAFAFB]">
+                  <td className="px-3 py-2.5">
+                    <div className="font-semibold text-[#111827]">{row.customer_name || "—"}</div>
+                    <div className="text-[11px] text-[#9CA3AF]">{row.email || row.customer_uid || `user #${row.user_id}`}</div>
                   </td>
-                  <td className="px-2 py-2.5 font-medium text-slate-800">{row.addon_slug}</td>
-                  <td className="px-2 py-2.5 text-slate-600">{row.billing_type}</td>
-                  <td className="px-2 py-2.5">
+                  <td className="px-3 py-2.5 font-medium text-[#374151]">{row.addon_slug}</td>
+                  <td className="px-3 py-2.5 text-[#6B7280]">{row.billing_type}</td>
+                  <td className="px-3 py-2.5">
                     <span className="rounded-full bg-[#EEF9E0] px-2 py-0.5 text-[11px] font-bold text-[#5FA800]">
                       {row.status}
                     </span>
                   </td>
-                  <td className="px-2 py-2.5 text-slate-600">{String(row.activated_at || "").slice(0, 19)}</td>
-                  <td className="px-2 py-2.5 text-slate-600">{row.expires_at ? String(row.expires_at).slice(0, 19) : "—"}</td>
+                  <td className="px-3 py-2.5 text-[#6B7280]">{String(row.activated_at || "").slice(0, 19)}</td>
+                  <td className="px-3 py-2.5 text-[#6B7280]">{row.expires_at ? String(row.expires_at).slice(0, 19) : "—"}</td>
                 </tr>
               ))}
               {!licenses.length ? (
                 <tr>
-                  <td colSpan={6} className="px-2 py-8 text-center text-slate-500">
+                  <td colSpan={6} className="px-3 py-8 text-center text-[#9CA3AF]">
                     No licenses yet.
                   </td>
                 </tr>

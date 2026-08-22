@@ -1,4 +1,3 @@
-import { randomBytes } from "crypto";
 import { query } from "@/lib/db";
 
 export type OnboardingStatus = "not_started" | "in_progress" | "completed" | "skipped";
@@ -16,6 +15,7 @@ export type CustomerOnboarding = {
   sampleProductCreated: boolean;
   sampleProductId: string | null;
   checklistDismissedAt: string | null;
+  welcomePopupDismissedAt: string | null;
 };
 
 type Row = {
@@ -31,6 +31,7 @@ type Row = {
   sample_product_created: 0 | 1 | boolean;
   sample_product_id: string | null;
   checklist_dismissed_at: Date | string | null;
+  welcome_popup_dismissed_at?: Date | string | null;
 };
 
 function toIso(value: Date | string | null | undefined) {
@@ -62,38 +63,74 @@ function mapRow(row: Row): CustomerOnboarding {
     sampleProductCreated: Boolean(row.sample_product_created),
     sampleProductId: row.sample_product_id,
     checklistDismissedAt: toIso(row.checklist_dismissed_at),
+    welcomePopupDismissedAt: toIso(row.welcome_popup_dismissed_at ?? null),
   };
 }
 
-export async function ensureOnboardingSchema() {
-  await query(`
-    CREATE TABLE IF NOT EXISTS customer_onboarding (
-      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-      customer_uid VARCHAR(64) NOT NULL,
-      status ENUM('not_started','in_progress','completed','skipped') NOT NULL DEFAULT 'not_started',
-      current_step TINYINT UNSIGNED NOT NULL DEFAULT 1,
-      completed_at DATETIME NULL,
-      skipped_at DATETIME NULL,
-      business_type VARCHAR(80) NULL,
-      primary_goal VARCHAR(120) NULL,
-      secondary_goals_json JSON NULL,
-      preferred_creation_method VARCHAR(40) NULL,
-      sample_product_created TINYINT(1) NOT NULL DEFAULT 0,
-      sample_product_id VARCHAR(160) NULL,
-      checklist_dismissed_at DATETIME NULL,
-      signup_source VARCHAR(40) NOT NULL DEFAULT 'signup',
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      UNIQUE KEY uq_customer_onboarding_customer (customer_uid),
-      INDEX idx_onboarding_status (status)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
+/** One-shot per process — avoids DDL/metadata lock storms on every dashboard request. */
+let onboardingSchemaReady: Promise<void> | null = null;
 
-  try {
-    await query("ALTER TABLE customers ADD COLUMN IF NOT EXISTS company_website VARCHAR(255) NULL");
-  } catch {
-    // optional column on older MySQL
+export async function ensureOnboardingSchema() {
+  if (!onboardingSchemaReady) {
+    onboardingSchemaReady = (async () => {
+      await query(`
+        CREATE TABLE IF NOT EXISTS customer_onboarding (
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          customer_uid VARCHAR(64) NOT NULL,
+          status ENUM('not_started','in_progress','completed','skipped') NOT NULL DEFAULT 'not_started',
+          current_step TINYINT UNSIGNED NOT NULL DEFAULT 1,
+          completed_at DATETIME NULL,
+          skipped_at DATETIME NULL,
+          business_type VARCHAR(80) NULL,
+          primary_goal VARCHAR(120) NULL,
+          secondary_goals_json JSON NULL,
+          preferred_creation_method VARCHAR(40) NULL,
+          sample_product_created TINYINT(1) NOT NULL DEFAULT 0,
+          sample_product_id VARCHAR(160) NULL,
+          checklist_dismissed_at DATETIME NULL,
+          welcome_popup_dismissed_at DATETIME NULL,
+          signup_source VARCHAR(40) NOT NULL DEFAULT 'signup',
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY uq_customer_onboarding_customer (customer_uid),
+          INDEX idx_onboarding_status (status)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+
+      // MySQL 8.0 does not support ADD COLUMN IF NOT EXISTS — check first.
+      const [{ total = 0 } = { total: 0 }] = await query<{ total: number }>(
+        `SELECT COUNT(*) AS total FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customers' AND COLUMN_NAME = 'company_website'`,
+      );
+      if (Number(total) === 0) {
+        try {
+          await query("ALTER TABLE customers ADD COLUMN company_website VARCHAR(255) NULL");
+        } catch {
+          // Column may already exist under race, or table layout differs — onboarding still works.
+        }
+      }
+
+      const [{ total: welcomeCol = 0 } = { total: 0 }] = await query<{ total: number }>(
+        `SELECT COUNT(*) AS total FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'customer_onboarding'
+            AND COLUMN_NAME = 'welcome_popup_dismissed_at'`,
+      );
+      if (Number(welcomeCol) === 0) {
+        try {
+          await query(
+            "ALTER TABLE customer_onboarding ADD COLUMN welcome_popup_dismissed_at DATETIME NULL",
+          );
+        } catch {
+          // Column may already exist under race.
+        }
+      }
+    })().catch((error) => {
+      onboardingSchemaReady = null;
+      throw error;
+    });
   }
+  await onboardingSchemaReady;
 }
 
 export function isOnboardingComplete(state: CustomerOnboarding | null) {
@@ -106,7 +143,7 @@ export async function getCustomerOnboarding(customerUid: string): Promise<Custom
   const rows = await query<Row>(
     `SELECT customer_uid, status, current_step, completed_at, skipped_at, business_type, primary_goal,
             secondary_goals_json, preferred_creation_method, sample_product_created, sample_product_id,
-            checklist_dismissed_at
+            checklist_dismissed_at, welcome_popup_dismissed_at
        FROM customer_onboarding WHERE customer_uid = ? LIMIT 1`,
     [customerUid],
   );
@@ -115,7 +152,6 @@ export async function getCustomerOnboarding(customerUid: string): Promise<Custom
 
 export async function initializeCustomerOnboarding(customerUid: string, source = "signup") {
   await ensureOnboardingSchema();
-  const uid = `onb_${Date.now()}_${randomBytes(4).toString("hex")}`;
   await query(
     `INSERT INTO customer_onboarding (customer_uid, status, current_step, signup_source)
      VALUES (?, 'not_started', 1, ?)
@@ -137,6 +173,7 @@ export async function updateCustomerOnboarding(
     sampleProductCreated: boolean;
     sampleProductId: string | null;
     checklistDismissed: boolean;
+    welcomePopupDismissed: boolean;
     completed: boolean;
     skipped: boolean;
   }>,
@@ -180,8 +217,11 @@ export async function updateCustomerOnboarding(
   if (patch.checklistDismissed) {
     sets.push("checklist_dismissed_at = NOW()");
   }
+  if (patch.welcomePopupDismissed) {
+    sets.push("welcome_popup_dismissed_at = NOW()");
+  }
   if (patch.completed) {
-    sets.push("status = 'completed', completed_at = NOW(), current_step = 5");
+    sets.push("status = 'completed', completed_at = NOW(), current_step = 4");
   }
   if (patch.skipped) {
     sets.push("status = 'skipped', skipped_at = NOW()");

@@ -5,13 +5,11 @@ import {
   getDeviceBreakdown,
   getOSBreakdown,
   getRawEvents,
-  getRawSessions,
   getReferrerBreakdown,
   getRealtimeStats,
   cleanupOldAnalytics,
   getReturningVisitors,
   getSummaryCounts,
-  getTopCountries,
   getTopProducts,
   getAvgSessionDuration,
   insertEvent,
@@ -34,6 +32,10 @@ import type {
   DashboardData,
   ExportFormat,
 } from "./analytics.types";
+import { canonicalizeAnalyticsEvent } from "./analytics.events";
+import { getTopCities, getTopCountries } from "./analytics.locations";
+import { resolveProduct } from "@/server/products/product-resolver";
+import { resolveRequestGeoDetailed } from "@/lib/geo/resolve-request-geo";
 
 // ─── Track a single event ─────────────────────────────────────────────────────
 
@@ -43,17 +45,26 @@ export async function trackEvent(
 ): Promise<void> {
   const ua = request.headers.get("user-agent") ?? "";
   const rawIp = extractIp(request);
+  const event = canonicalizeAnalyticsEvent(payload.event);
+
+  // Always persist internal products.id so reads joining on products.id stay correct.
+  const resolved = await resolveProduct(payload.productUid).catch(() => null);
+  const productUid = resolved?.productId ?? payload.productUid;
+  const customerUid =
+    resolved?.customerUid ?? payload.customerUid ?? "anonymous";
+
+  const geo = await resolveRequestGeoDetailed(request);
 
   const params: InsertEventParams = {
-    customerUid: payload.customerUid ?? "anonymous",
-    productUid: payload.productUid,
+    customerUid,
+    productUid,
     sessionId: payload.sessionId,
-    event: payload.event,
+    event,
     device: parseDevice(ua),
     browser: parseBrowser(ua),
     os: parseOS(ua),
-    country: request.headers.get("x-vercel-ip-country") ?? request.headers.get("cf-ipcountry") ?? "",
-    city: request.headers.get("x-vercel-ip-city") ?? request.headers.get("cf-ipcity") ?? "",
+    country: geo.country,
+    city: geo.city,
     language: payload.language ?? request.headers.get("accept-language")?.split(",")[0] ?? "",
     screenWidth: payload.screenWidth ?? 0,
     screenHeight: payload.screenHeight ?? 0,
@@ -63,20 +74,19 @@ export async function trackEvent(
     meta: JSON.stringify(payload.meta ?? {}),
   };
 
-  // Fire both writes concurrently — session upsert is idempotent
   await Promise.all([
     insertEvent(params),
     upsertSession(
       payload.sessionId,
       params.customerUid,
-      payload.productUid,
+      productUid,
       params.device,
       params.browser,
       params.os,
       params.country,
       params.city,
     ),
-    upsertDailyStats(params.customerUid, payload.productUid, payload.event),
+    upsertDailyStats(params.customerUid, productUid, event),
   ]);
 }
 
@@ -84,7 +94,20 @@ export async function trackEvent(
 
 export async function getDashboardData(filter: AnalyticsFilter): Promise<DashboardData> {
   const { fromDate, toDate } = buildDateRange(filter.from, filter.to);
-  const resolvedFilter: AnalyticsFilter = { ...filter, from: fromDate, to: toDate };
+
+  // If a legacy public_id/slug is passed as productUid, resolve to internal id.
+  let productUid = filter.productUid;
+  if (productUid) {
+    const resolved = await resolveProduct(productUid).catch(() => null);
+    if (resolved) productUid = resolved.productId;
+  }
+
+  const resolvedFilter: AnalyticsFilter = {
+    ...filter,
+    productUid,
+    from: fromDate,
+    to: toDate,
+  };
 
   const [
     counts,
@@ -94,6 +117,7 @@ export async function getDashboardData(filter: AnalyticsFilter): Promise<Dashboa
     daily,
     topProducts,
     topCountries,
+    topCities,
     devices,
     browsers,
     operatingSystems,
@@ -106,6 +130,7 @@ export async function getDashboardData(filter: AnalyticsFilter): Promise<Dashboa
     getDailySeries(resolvedFilter),
     getTopProducts(resolvedFilter),
     getTopCountries(resolvedFilter),
+    getTopCities(resolvedFilter),
     getDeviceBreakdown(resolvedFilter),
     getBrowserBreakdown(resolvedFilter),
     getOSBreakdown(resolvedFilter),
@@ -122,6 +147,7 @@ export async function getDashboardData(filter: AnalyticsFilter): Promise<Dashboa
     daily,
     topProducts,
     topCountries,
+    topCities,
     devices,
     browsers,
     operatingSystems,
@@ -133,22 +159,23 @@ export async function getDashboardData(filter: AnalyticsFilter): Promise<Dashboa
 
 export async function exportAnalytics(
   filter: AnalyticsFilter,
-  format: ExportFormat,
+  _format: ExportFormat = "excel",
 ): Promise<{ data: string | Buffer; contentType: string; filename: string }> {
   const { fromDate, toDate } = buildDateRange(filter.from, filter.to);
-  const resolvedFilter: AnalyticsFilter = { ...filter, from: fromDate, to: toDate };
+  let productUid = filter.productUid;
+  if (productUid) {
+    const resolved = await resolveProduct(productUid).catch(() => null);
+    if (resolved) productUid = resolved.productId;
+  }
+  const resolvedFilter: AnalyticsFilter = {
+    ...filter,
+    productUid,
+    from: fromDate,
+    to: toDate,
+  };
 
   const events = await getRawEvents(resolvedFilter);
 
-  if (format === "json") {
-    return {
-      data: JSON.stringify(events, null, 2),
-      contentType: "application/json",
-      filename: `analytics-${fromDate}-${toDate}.json`,
-    };
-  }
-
-  // CSV (also used as base for Excel — real Excel would need a library)
   const headers = [
     "id", "customer_uid", "product_uid", "session_id", "event",
     "device", "browser", "os", "country", "city", "language",
@@ -164,34 +191,30 @@ export async function exportAnalytics(
     headers.map((h) => escape(e[h as keyof typeof e])).join(","),
   );
 
-  const csv = [headers.join(","), ...rows].join("\n");
-
-  if (format === "excel") {
-    // Return CSV with Excel-friendly BOM so Excel opens it correctly
-    const bom = "\uFEFF";
-    return {
-      data: bom + csv,
-      contentType: "application/vnd.ms-excel",
-      filename: `analytics-${fromDate}-${toDate}.csv`,
-    };
-  }
-
   return {
-    data: csv,
-    contentType: "text/csv",
-    filename: `analytics-${fromDate}-${toDate}.csv`,
+    data: `\uFEFF${[headers.join(","), ...rows].join("\n")}`,
+    contentType: "application/vnd.ms-excel; charset=utf-8",
+    filename: `analytics-${fromDate}-${toDate}.xls`,
   };
 }
 
-
-// ─── Realtime dashboard payload ──────────────────────────────────────────────
-
 export async function getRealtimeAnalytics(filter: AnalyticsFilter) {
-  return getRealtimeStats(filter);
+  let productUid = filter.productUid;
+  if (productUid) {
+    const resolved = await resolveProduct(productUid).catch(() => null);
+    if (resolved) productUid = resolved.productId;
+  }
+  return getRealtimeStats({ ...filter, productUid });
 }
-
-// ─── Cleanup old analytics data ──────────────────────────────────────────────
 
 export async function cleanupAnalyticsData(customerUid: string, daysToKeep = 180) {
   return cleanupOldAnalytics(customerUid, daysToKeep);
 }
+
+/** Named SSoT readers used by dashboard / analytics / admin surfaces. */
+export const getAnalyticsSummary = getSummaryCounts;
+export async function getAnalyticsSeries(filter: AnalyticsFilter) {
+  const { fromDate, toDate } = buildDateRange(filter.from, filter.to);
+  return getDailySeries({ ...filter, from: fromDate, to: toDate });
+}
+export const getAnalyticsTopProducts = getTopProducts;

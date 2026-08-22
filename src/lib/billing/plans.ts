@@ -2,7 +2,7 @@ import { mapLegacyPlanId } from "@/lib/billing/plan-enforcement";
 
 export type BillingCycle = "monthly" | "yearly";
 
-export type PlanId = "trial" | "starter" | "pro" | "business" | "enterprise";
+export type PlanId = "trial" | "starter" | "intermediate" | "pro" | "business" | "enterprise";
 
 export type YearlyPricingMode = "manual" | "percent_off";
 
@@ -67,19 +67,19 @@ export const BILLING_PLANS: BillingPlan[] = [
     description: "Free plan for testing your first 3D/AR product.",
     storageGb: 0.1,
     bandwidthGb: 1,
-    products: 1,
+    products: 10,
     priceMonthlyInr: 0,
     priceYearlyInr: 0,
-    trialHours: 24,
-    badge: "24 Hours Trial",
+    trialHours: 72,
+    badge: "3 Days Trial",
     icon: "paper",
     features: [
-      "1 Active Product",
+      "10 Active Products",
       "3D Viewer & AR",
       "QR Code Sharing",
       "Public Share Link",
       "Basic Analytics",
-      "Auto delete after 24 hours if not upgraded",
+      "Auto delete after 3 days if not upgraded",
     ],
     limits: {
       customBranding: false,
@@ -97,18 +97,20 @@ export const BILLING_PLANS: BillingPlan[] = [
     tagline: "Upgrade your info-commerce",
     description: "For small sellers who need clean 3D viewer, QR and AR.",
     storageGb: 0.5,
-    bandwidthGb: 5,
-    products: 5,
-    priceMonthlyInr: 249,
-    priceYearlyInr: 2499,
+    bandwidthGb: 2,
+    products: 10,
+    priceMonthlyInr: 999,
+    priceYearlyInr: 9990,
     icon: "plane",
     features: [
-      "5 Active Products",
-      "All Free features",
+      "10 Active Products",
+      "3D Viewer",
+      "AR Experience",
       "Download QR",
-      "Viewer Link",
-      "Basic Analytics",
       "Email support",
+      "QR Codes",
+      "Share Links",
+      "Viewer Link",
     ],
     limits: {
       customBranding: false,
@@ -117,8 +119,43 @@ export const BILLING_PLANS: BillingPlan[] = [
       priorityProcessing: false,
       prioritySupport: false,
     },
-    qrLimit: 20,
+    qrLimit: 10,
     shareLinkLimit: null,
+    bandwidthResetsMonthly: true,
+  },
+  {
+    id: "intermediate",
+    name: "INTERMEDIATE",
+    tagline: "Grow with embed-ready product experiences",
+    description: "For growing sellers who need more products and website embed.",
+    storageGb: 2,
+    bandwidthGb: 100,
+    products: 50,
+    priceMonthlyInr: 1799,
+    priceYearlyInr: 17990,
+    icon: "plane",
+    features: [
+      "3D Viewer",
+      "50 Active Products",
+      "AR Experience",
+      "All Basic features",
+      "Download QR",
+      "Email support",
+      "Embed Viewer",
+      "QR Codes",
+      "Share Links",
+      "Viewer Link",
+    ],
+    limits: {
+      customBranding: false,
+      advancedAnalytics: false,
+      embedViewer: true,
+      priorityProcessing: false,
+      prioritySupport: false,
+    },
+    qrLimit: 50,
+    shareLinkLimit: null,
+    bandwidthResetsMonthly: true,
   },
   {
     id: "pro",
@@ -126,49 +163,66 @@ export const BILLING_PLANS: BillingPlan[] = [
     tagline: "Boost your e-commerce",
     description: "Best for Amazon, Flipkart, furniture, tile and product brands.",
     storageGb: 5,
-    bandwidthGb: 50,
-    products: 50,
-    priceMonthlyInr: 999,
-    priceYearlyInr: 9999,
+    bandwidthGb: 250,
+    products: 100,
+    priceMonthlyInr: 2599,
+    priceYearlyInr: 25990,
     popular: true,
     badge: "Most Popular",
     icon: "rocket",
     features: [
-      "50 Active Products",
-      "All Basic features",
+      "100 Active Products",
+      "3D Viewer",
       "Advanced Analytics",
+      "All Basic features",
+      "AR Experience",
       "Custom Branding",
+      "Download QR",
+      "Email support",
       "Embed Viewer",
-      "Priority Processing",
+      "Priority Support",
+      "QR Codes",
+      "Share Links",
+      "Viewer Link",
     ],
     limits: {
       customBranding: true,
       advancedAnalytics: true,
       embedViewer: true,
-      priorityProcessing: true,
-      prioritySupport: false,
+      priorityProcessing: false,
+      prioritySupport: true,
     },
     qrLimit: 100,
     shareLinkLimit: null,
+    bandwidthResetsMonthly: true,
   },
   {
     id: "business",
     name: "BUSINESS",
-    tagline: "If it’s digital, it’s your job",
-    description: "For high-volume businesses and custom AR workflows.",
-    storageGb: 25,
-    bandwidthGb: 250,
-    products: 250,
-    priceMonthlyInr: null,
-    priceYearlyInr: null,
+    tagline: "Scale client delivery with high usage",
+    description: "For agencies and high-volume businesses managing multiple clients.",
+    storageGb: 10,
+    bandwidthGb: 500,
+    products: 200,
+    priceMonthlyInr: 4999,
+    priceYearlyInr: 49990,
     icon: "planet",
     features: [
-      "250 Active Products",
-      "All Professional features",
-      "Custom Solution",
-      "Priority Support",
+      "200 Active Products",
+      "3D Viewer",
+      "Advanced Analytics",
+      "All Basic features",
+      "AR Experience",
+      "Client Management",
+      "Custom Branding",
+      "Download QR",
+      "Email support",
+      "Embed Viewer",
       "High Usage",
-      "Dedicated Setup",
+      "Priority Support",
+      "QR Codes",
+      "Share Links",
+      "Viewer Link",
     ],
     limits: {
       customBranding: true,
@@ -176,15 +230,15 @@ export const BILLING_PLANS: BillingPlan[] = [
       embedViewer: true,
       priorityProcessing: true,
       prioritySupport: true,
-      allowCustomDomain: true,
     },
-    qrLimit: null,
+    qrLimit: 200,
     shareLinkLimit: null,
+    bandwidthResetsMonthly: true,
   },
   {
     id: "enterprise",
     name: "ENTERPRISE",
-    tagline: "Custom contracts for complex organizations",
+    tagline: "Fully custom contracts for your enterprise",
     description: "Sales-assisted plans with negotiated limits, pricing, and support.",
     storageGb: 25,
     bandwidthGb: 250,
@@ -193,12 +247,13 @@ export const BILLING_PLANS: BillingPlan[] = [
     priceYearlyInr: null,
     icon: "planet",
     features: [
-      "Custom limits and workflows",
-      "Dedicated onboarding",
-      "Priority support",
+      "Client Management",
       "Contract billing",
-      "White Label viewer",
       "Custom Domain",
+      "Dedicated onboarding",
+      "Fully custom limits and workflows",
+      "Priority support",
+      "White Label viewer",
     ],
     limits: {
       customBranding: true,
@@ -215,8 +270,37 @@ export const BILLING_PLANS: BillingPlan[] = [
 ];
 
 export function getPlanById(planId?: string | null) {
-  const mapped = mapLegacyPlanId(planId || "trial") as PlanId;
-  return BILLING_PLANS.find((plan) => plan.id === mapped) || BILLING_PLANS[0];
+  const raw = String(planId || "trial").trim();
+  const mapped = mapLegacyPlanId(raw) as PlanId;
+  const found = BILLING_PLANS.find((plan) => plan.id === mapped);
+  if (found) return found;
+
+  // Custom enterprise contracts use ecp_… UIDs — never collapse them to Trial.
+  if (raw.toLowerCase().startsWith("ecp_")) {
+    const enterprise = BILLING_PLANS.find((plan) => plan.id === "enterprise") || BILLING_PLANS[0];
+    return {
+      ...enterprise,
+      // Stable catalog slot id for type safety; display name comes from getPlanDisplayName / limits.
+      id: "enterprise" as PlanId,
+      name: "ENTERPRISE",
+    };
+  }
+
+  return BILLING_PLANS[0];
+}
+
+export function getPlanDisplayName(planId?: string | null, fallbackName?: string | null) {
+  const raw = String(planId || "trial").trim();
+  const mapped = mapLegacyPlanId(raw);
+  // Custom enterprise contracts always surface as Enterprise — never the
+  // internal quote nickname (e.g. "Ak Enterprise").
+  if (raw.toLowerCase().startsWith("ecp_") || mapped === "enterprise") {
+    return "ENTERPRISE";
+  }
+  const canonical = BILLING_PLANS.find((plan) => plan.id === mapped)?.name;
+  if (canonical) return canonical;
+  if (fallbackName?.trim()) return fallbackName.trim();
+  return String(mapped || "trial").toUpperCase();
 }
 
 export function formatInr(amount: number | null) {

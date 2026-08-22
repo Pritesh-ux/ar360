@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { guardAdminPermission } from "@/lib/permissions/admin-rbac";
-import { getMasterInvoiceHtml } from "@/server/billing/invoice.service";
+import { getMasterInvoiceEmailHtml } from "@/server/billing/invoice.service";
 import { sendEmail } from "@/lib/email/send-email";
 import { writeMasterAdminAudit } from "@/lib/master-admin/audit-log";
 import { query } from "@/lib/db";
@@ -12,8 +12,15 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   if (auth instanceof NextResponse) return auth;
   const { admin } = auth;
 
-  const { id } = await params;
-  const html = await getMasterInvoiceHtml(id);
+  const { id: rawId } = await params;
+  const { resolveCanonicalInvoice } = await import("@/server/billing/invoice.repository");
+  const resolved = await resolveCanonicalInvoice(rawId);
+  if (!resolved) {
+    return NextResponse.json({ error: "Invoice not found." }, { status: 404 });
+  }
+  const id = resolved.invoice_uid;
+
+  const html = await getMasterInvoiceEmailHtml(id);
   if (!html) {
     return NextResponse.json({ error: "Invoice not found." }, { status: 404 });
   }
@@ -39,11 +46,26 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   }
 
   const invoiceLabel = invoice.invoice_number || id;
+  const text = `Hello${invoice.buyer_name ? ` ${invoice.buyer_name}` : ""},\n\nPlease find your invoice ${invoiceLabel} attached below.\n\nThank you,\nAR360 Team`;
   const result = await sendEmail({
     to,
     subject: `Your AR360 invoice ${invoiceLabel}`,
-    text: `Hello${invoice.buyer_name ? ` ${invoice.buyer_name}` : ""},\n\nPlease find your invoice ${invoiceLabel} attached below.\n\nThank you,\nAR360 Team`,
+    text,
     html,
+    template: "invoice_ready",
+    metadata: {
+      invoiceUid: id,
+      invoiceNumber: invoice.invoice_number || invoiceLabel,
+      customerUid: invoice.customer_uid,
+      content: {
+        title: "Your invoice is ready",
+        intro: `Please find your invoice ${invoiceLabel} below.`,
+        details: [
+          { label: "Invoice", value: invoiceLabel },
+          ...(invoice.buyer_name ? [{ label: "Customer", value: invoice.buyer_name }] : []),
+        ],
+      },
+    },
   });
 
   await writeMasterAdminAudit({

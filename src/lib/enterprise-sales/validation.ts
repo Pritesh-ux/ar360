@@ -5,6 +5,7 @@ import {
   type EnterprisePaymentInput,
   type EnterpriseQuoteInput,
   type EnterpriseRequestInput,
+  type EnterpriseRequestRequirementsPatch,
   type EnterpriseStatus,
   type PaymentStatus,
 } from "./types";
@@ -41,6 +42,33 @@ function nonNegativeInteger(value: number | null | undefined, label: string): nu
   return value;
 }
 
+export function validateEnterpriseRequestRequirements(
+  input: EnterpriseRequestRequirementsPatch,
+): EnterpriseRequestRequirementsPatch {
+  return {
+    expectedProducts: nonNegativeInteger(input.expectedProducts, "Expected products"),
+    expectedStorageGb: nonNegativeInteger(input.expectedStorageGb, "Expected storage"),
+    expectedMonthlyBandwidthGb: nonNegativeInteger(
+      input.expectedMonthlyBandwidthGb,
+      "Expected monthly bandwidth",
+    ),
+    needsMoreStorage: Boolean(input.needsMoreStorage),
+    needsMoreBandwidth: Boolean(input.needsMoreBandwidth),
+    needsMoreProducts: Boolean(input.needsMoreProducts),
+    needsTeamMembers: Boolean(input.needsTeamMembers),
+    needsCustomBranding: Boolean(input.needsCustomBranding),
+    needsDedicatedInfrastructure: Boolean(input.needsDedicatedInfrastructure),
+    needsPrioritySupport: Boolean(input.needsPrioritySupport),
+    needsSla: Boolean(input.needsSla),
+    needsQr: Boolean(input.needsQr),
+    needsEmbed: Boolean(input.needsEmbed),
+    needsShare: Boolean(input.needsShare),
+    needsAr: Boolean(input.needsAr),
+    needsAnalytics: Boolean(input.needsAnalytics),
+    additionalRequirements: optional(input.additionalRequirements, 10_000),
+  };
+}
+
 export function validateEnterpriseRequest(input: EnterpriseRequestInput): EnterpriseRequestInput {
   const businessEmail = required(input.businessEmail, "Business email", 255).toLowerCase();
   if (!EMAIL_RE.test(businessEmail)) throw new EnterpriseSalesValidationError("Business email is invalid");
@@ -64,7 +92,9 @@ export function validateEnterpriseRequest(input: EnterpriseRequestInput): Enterp
     businessEmail,
     phone: required(input.phone, "Phone number", 40),
     companyWebsite,
+    address: required(input.address, "Address", 500),
     country: required(input.country, "Country", 100),
+    state: required(input.state, "State", 120),
     industry: required(input.industry, "Industry", 120),
     expectedProducts: nonNegativeInteger(input.expectedProducts, "Expected products"),
     expectedStorageGb: nonNegativeInteger(input.expectedStorageGb, "Expected storage"),
@@ -218,12 +248,13 @@ export function validatePayment(input: EnterprisePaymentInput): EnterprisePaymen
   };
 }
 
+/** Allow guided fulfill skips (e.g. new → quoted after first PDF) while keeping terminals strict. */
 const STATUS_TRANSITIONS: Record<EnterpriseStatus, EnterpriseStatus[]> = {
-  new: ["contacted", "rejected", "closed"],
-  contacted: ["negotiating", "rejected", "closed"],
-  negotiating: ["quoted", "rejected", "closed"],
+  new: ["contacted", "negotiating", "quoted", "rejected", "closed"],
+  contacted: ["negotiating", "quoted", "waiting_payment", "rejected", "closed"],
+  negotiating: ["quoted", "waiting_payment", "rejected", "closed"],
   quoted: ["waiting_payment", "negotiating", "rejected", "closed"],
-  waiting_payment: ["active", "negotiating", "rejected", "closed"],
+  waiting_payment: ["active", "negotiating", "quoted", "rejected", "closed"],
   active: ["closed"],
   rejected: [],
   closed: [],

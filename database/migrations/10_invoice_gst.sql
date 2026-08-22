@@ -1,4 +1,5 @@
 -- Migration 10: Invoice GST tables and billing_invoices extensions
+-- MySQL 8.0 compatible (no ADD COLUMN IF NOT EXISTS)
 
 CREATE TABLE IF NOT EXISTS billing_profiles (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -26,15 +27,50 @@ CREATE TABLE IF NOT EXISTS invoice_counters (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-ALTER TABLE billing_invoices ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(80) NULL;
-ALTER TABLE billing_invoices ADD COLUMN IF NOT EXISTS subtotal_paise INT NOT NULL DEFAULT 0;
-ALTER TABLE billing_invoices ADD COLUMN IF NOT EXISTS cgst_paise INT NOT NULL DEFAULT 0;
-ALTER TABLE billing_invoices ADD COLUMN IF NOT EXISTS sgst_paise INT NOT NULL DEFAULT 0;
-ALTER TABLE billing_invoices ADD COLUMN IF NOT EXISTS igst_paise INT NOT NULL DEFAULT 0;
-ALTER TABLE billing_invoices ADD COLUMN IF NOT EXISTS gst_rate DECIMAL(5,2) NOT NULL DEFAULT 18.00;
-ALTER TABLE billing_invoices ADD COLUMN IF NOT EXISTS seller_gstin VARCHAR(32) NULL;
-ALTER TABLE billing_invoices ADD COLUMN IF NOT EXISTS buyer_gstin VARCHAR(32) NULL;
-ALTER TABLE billing_invoices ADD COLUMN IF NOT EXISTS buyer_name VARCHAR(191) NULL;
-ALTER TABLE billing_invoices ADD COLUMN IF NOT EXISTS buyer_email VARCHAR(191) NULL;
-ALTER TABLE billing_invoices ADD COLUMN IF NOT EXISTS buyer_address TEXT NULL;
-ALTER TABLE billing_invoices ADD COLUMN IF NOT EXISTS invoice_html LONGTEXT NULL;
+SET @has_col := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'billing_invoices' AND COLUMN_NAME = 'invoice_number');
+SET @sql := IF(@has_col = 0, 'ALTER TABLE billing_invoices ADD COLUMN invoice_number VARCHAR(80) NULL', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @has_col := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'billing_invoices' AND COLUMN_NAME = 'subtotal_paise');
+SET @sql := IF(@has_col = 0, 'ALTER TABLE billing_invoices ADD COLUMN subtotal_paise INT NOT NULL DEFAULT 0', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @has_col := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'billing_invoices' AND COLUMN_NAME = 'cgst_paise');
+SET @sql := IF(@has_col = 0, 'ALTER TABLE billing_invoices ADD COLUMN cgst_paise INT NOT NULL DEFAULT 0', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @has_col := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'billing_invoices' AND COLUMN_NAME = 'sgst_paise');
+SET @sql := IF(@has_col = 0, 'ALTER TABLE billing_invoices ADD COLUMN sgst_paise INT NOT NULL DEFAULT 0', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @has_col := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'billing_invoices' AND COLUMN_NAME = 'igst_paise');
+SET @sql := IF(@has_col = 0, 'ALTER TABLE billing_invoices ADD COLUMN igst_paise INT NOT NULL DEFAULT 0', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @has_col := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'billing_invoices' AND COLUMN_NAME = 'gst_rate');
+SET @sql := IF(@has_col = 0, 'ALTER TABLE billing_invoices ADD COLUMN gst_rate DECIMAL(5,2) NOT NULL DEFAULT 18.00', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @has_col := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'billing_invoices' AND COLUMN_NAME = 'seller_gstin');
+SET @sql := IF(@has_col = 0, 'ALTER TABLE billing_invoices ADD COLUMN seller_gstin VARCHAR(32) NULL', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @has_col := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'billing_invoices' AND COLUMN_NAME = 'buyer_gstin');
+SET @sql := IF(@has_col = 0, 'ALTER TABLE billing_invoices ADD COLUMN buyer_gstin VARCHAR(32) NULL', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @has_col := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'billing_invoices' AND COLUMN_NAME = 'buyer_name');
+SET @sql := IF(@has_col = 0, 'ALTER TABLE billing_invoices ADD COLUMN buyer_name VARCHAR(191) NULL', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @has_col := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'billing_invoices' AND COLUMN_NAME = 'buyer_email');
+SET @sql := IF(@has_col = 0, 'ALTER TABLE billing_invoices ADD COLUMN buyer_email VARCHAR(191) NULL', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @has_col := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'billing_invoices' AND COLUMN_NAME = 'buyer_address');
+SET @sql := IF(@has_col = 0, 'ALTER TABLE billing_invoices ADD COLUMN buyer_address TEXT NULL', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @has_col := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'billing_invoices' AND COLUMN_NAME = 'invoice_html');
+SET @sql := IF(@has_col = 0, 'ALTER TABLE billing_invoices ADD COLUMN invoice_html LONGTEXT NULL', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;

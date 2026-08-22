@@ -112,7 +112,8 @@ async function purgeLegacyDemoNotifications() {
 export async function syncAdminNotifications() {
   await purgeLegacyDemoNotifications();
 
-  const [failedPayments, openHighTickets, pendingPayments, recentCustomers, captureOps] = await Promise.all([
+  const [failedPayments, openHighTickets, pendingPayments, recentCustomers, recentEnterpriseRequests, captureOps] =
+    await Promise.all([
     query<{ total: number }>(
       `SELECT COUNT(*) AS total FROM billing_payments
        WHERE status = 'failed' AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)`,
@@ -135,6 +136,20 @@ export async function syncAdminNotifications() {
       `SELECT customer_uid, contact_name, email, company_name
          FROM customers
         WHERE created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)
+        ORDER BY created_at DESC
+        LIMIT 50`,
+    ).catch(() => []),
+    query<{
+      request_uid: string;
+      company_name: string;
+      contact_name: string;
+      business_email: string;
+      country: string;
+      state: string | null;
+    }>(
+      `SELECT request_uid, company_name, contact_name, business_email, country, state
+         FROM enterprise_requests
+        WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
         ORDER BY created_at DESC
         LIMIT 50`,
     ).catch(() => []),
@@ -179,6 +194,16 @@ export async function syncAdminNotifications() {
       title: "New customer signup",
       body: `${customer.contact_name} (${customer.email})${customer.company_name ? ` — ${customer.company_name}` : ""}`,
       href: `/master-admin/customers?search=${encodeURIComponent(customer.email)}`,
+    });
+  }
+
+  for (const request of recentEnterpriseRequests) {
+    await upsertDerivedNotification({
+      notificationUid: `enterprise-request:${request.request_uid}`,
+      category: "customer",
+      title: "New Enterprise quote request",
+      body: `${request.company_name} · ${request.contact_name} (${request.business_email}) · ${request.country}${request.state ? `, ${request.state}` : ""}`,
+      href: `/master-admin/enterprise-requests/${request.request_uid}`,
     });
   }
 

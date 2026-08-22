@@ -6,7 +6,7 @@ import {
   parseRazorpayBillingEvent,
   shouldApplyProviderEvent,
 } from "@/server/billing/razorpay-webhook.types";
-import { verifyRazorpayWebhookSignature } from "@/server/billing/razorpay";
+import { matchRazorpayWebhookSignature } from "@/server/billing/razorpay";
 
 function fixture(type: (typeof RAZORPAY_BILLING_EVENTS)[number], createdAt = 1_720_000_000) {
   const payload: Record<string, unknown> = {
@@ -96,19 +96,12 @@ describe("Razorpay webhook event parsing", () => {
 });
 
 describe("Razorpay webhook signature isolation", () => {
-  it("uses only RAZORPAY_WEBHOOK_SECRET", async () => {
-    const previous = process.env.RAZORPAY_WEBHOOK_SECRET;
-    process.env.RAZORPAY_WEBHOOK_SECRET = "dedicated-secret";
+  it("verifies with webhook secret (not API key secret)", () => {
     const body = JSON.stringify(fixture("payment.captured"));
     const valid = createHmac("sha256", "dedicated-secret").update(body).digest("hex");
     const apiSecretSignature = createHmac("sha256", "api-secret").update(body).digest("hex");
-    try {
-      assert.equal(await verifyRazorpayWebhookSignature(body, valid), true);
-      assert.equal(await verifyRazorpayWebhookSignature(body, apiSecretSignature), false);
-    } finally {
-      if (previous == null) delete process.env.RAZORPAY_WEBHOOK_SECRET;
-      else process.env.RAZORPAY_WEBHOOK_SECRET = previous;
-    }
+    assert.equal(matchRazorpayWebhookSignature(body, valid, "dedicated-secret"), true);
+    assert.equal(matchRazorpayWebhookSignature(body, apiSecretSignature, "dedicated-secret"), false);
   });
 });
 

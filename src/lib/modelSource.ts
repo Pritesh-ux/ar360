@@ -1,4 +1,5 @@
 import { isCustomerStoragePath, toProtectedAssetUrl } from "@/lib/billing/asset-url";
+import { sanitizeOrigin } from "@/lib/url";
 
 type ProductModelSource = {
   modelUrl?: string;
@@ -6,6 +7,7 @@ type ProductModelSource = {
   publicFolder?: string;
   productUid?: string;
   id?: string;
+  updatedAt?: string | number | null;
 };
 
 function normalizePublicPath(value?: string) {
@@ -41,6 +43,8 @@ export function toCurrentOriginUrl(value?: string | null) {
   const raw = String(value || "").trim();
   if (!raw) return "";
   if (isBrowserOnlyUrl(raw)) return raw;
+  // Material Inspector unpin sentinel — never rewrite into `/__clear__` (404).
+  if (raw === "__clear__" || raw === "/__clear__") return "";
 
   // LAN/mobile fix: product files must be loaded from the same origin that
   // opened the viewer. A URL saved while developing on localhost will not load
@@ -56,7 +60,7 @@ export function toCurrentOriginUrl(value?: string | null) {
           url.hostname === "0.0.0.0";
 
         if (isLocalDevHost) {
-          return `${window.location.origin}${url.pathname}${url.search}${url.hash}`;
+          return `${sanitizeOrigin(window.location.origin)}${url.pathname}${url.search}${url.hash}`;
         }
 
         if (url.origin === window.location.origin) return url.href;
@@ -65,7 +69,7 @@ export function toCurrentOriginUrl(value?: string | null) {
 
       const normalized = normalizePublicPath(raw);
       const pathOnly = normalized.startsWith("/") ? normalized : `/${normalized}`;
-      return `${window.location.origin}${pathOnly}`;
+      return `${sanitizeOrigin(window.location.origin)}${pathOnly}`;
     } catch {
       // Fall back to relative normalization below.
     }
@@ -86,11 +90,13 @@ function normalizeModelViewerSrc(src: string) {
   if (typeof window === "undefined") return src;
 
   try {
-    const url = new URL(src, window.location.origin);
+    const cleanOrigin = sanitizeOrigin(window.location.origin);
+    const url = new URL(src, cleanOrigin);
 
     if (url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "0.0.0.0") {
-      url.host = window.location.host;
-      url.protocol = window.location.protocol;
+      const cleanUrl = new URL(cleanOrigin);
+      url.host = cleanUrl.host;
+      url.protocol = cleanUrl.protocol;
     }
 
     if (url.origin !== window.location.origin) return src;
@@ -117,7 +123,7 @@ function normalizeModelViewerSrc(src: string) {
 function resolveModelSrc(src: string) {
   const withOrigin = toCurrentOriginUrl(src) || src;
   if (isCustomerStoragePath(withOrigin)) {
-    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const origin = typeof window !== "undefined" ? sanitizeOrigin(window.location.origin) : "";
     return toProtectedAssetUrl(withOrigin, origin);
   }
   return withOrigin;
@@ -145,6 +151,15 @@ export function getProductModelSrc(product?: ProductModelSource | null) {
     src = modelUrl || undefined;
   }
 
-  if (!src || typeof window === "undefined") return src;
+  if (!src) return src;
+
+  // Bust browser cache when the same storage path is overwritten (sample chair replace).
+  const stamp = product.updatedAt ? Date.parse(String(product.updatedAt)) : NaN;
+  if (Number.isFinite(stamp) && stamp > 0) {
+    const joiner = src.includes("?") ? "&" : "?";
+    src = `${src}${joiner}v=${Math.floor(stamp / 1000)}`;
+  }
+
+  if (typeof window === "undefined") return src;
   return normalizeModelViewerSrc(src);
 }

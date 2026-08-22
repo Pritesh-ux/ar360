@@ -27,6 +27,26 @@ type PaymentRow = {
   date: string;
 };
 
+/** Prefer payment.invoice_uid, else canonical AR360 invoice for the Razorpay payment. */
+const INVOICE_JOIN = `LEFT JOIN billing_invoices bi ON bi.invoice_uid = COALESCE(
+  NULLIF(bp.invoice_uid, ''),
+  (
+    SELECT i.invoice_uid
+      FROM billing_invoices i
+     WHERE bp.razorpay_payment_id IS NOT NULL
+       AND bp.razorpay_payment_id != ''
+       AND i.razorpay_payment_id = bp.razorpay_payment_id
+     ORDER BY
+       CASE
+         WHEN i.invoice_number LIKE 'AR360/%' THEN 0
+         WHEN i.invoice_uid REGEXP '^INV_' THEN 1
+         ELSE 2
+       END,
+       i.created_at DESC
+     LIMIT 1
+  )
+)`;
+
 export async function GET(req: NextRequest) {
   const auth = await guardAdminPermission("billing.read");
   if (auth instanceof NextResponse) return auth;
@@ -95,7 +115,7 @@ export async function GET(req: NextRequest) {
         SELECT COUNT(*) AS total
         FROM billing_payments bp
         LEFT JOIN billing_orders bo ON bo.order_uid = bp.order_uid
-        LEFT JOIN billing_invoices bi ON bi.invoice_uid = bp.invoice_uid
+        ${INVOICE_JOIN}
         LEFT JOIN customers c ON c.customer_uid = bp.customer_uid
         ${where}
       `, values),
@@ -132,7 +152,7 @@ export async function GET(req: NextRequest) {
           bp.created_at AS date
         FROM billing_payments bp
         LEFT JOIN billing_orders bo ON bo.order_uid = bp.order_uid
-        LEFT JOIN billing_invoices bi ON bi.invoice_uid = bp.invoice_uid
+        ${INVOICE_JOIN}
         LEFT JOIN customers c ON c.customer_uid = bp.customer_uid
         ${where}
         ORDER BY bp.created_at DESC
@@ -148,7 +168,7 @@ export async function GET(req: NextRequest) {
           COALESCE(SUM(CASE WHEN bp.status = 'refunded' THEN COALESCE(bi.total_paise, bp.amount_paise) ELSE 0 END), 0) / 100 AS refunds,
           COUNT(*) AS totalCount
         FROM billing_payments bp
-        LEFT JOIN billing_invoices bi ON bi.invoice_uid = bp.invoice_uid
+        ${INVOICE_JOIN}
         ${where}
       `, values),
 
@@ -166,7 +186,7 @@ export async function GET(req: NextRequest) {
           ) n
         ) d
         LEFT JOIN billing_payments bp ON DATE(bp.created_at) = d.date AND bp.status = 'captured'
-        LEFT JOIN billing_invoices bi ON bi.invoice_uid = bp.invoice_uid
+        ${INVOICE_JOIN}
         GROUP BY d.date
         ORDER BY d.date
       `).catch(() => []),
@@ -182,7 +202,7 @@ export async function GET(req: NextRequest) {
           COUNT(*) AS count,
           COALESCE(SUM(COALESCE(bi.total_paise, bp.amount_paise)), 0) / 100 AS amount
         FROM billing_payments bp
-        LEFT JOIN billing_invoices bi ON bi.invoice_uid = bp.invoice_uid
+        ${INVOICE_JOIN}
         ${where}
         GROUP BY status
       `, values),
@@ -219,7 +239,7 @@ export async function GET(req: NextRequest) {
           bp.created_at AS date
         FROM billing_payments bp
         LEFT JOIN billing_orders bo ON bo.order_uid = bp.order_uid
-        LEFT JOIN billing_invoices bi ON bi.invoice_uid = bp.invoice_uid
+        ${INVOICE_JOIN}
         LEFT JOIN customers c ON c.customer_uid = bp.customer_uid
         ${where}
         ORDER BY bp.created_at DESC
@@ -232,7 +252,7 @@ export async function GET(req: NextRequest) {
       return {
         id: row.id,
         invoice: row.invoice,
-        invoiceUid: row.invoice_uid || row.invoice.replace(/^INV-/, ""),
+        invoiceUid: row.invoice_uid || "",
         customerUid: row.customer_uid,
         customer: row.customer,
         email: row.email,

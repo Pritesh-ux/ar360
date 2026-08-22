@@ -24,7 +24,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       return NextResponse.json({ error: "Login required." }, { status: 401 });
     }
 
-    const permission = await enforcePermission(user.customerUid ?? "", "access_dashboard");
+    const permission = await enforcePermission(user.customerUid ?? "", "analytics");
     if (!permission.ok) return permission.response;
 
     const body = await request.json().catch(() => ({}));

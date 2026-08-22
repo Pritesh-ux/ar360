@@ -3,6 +3,7 @@ import { hashPassword, verifyPassword } from "@/lib/auth";
 import { ensureProductSchema, query, type QueryValue } from "@/lib/db";
 import { checkShareLinkLimit } from "@/lib/billing/limit-enforcement";
 import { ensureUserPanelSchema } from "@/lib/user-panel/schema";
+import { sanitizeOrigin } from "@/lib/url";
 
 export type ShareLinkType = "public" | "embed" | "email";
 export type ShareLifecycleStatus = "active" | "expired" | "archived" | "disabled";
@@ -101,10 +102,11 @@ export function buildShareDestinationUrl(input: {
   token: string;
   linkType: ShareLinkType;
 }) {
+  const cleanOrigin = sanitizeOrigin(input.origin);
   const base =
     input.linkType === "embed"
-      ? `${input.origin}/embed/${encodeURIComponent(input.productId)}`
-      : `${input.origin}/viewer/${encodeURIComponent(input.productId)}`;
+      ? `${cleanOrigin}/embed/${encodeURIComponent(input.productId)}`
+      : `${cleanOrigin}/viewer/${encodeURIComponent(input.productId)}`;
   const url = new URL(base);
   url.searchParams.set("share", input.token);
   if (input.linkType === "email") url.searchParams.set("source", "email");
@@ -112,11 +114,11 @@ export function buildShareDestinationUrl(input: {
 }
 
 export function buildSharePublicUrl(origin: string, token: string) {
-  return `${origin}/s/${token}`;
+  return `${sanitizeOrigin(origin)}/s/${token}`;
 }
 
 export function buildEmbedIframeCode(origin: string, productId: string) {
-  const src = `${origin}/embed/${encodeURIComponent(productId)}`;
+  const src = `${sanitizeOrigin(origin)}/embed/${encodeURIComponent(productId)}`;
   return `<iframe src="${src}" title="AR360 3D Viewer" width="100%" height="480" style="border:0;border-radius:16px;" allow="xr-spatial-tracking; gyroscope; accelerometer; magnetometer; camera; fullscreen"></iframe>`;
 }
 
@@ -216,7 +218,9 @@ export async function listCustomerShareLinks(filters: ShareListFilters): Promise
   const [{ total = 0 } = { total: 0 }] = await query<{ total: number }>(
     `SELECT COUNT(*) AS total
      FROM share_links s
-     INNER JOIN products p ON p.id = s.product_id
+     LEFT JOIN products p ON p.customer_uid = s.customer_uid
+       AND p.deleted_at IS NULL
+       AND (p.id = s.product_id OR p.public_id = s.product_id)
      WHERE ${whereSql}`,
     params,
   );
@@ -224,7 +228,9 @@ export async function listCustomerShareLinks(filters: ShareListFilters): Promise
   const rows = await query<ShareRow>(
     `SELECT s.*, p.title, p.poster, p.thumbnail_url, p.status AS product_status
      FROM share_links s
-     INNER JOIN products p ON p.id = s.product_id
+     LEFT JOIN products p ON p.customer_uid = s.customer_uid
+       AND p.deleted_at IS NULL
+       AND (p.id = s.product_id OR p.public_id = s.product_id)
      WHERE ${whereSql}
      ORDER BY s.updated_at DESC
      LIMIT ? OFFSET ?`,
@@ -295,9 +301,9 @@ export async function createCustomerShareLink(input: {
 
   const owns = await query<{ id: string }>(
     `SELECT id FROM products
-     WHERE id = ? AND customer_uid = ? AND (user_id = ? OR user_id IS NULL)
+     WHERE id = ? AND customer_uid = ? AND deleted_at IS NULL
      LIMIT 1`,
-    [input.productId, input.customerUid, input.userId],
+    [input.productId, input.customerUid],
   );
   if (!owns.length) return { error: "Product not found." as const };
 

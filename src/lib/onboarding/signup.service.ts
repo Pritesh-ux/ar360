@@ -87,7 +87,7 @@ export async function registerCustomerAccount(input: SignupFormInput): Promise<S
     const userUid = createUserUid();
     const [userResult] = await connection.execute(
       `INSERT INTO users (user_uid, name, email, password_hash, role, status, email_verified, two_factor_enabled)
-       VALUES (?, ?, ?, ?, 'user', 'Active', FALSE, FALSE)`,
+       VALUES (?, ?, ?, ?, 'user', 'Active', FALSE, TRUE)`,
       [userUid, name, normalizedEmail, hashPassword(password)],
     );
     userId = Number((userResult as ResultSetHeader).insertId || 0);

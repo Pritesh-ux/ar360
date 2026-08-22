@@ -14,11 +14,11 @@ export type ProductListItem = {
 };
 
 export function normalizeProductStatus(value?: string | null) {
-  const raw = String(value || "Draft").trim().toLowerCase();
-  if (raw === "published" || raw === "publish" || raw === "active") return "Published";
+  const raw = String(value || "published").trim().toLowerCase();
   if (raw === "archived" || raw === "archive") return "Archived";
   if (raw === "processing") return "Processing";
-  return "Draft";
+  // Draft / published / active / empty → Saved (no Draft badge in user panel)
+  return "Saved";
 }
 
 export function getProductCategory(product: ProductListItem) {

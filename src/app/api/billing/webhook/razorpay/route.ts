@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { BillingErrorCode } from "@/lib/billing/billing-errors";
+import { getRazorpayRuntimeConfig } from "@/lib/billing/razorpay-config";
 import { uid, verifyRazorpayWebhookSignature } from "@/server/billing/razorpay";
 import { parseRazorpayBillingEvent } from "@/server/billing/razorpay-webhook.types";
 
@@ -15,13 +16,15 @@ export async function POST(req: Request) {
   const rawBody = await req.text();
   const signature = req.headers.get("x-razorpay-signature") || "";
   const signatureValid = await verifyRazorpayWebhookSignature(rawBody, signature);
+  const { mode } = await getRazorpayRuntimeConfig();
+  const providerMode = mode === "live" ? "live" : "test";
 
   if (!signatureValid) {
     await query(`INSERT INTO billing_provider_health
       (provider, provider_mode, last_webhook_failure_at, last_webhook_failure)
       VALUES ('razorpay', ?, NOW(), 'Invalid webhook signature')
       ON DUPLICATE KEY UPDATE last_webhook_failure_at=NOW(), last_webhook_failure=VALUES(last_webhook_failure)`,
-    [process.env.RAZORPAY_MODE === "live" ? "live" : "test"]).catch(() => undefined);
+    [providerMode]).catch(() => undefined);
     return NextResponse.json(
       { success: false, code: BillingErrorCode.WEBHOOK_SIGNATURE_INVALID, error: "Invalid signature." },
       { status: 400 },
@@ -51,8 +54,6 @@ export async function POST(req: Request) {
   } catch {
     // Signed malformed events are still retained; the processor will retry/dead-letter them.
   }
-  const providerMode = process.env.RAZORPAY_MODE === "live" ? "live" : "test";
-
   await query(
     `INSERT IGNORE INTO billing_webhook_events
        (event_uid, provider, provider_mode, event_type, provider_event_id, dedupe_key,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useDeferredEffect } from "@/lib/react/use-deferred-effect";
 import { CheckCircle2, Loader2, Send } from "lucide-react";
 
 type Props = {
@@ -26,7 +27,7 @@ export default function ContactForm({ defaultSubject = "AR360 Studio inquiry", c
   const [statusTone, setStatusTone] = useState<"success" | "error">("success");
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     setSubject(defaultSubject);
   }, [defaultSubject]);
 

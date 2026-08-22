@@ -4,12 +4,17 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ArrowRight, Menu, X } from "lucide-react";
 import { BrandLogo } from "@/components/brand/BrandLogo";
+import ViewportPortal from "@/components/shared/ViewportPortal";
 
 function HeaderBrand({ className = "" }: { className?: string }) {
-  return <BrandLogo href="/" tone="light" variant="wordmark" className={className} />;
+  return <BrandLogo href="/" tone="dark" variant="wordmark" size={30} className={className} />;
 }
 
-export default function LandingHeader() {
+export default function LandingHeader({
+  items,
+}: {
+  items?: { label: string; href?: string; link_url?: string; nav_uid?: string }[];
+}) {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeSection, setActiveSection] = useState("hero");
@@ -20,11 +25,11 @@ export default function LandingHeader() {
 
       const sections = [
         "hero",
-        "studio-floor",
+        "share-portal",
         "feature-storytelling",
         "use-cases",
-        "editor-story",
         "pricing",
+        "faq",
       ];
       const scrollPos = window.scrollY + 160;
 
@@ -46,14 +51,39 @@ export default function LandingHeader() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  const navItems = [
+  const defaultNavItems = [
     { label: "Home", href: "#hero", id: "hero" },
-    { label: "Product", href: "#studio-floor", id: "studio-floor" },
+    { label: "QR to AR", href: "#share-portal", id: "share-portal" },
     { label: "Features", href: "#feature-storytelling", id: "feature-storytelling" },
     { label: "Use Cases", href: "#use-cases", id: "use-cases" },
-    { label: "Demo", href: "#editor-story", id: "editor-story" },
     { label: "Pricing", href: "#pricing", id: "pricing" },
+    { label: "FAQ", href: "#faq", id: "faq" },
   ];
+
+  const navItems =
+    items && items.length > 0
+      ? items
+          .map((i) => {
+            let dest = i.link_url || i.href || "#";
+            let label = i.label;
+            // Replace legacy Demo nav with From QR to AR section
+            if (
+              label.toLowerCase() === "demo" ||
+              dest === "/demo" ||
+              dest.includes("editor-story")
+            ) {
+              label = "QR to AR";
+              dest = "#share-portal";
+            }
+            return {
+              label,
+              href: dest,
+              id: dest.replace("/#", "").replace("#", "").replace(/^\//, ""),
+              nav_uid: (i as { nav_uid?: string }).nav_uid,
+            };
+          })
+          .filter((item, idx, arr) => arr.findIndex((x) => x.href === item.href) === idx)
+      : defaultNavItems;
 
   return (
     <>
@@ -65,13 +95,17 @@ export default function LandingHeader() {
       >
         <div className="pointer-events-none mx-auto max-w-6xl px-3 pt-3 sm:px-5 sm:pt-4">
           <div
-            className={`pointer-events-auto flex items-center justify-between gap-3 rounded-full border border-[#ECECEC] bg-white/95 px-3 py-2.5 backdrop-blur-md transition-shadow duration-300 sm:px-5 sm:py-3 ${
+            className={`pointer-events-auto flex items-center justify-between gap-3 rounded-full border border-white/10 px-3 py-2.5 backdrop-blur-md transition-shadow duration-300 sm:px-5 sm:py-3 ${
               isScrolled
-                ? "shadow-[0_6px_18px_rgba(15,23,42,0.08)]"
-                : "shadow-[0_2px_10px_rgba(15,23,42,0.05)]"
+                ? "shadow-[0_10px_28px_rgba(0,0,0,0.35)]"
+                : "shadow-[0_4px_16px_rgba(0,0,0,0.22)]"
             }`}
+            style={{
+              background:
+                "linear-gradient(105deg, #0b1220 0%, #0f172a 48%, #0a3d42 78%, #082f33 100%)",
+            }}
           >
-            <HeaderBrand />
+            <HeaderBrand className="ml-1 sm:ml-2" />
 
             <nav className="hidden items-center gap-5 lg:flex xl:gap-6">
               {navItems.map((item) => {
@@ -80,8 +114,9 @@ export default function LandingHeader() {
                   <a
                     key={item.label}
                     href={item.href}
-                    className={`text-[13px] font-bold transition-colors hover:text-[#0A0B14] ${
-                      isActive ? "text-[#0A0B14]" : "text-[#4B5563]"
+                    data-cms-target={(item as { nav_uid?: string }).nav_uid ? `nav:${(item as { nav_uid?: string }).nav_uid}` : "header"}
+                    className={`text-[13px] font-bold transition-colors hover:text-white ${
+                      isActive ? "text-white" : "text-slate-400"
                     }`}
                   >
                     {item.label}
@@ -93,19 +128,19 @@ export default function LandingHeader() {
             <div className="hidden items-center gap-2 md:flex">
               <Link
                 href="/login"
-                className="inline-flex h-9 items-center justify-center rounded-full border border-[#E5E7EB] bg-white px-4 text-[13px] font-bold text-[#0A0B14] transition hover:bg-[#FAFAFA]"
+                className="inline-flex h-9 items-center justify-center rounded-full border border-white/15 bg-white/5 px-4 text-[13px] font-bold text-white transition hover:bg-white/10"
               >
                 Login
               </Link>
               <Link
                 href="/signup"
-                className="inline-flex h-9 items-center justify-center rounded-full bg-[#0A0B14] px-4 text-[13px] font-bold text-white transition hover:scale-[1.02] hover:bg-[#1a1b24]"
+                className="inline-flex h-9 items-center justify-center rounded-full bg-white px-4 text-[13px] font-bold text-[#0A0B14] transition hover:scale-[1.02] hover:bg-slate-100"
               >
                 Signup
               </Link>
               <Link
                 href="/dashboard"
-                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-full bg-[#B9FF2C] px-4 text-[13px] font-bold text-[#0A0B14] transition hover:scale-[1.02] hover:bg-[#A7F11D]"
+                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-full bg-[#b9ff2c] px-4 text-[13px] font-bold text-[#0A0B14] transition hover:scale-[1.02] hover:bg-[#a3f020]"
               >
                 Dashboard
                 <ArrowRight size={14} strokeWidth={2.5} />
@@ -115,7 +150,7 @@ export default function LandingHeader() {
             <button
               type="button"
               onClick={() => setMobileMenuOpen(true)}
-              className="grid h-9 w-9 place-items-center rounded-full border border-[#E5E7EB] text-[#0A0B14] md:hidden"
+              className="grid h-9 w-9 place-items-center rounded-full border border-white/15 text-white md:hidden"
               aria-label="Open menu"
             >
               <Menu size={18} />
@@ -125,14 +160,21 @@ export default function LandingHeader() {
       </header>
 
       {mobileMenuOpen && (
-        <div className="fixed inset-0 z-[1000] flex bg-black/40 backdrop-blur-sm md:hidden">
-          <div className="ml-auto flex h-full w-[300px] flex-col bg-white p-6 shadow-2xl">
+        <ViewportPortal>
+        <div className="fixed inset-0 z-[99999] flex bg-black/40 backdrop-blur-sm md:hidden">
+          <div
+            className="ml-auto flex h-full w-[300px] flex-col p-6 shadow-2xl"
+            style={{
+              background:
+                "linear-gradient(165deg, #0b1220 0%, #0f172a 55%, #082f33 100%)",
+            }}
+          >
             <div className="flex items-center justify-between">
-              <HeaderBrand />
+              <HeaderBrand className="ml-1" />
               <button
                 type="button"
                 onClick={() => setMobileMenuOpen(false)}
-                className="grid h-9 w-9 place-items-center rounded-full border border-[#E5E7EB] text-[#6B7078]"
+                className="grid h-9 w-9 place-items-center rounded-full border border-white/15 text-slate-400"
                 aria-label="Close menu"
               >
                 <X size={18} />
@@ -145,32 +187,32 @@ export default function LandingHeader() {
                   key={item.label}
                   href={item.href}
                   onClick={() => setMobileMenuOpen(false)}
-                  className="text-sm font-bold text-[#4B5563] hover:text-[#0A0B14]"
+                  className="text-sm font-bold text-slate-300 hover:text-white"
                 >
                   {item.label}
                 </a>
               ))}
             </nav>
 
-            <div className="mt-auto flex flex-col gap-2.5 border-t border-[#E8EAED] pt-6">
+            <div className="mt-auto flex flex-col gap-2.5 border-t border-white/10 pt-6">
               <Link
                 href="/login"
                 onClick={() => setMobileMenuOpen(false)}
-                className="flex h-11 items-center justify-center rounded-full border border-[#E5E7EB] text-sm font-bold text-[#0A0B14]"
+                className="flex h-11 items-center justify-center rounded-full border border-white/15 text-sm font-bold text-white"
               >
                 Login
               </Link>
               <Link
                 href="/signup"
                 onClick={() => setMobileMenuOpen(false)}
-                className="flex h-11 items-center justify-center rounded-full bg-[#0A0B14] text-sm font-bold text-white"
+                className="flex h-11 items-center justify-center rounded-full bg-white text-sm font-bold text-[#0A0B14]"
               >
                 Signup
               </Link>
               <Link
                 href="/dashboard"
                 onClick={() => setMobileMenuOpen(false)}
-                className="flex h-11 items-center justify-center gap-1.5 rounded-full bg-[#B9FF2C] text-sm font-bold text-[#0A0B14]"
+                className="flex h-11 items-center justify-center gap-1.5 rounded-full bg-[#b9ff2c] text-sm font-bold text-[#0A0B14] transition hover:bg-[#a3f020]"
               >
                 Dashboard
                 <ArrowRight size={14} strokeWidth={2.5} />
@@ -178,6 +220,7 @@ export default function LandingHeader() {
             </div>
           </div>
         </div>
+        </ViewportPortal>
       )}
     </>
   );

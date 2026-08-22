@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getQrCodeByQrCode, trackQrScan } from "@/lib/growth/qr.service.impl";
 import { query } from "@/lib/db";
+import { getCleanOrigin } from "@/lib/url";
+import { resolveClientUidForDelivery } from "@/lib/user-panel/resolve-client-for-product";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,11 +16,12 @@ function sessionFromRequest(request: NextRequest) {
 export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   const qrCode = decodeURIComponent(id || "").trim();
-  if (!qrCode) return NextResponse.redirect(new URL("/404", request.url));
+  const origin = getCleanOrigin(request);
+  if (!qrCode) return NextResponse.redirect(new URL("/link-unavailable", origin));
 
   const qr = await getQrCodeByQrCode(qrCode);
   if (!qr || qr.effectiveStatus !== "active") {
-    return NextResponse.redirect(new URL("/404", request.url));
+    return NextResponse.redirect(new URL("/link-unavailable", origin));
   }
 
   const productRows = await query<{ public_id: string | null; status: string }>(
@@ -27,7 +30,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
   );
   const product = productRows[0];
   if (!product || !["published", "active"].includes(String(product.status).toLowerCase())) {
-    return NextResponse.redirect(new URL("/404", request.url));
+    return NextResponse.redirect(new URL("/link-unavailable", origin));
   }
 
   const sessionId = sessionFromRequest(request);
@@ -41,13 +44,25 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
   });
 
   const viewerId = product.public_id || qr.productId;
-  const target = new URL(`/viewer/${encodeURIComponent(viewerId)}`, request.url);
+  const target = new URL(`/viewer/${encodeURIComponent(viewerId)}`, origin);
   target.searchParams.set("source", "qr");
   target.searchParams.set("landing", "1");
 
+  const linkedClientUid = await resolveClientUidForDelivery({
+    productId: qr.productId,
+    qrResourceIds: [qr.qrCode, qr.qrUid, qr.publicId].filter(Boolean),
+  });
+  if (linkedClientUid) {
+    target.searchParams.set("client", linkedClientUid);
+  }
+
   const response = NextResponse.redirect(target);
   if (!request.cookies.get("ar360_qr_sess")) {
-    response.cookies.set("ar360_qr_sess", sessionId, { httpOnly: true, maxAge: 60 * 60 * 24 * 30, path: "/" });
+    response.cookies.set("ar360_qr_sess", sessionId, {
+      httpOnly: true,
+      maxAge: 60 * 60 * 24 * 30,
+      path: "/",
+    });
   }
   return response;
 }

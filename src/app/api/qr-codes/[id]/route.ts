@@ -40,6 +40,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     customerUid: gate.user!.customerUid,
     userId: gate.user!.id,
     id: qrId,
+    origin: request.nextUrl.origin,
     patch: {
       foregroundColor: body.foregroundColor,
       backgroundColor: body.backgroundColor,
@@ -54,6 +55,11 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     },
   });
 
-  if ("error" in result) return NextResponse.json({ error: result.error }, { status: 404 });
+  if ("error" in result) {
+    const denied = /custom branding|upgrade/i.test(result.error || "");
+    const badRequest = /too large|No changes/i.test(result.error || "");
+    const status = denied ? 403 : badRequest ? 400 : 404;
+    return NextResponse.json({ error: result.error }, { status });
+  }
   return NextResponse.json({ success: true });
 }

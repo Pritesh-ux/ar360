@@ -21,6 +21,7 @@ export {
   getAdminRbacContext,
   getCurrentMasterAdminWithPermissions,
   guardAdminPermission,
+  logAdminAudit,
   requireAdminPermission,
   requireApiAdminPermission,
   unauthorizedResponse,

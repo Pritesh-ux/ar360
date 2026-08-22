@@ -26,6 +26,38 @@ export async function verifyRazorpayPaymentSignature(input: {
   return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(input.signature));
 }
 
+/**
+ * Confirm payment with Razorpay API (status + amount + order ownership).
+ * Call after signature verify on client-side verify paths.
+ */
+export async function assertRazorpayCapturedPayment(input: {
+  paymentId: string;
+  orderId: string;
+  expectedAmountPaise: number;
+  currency?: string;
+}) {
+  const client = await getRazorpayClient();
+  const payment = await client.payments.fetch(input.paymentId);
+  const status = String(payment.status || "").toLowerCase();
+  if (status !== "captured" && status !== "authorized") {
+    throw new Error(`Payment not captured (status=${status || "unknown"}).`);
+  }
+  if (String(payment.order_id || "") !== input.orderId) {
+    throw new Error("Payment order_id mismatch.");
+  }
+  const amount = Number(payment.amount || 0);
+  const expected = Number(input.expectedAmountPaise);
+  if (!Number.isFinite(expected) || expected <= 0 || amount !== expected) {
+    throw new Error(`Payment amount mismatch: expected ${expected}, received ${amount}.`);
+  }
+  const currency = String(payment.currency || "INR").toUpperCase();
+  const expectedCurrency = String(input.currency || "INR").toUpperCase();
+  if (currency !== expectedCurrency) {
+    throw new Error(`Payment currency mismatch: expected ${expectedCurrency}, received ${currency}.`);
+  }
+  return payment;
+}
+
 /** Checkout.js subscription callbacks sign payment_id|subscription_id. */
 export async function verifyRazorpaySubscriptionSignature(input: {
   paymentId: string;
@@ -40,13 +72,17 @@ export async function verifyRazorpaySubscriptionSignature(input: {
   return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(input.signature));
 }
 
-export async function verifyRazorpayWebhookSignature(rawBody: string, signature: string) {
-  const envSecret = process.env.RAZORPAY_WEBHOOK_SECRET?.trim();
-  const secret = envSecret || (await getRazorpayKeys()).webhookSecret?.trim();
+export function matchRazorpayWebhookSignature(rawBody: string, signature: string, secret: string): boolean {
   if (!secret || !signature) return false;
   const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
   if (expected.length !== signature.length) return false;
   return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+}
+
+export async function verifyRazorpayWebhookSignature(rawBody: string, signature: string) {
+  // Prefer Master Admin → Settings (DB) over stale .env, so live keys saved in panel actually work.
+  const secret = (await getRazorpayKeys()).webhookSecret?.trim() || "";
+  return matchRazorpayWebhookSignature(rawBody, signature, secret);
 }
 
 export function uid(prefix: string) {

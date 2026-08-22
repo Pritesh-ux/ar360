@@ -13,8 +13,6 @@ import {
 import { type ViewerMaterial } from "@/components/shared/ModelViewer";
 import ModelViewer from "./LandingModelViewer";
 
-const MODEL_PATH = "/models/chair_01.glb";
-
 const MATERIALS = [
   { id: "linen", label: "Linen", color: "#E8E0D4", metal: 0.05, rough: 0.72 },
   { id: "olive", label: "Olive", color: "#8C9B7E", metal: 0.08, rough: 0.65 },
@@ -40,11 +38,12 @@ function isWoodOrHardware(name: string) {
 
 type HeroViewerProps = {
   scrollOrbitDeg?: number;
+  modelSrc?: string;
 };
 
-export default function HeroViewer({ scrollOrbitDeg = 25 }: HeroViewerProps) {
+export default function HeroViewer({ scrollOrbitDeg = 25, modelSrc = "/models/chair_01.glb" }: HeroViewerProps) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [progress, setProgress] = useState(0);
   const [loading, setLoading] = useState(true);
   const [materialId, setMaterialId] = useState(MATERIALS[0].id);
@@ -92,11 +91,13 @@ export default function HeroViewer({ scrollOrbitDeg = 25 }: HeroViewerProps) {
   useEffect(() => {
     const node = hostRef.current;
     if (!node) return;
+    // Mount once when near viewport — never unmount/remount (that reloads GLB
+    // and fights model-viewer's IntersectionObserver → bail-out loop + memory).
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) setVisible(true);
+        if (entry.isIntersecting) setMounted(true);
       },
-      { rootMargin: "200px" },
+      { rootMargin: "120px", threshold: 0.01 },
     );
     observer.observe(node);
     return () => observer.disconnect();
@@ -133,10 +134,12 @@ export default function HeroViewer({ scrollOrbitDeg = 25 }: HeroViewerProps) {
       style={{ background: mood.bg }}
     >
       <div className="absolute inset-0 select-none">
-        {visible ? (
+        {mounted ? (
           <>
             <ModelViewer
-              src={MODEL_PATH}
+              src={modelSrc}
+              loading="eager"
+              showLoadProgress={false}
               cameraControls
               autoRotate={autoRotate}
               cameraOrbit={orbit}
@@ -167,7 +170,7 @@ export default function HeroViewer({ scrollOrbitDeg = 25 }: HeroViewerProps) {
                 <div className="w-[150px] rounded-full bg-white/90 p-3 text-center shadow-md backdrop-blur-sm">
                   <div className="h-1 w-full overflow-hidden rounded-full bg-slate-100">
                     <div
-                      className="h-full bg-[#B9FF2C] transition-all duration-300"
+                      className="h-full bg-[#B6FF38] transition-all duration-300"
                       style={{ width: `${progress}%` }}
                     />
                   </div>
@@ -184,7 +187,6 @@ export default function HeroViewer({ scrollOrbitDeg = 25 }: HeroViewerProps) {
       </div>
 
       <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between p-3 sm:p-4">
-        {/* Desktop: always show swatches */}
         <div className="pointer-events-auto hidden flex-wrap gap-1.5 md:flex">
           {MATERIALS.map((m) => (
             <button
@@ -194,7 +196,7 @@ export default function HeroViewer({ scrollOrbitDeg = 25 }: HeroViewerProps) {
               onClick={() => setMaterialId(m.id)}
               className={`h-8 w-8 rounded-full border-2 shadow-sm transition hover:scale-110 ${
                 materialId === m.id
-                  ? "scale-110 border-[#111111] ring-2 ring-[#B9FF2C]/60"
+                  ? "scale-110 border-[#111111] ring-2 ring-[#b9ff2c]/60"
                   : "border-white"
               }`}
               style={{ backgroundColor: m.color }}
@@ -204,7 +206,6 @@ export default function HeroViewer({ scrollOrbitDeg = 25 }: HeroViewerProps) {
           ))}
         </div>
 
-        {/* Mobile: corner palette icon → toggle swatches */}
         <div className="pointer-events-auto relative md:hidden">
           <button
             type="button"
@@ -230,7 +231,7 @@ export default function HeroViewer({ scrollOrbitDeg = 25 }: HeroViewerProps) {
                   onClick={() => setMaterialId(m.id)}
                   className={`h-8 w-8 rounded-full border-2 shadow-sm transition ${
                     materialId === m.id
-                      ? "scale-110 border-[#111111] ring-2 ring-[#B9FF2C]/60"
+                      ? "scale-110 border-[#111111] ring-2 ring-[#b9ff2c]/60"
                       : "border-white"
                   }`}
                   style={{ backgroundColor: m.color }}
@@ -249,7 +250,7 @@ export default function HeroViewer({ scrollOrbitDeg = 25 }: HeroViewerProps) {
             className="grid h-9 w-9 place-items-center rounded-full border border-[#E8EAED]/80 bg-white/85 text-[#111111] shadow-sm backdrop-blur-md transition hover:scale-105 hover:bg-white"
             title={autoRotate ? "Pause rotation" : "Auto rotate"}
           >
-            <RotateCcw size={14} className={autoRotate ? "text-[#84D400]" : ""} />
+            <RotateCcw size={14} className={autoRotate ? "text-[#b9ff2c]" : ""} />
           </button>
           <button
             type="button"
@@ -272,7 +273,6 @@ export default function HeroViewer({ scrollOrbitDeg = 25 }: HeroViewerProps) {
 
       <div className="absolute inset-x-0 bottom-0 z-20 p-3 sm:p-4">
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/70 bg-white/80 px-3 py-2.5 shadow-[0_12px_40px_rgba(15,23,42,0.08)] backdrop-blur-xl">
-          {/* Lighting + mood: desktop only */}
           <div className="hidden flex-wrap gap-1 md:flex">
             {LIGHTING.map((l) => (
               <button
@@ -297,7 +297,7 @@ export default function HeroViewer({ scrollOrbitDeg = 25 }: HeroViewerProps) {
                 onClick={() => setMoodId(m.id)}
                 className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition hover:scale-[1.02] ${
                   moodId === m.id
-                    ? "bg-[#B9FF2C] text-[#111111]"
+                    ? "bg-[#b9ff2c] text-[#111111]"
                     : "bg-[#F4F5F6] text-[#6B7078] hover:text-[#111111]"
                 }`}
               >
@@ -306,7 +306,7 @@ export default function HeroViewer({ scrollOrbitDeg = 25 }: HeroViewerProps) {
             ))}
           </div>
           <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#6B7078] md:ml-auto">
-            <Smartphone size={12} className="text-[#84D400]" />
+            <Smartphone size={12} className="text-[#b9ff2c]" />
             Drag · Zoom · AR
           </span>
         </div>

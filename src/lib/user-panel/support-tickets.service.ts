@@ -1,6 +1,10 @@
 import { query } from "@/lib/db";
 import { createTicket, mapTicketRow } from "@/lib/master-admin/support-tickets.service";
 import { paginationMeta } from "@/lib/master-admin/pagination";
+import {
+  DEMO_SUPPORT_CUSTOMER_UID_PREFIX,
+  ensureDemoSupportTicketsRepaired,
+} from "@/lib/seed/demo-support-tickets";
 
 export type SupportTicketStatusFilter = "all" | "open" | "pending" | "resolved" | "closed";
 
@@ -15,6 +19,7 @@ type TicketRow = {
   category: string;
   priority: string;
   status: string;
+  process_status: string | null;
   assigned_to: string;
   created_at: string;
   updated_at: string;
@@ -40,8 +45,9 @@ export async function getCustomerTicketStats(customerUid: string): Promise<Custo
       SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_count,
       SUM(CASE WHEN status IN ('resolved', 'closed') THEN 1 ELSE 0 END) AS resolved_count
      FROM support_tickets
-     WHERE customer_uid = ?`,
-    [customerUid],
+     WHERE customer_uid = ?
+       AND customer_uid NOT LIKE ?`,
+    [customerUid, `${DEMO_SUPPORT_CUSTOMER_UID_PREFIX}%`],
   );
 
   const row = rows[0];
@@ -59,12 +65,14 @@ export async function listCustomerSupportTickets(input: {
   page?: number;
   pageSize?: number;
 }) {
+  await ensureDemoSupportTicketsRepaired();
+
   const page = Math.max(1, input.page || 1);
   const pageSize = Math.min(50, Math.max(1, input.pageSize || 10));
   const offset = (page - 1) * pageSize;
 
-  const conditions = ["customer_uid = ?"];
-  const values: (string | number)[] = [input.customerUid];
+  const conditions = ["customer_uid = ?", "customer_uid NOT LIKE ?"];
+  const values: (string | number)[] = [input.customerUid, `${DEMO_SUPPORT_CUSTOMER_UID_PREFIX}%`];
 
   if (input.status && input.status !== "all") {
     conditions.push("status = ?");
@@ -76,7 +84,7 @@ export async function listCustomerSupportTickets(input: {
   const [rows, countRows, stats] = await Promise.all([
     query<TicketRow>(
       `SELECT ticket_uid, ticket_number, customer_uid, customer_name, customer_email,
-              subject, description, category, priority, status, assigned_to, created_at, updated_at
+              subject, description, category, priority, status, process_status, assigned_to, created_at, updated_at
        FROM support_tickets
        ${where}
        ORDER BY updated_at DESC, created_at DESC
@@ -118,11 +126,12 @@ export async function createCustomerSupportTicket(input: {
 export async function getCustomerSupportTicket(customerUid: string, ticketUid: string) {
   const rows = await query<TicketRow>(
     `SELECT ticket_uid, ticket_number, customer_uid, customer_name, customer_email,
-            subject, description, category, priority, status, assigned_to, created_at, updated_at
+            subject, description, category, priority, status, process_status, assigned_to, created_at, updated_at
      FROM support_tickets
      WHERE ticket_uid = ? AND customer_uid = ?
+       AND customer_uid NOT LIKE ?
      LIMIT 1`,
-    [ticketUid, customerUid],
+    [ticketUid, customerUid, `${DEMO_SUPPORT_CUSTOMER_UID_PREFIX}%`],
   );
   if (!rows.length) return null;
 

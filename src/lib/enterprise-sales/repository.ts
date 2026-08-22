@@ -1,22 +1,32 @@
 import crypto from "crypto";
 import { getPool, query, type QueryValue } from "@/lib/db";
 import { computeCollectionStatus, remainingBalancePaise } from "./bill-ledger";
-import { ENTERPRISE_STATUS_LABELS, type CollectionStatus, type EnterpriseBillSummary, type EnterpriseContract, type EnterpriseContractInput, type EnterpriseCustomPlan, type EnterpriseCustomPlanInput, type EnterpriseNote, type EnterpriseNoteInput, type EnterprisePayment, type EnterprisePaymentInput, type EnterpriseQuote, type EnterpriseQuoteInput, type EnterpriseRequest, type EnterpriseRequestDetail, type EnterpriseRequestInput, type EnterpriseRequestListFilters, type EnterpriseStatus, type PaymentStatus } from "./types";
+import { ENTERPRISE_STATUS_LABELS, type CollectionStatus, type EnterpriseBillSummary, type EnterpriseContract, type EnterpriseContractInput, type EnterpriseCustomPlan, type EnterpriseCustomPlanInput, type EnterpriseNote, type EnterpriseNoteInput, type EnterprisePayment, type EnterprisePaymentInput, type EnterpriseQuote, type EnterpriseQuoteInput, type EnterpriseRequest, type EnterpriseRequestDetail, type EnterpriseRequestInput, type EnterpriseRequestListFilters, type EnterpriseRequestRequirementsPatch, type EnterpriseStatus, type PaymentStatus } from "./types";
 import { shouldRetryPublicRequestUid } from "./workflow-policy";
 
 type RequestRow = {
   id: number; request_uid: string; company_name: string; contact_name: string; business_email: string;
-  phone: string; company_website: string | null; country: string; industry: string;
+  phone: string; company_website: string | null; address?: string | null; country: string; state?: string | null;
+  industry: string;
   expected_products: number | null; expected_storage_gb: number | null; expected_monthly_bandwidth_gb: number | null;
   needs_more_storage: number; needs_more_bandwidth: number; needs_more_products: number;
   needs_team_members: number; needs_custom_branding: number; needs_dedicated_infrastructure: number;
   needs_priority_support: number; needs_sla: number;
   needs_qr?: number; needs_embed?: number; needs_share?: number; needs_ar?: number; needs_analytics?: number;
   additional_requirements: string | null; assigned_admin_id: number | null; assigned_admin_name: string | null;
-  status: EnterpriseStatus; customer_id: number | null; source: string; created_at: string; updated_at: string;
+  status: EnterpriseStatus; customer_id: number | null; source: string;
+  activation_email_sent_at?: string | null;
+  created_at: string; updated_at: string;
 };
 
-function publicUid(prefix: string): string {
+function toMysqlDateTime(value: Date | string | null | undefined): string | null {
+  if (value == null || value === "") return null;
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 19).replace("T", " ");
+}
+
+function publicUid(prefix: string) {
   return `${prefix}_${crypto.randomBytes(12).toString("hex")}`;
 }
 
@@ -116,6 +126,8 @@ export async function ensureEnterpriseRequestFeatureInterests() {
       await addColumnIfMissing("enterprise_requests", "needs_share", "TINYINT(1) NOT NULL DEFAULT 0");
       await addColumnIfMissing("enterprise_requests", "needs_ar", "TINYINT(1) NOT NULL DEFAULT 0");
       await addColumnIfMissing("enterprise_requests", "needs_analytics", "TINYINT(1) NOT NULL DEFAULT 0");
+      await addColumnIfMissing("enterprise_requests", "address", "VARCHAR(500) NULL");
+      await addColumnIfMissing("enterprise_requests", "state", "VARCHAR(120) NULL");
     })().catch((error) => {
       enterpriseRequestInterestsReady = null;
       throw error;
@@ -156,7 +168,7 @@ function mapRequest(row: RequestRow): EnterpriseRequest {
   return {
     id: Number(row.id), requestUid: row.request_uid, companyName: row.company_name, contactName: row.contact_name,
     businessEmail: row.business_email, phone: row.phone, companyWebsite: row.company_website,
-    country: row.country, industry: row.industry,
+    address: row.address ?? null, country: row.country, state: row.state ?? null, industry: row.industry,
     expectedProducts: row.expected_products == null ? null : Number(row.expected_products),
     expectedStorageGb: row.expected_storage_gb == null ? null : Number(row.expected_storage_gb),
     expectedMonthlyBandwidthGb: row.expected_monthly_bandwidth_gb == null ? null : Number(row.expected_monthly_bandwidth_gb),
@@ -173,6 +185,7 @@ function mapRequest(row: RequestRow): EnterpriseRequest {
     additionalRequirements: row.additional_requirements, assignedAdminId: row.assigned_admin_id == null ? null : Number(row.assigned_admin_id),
     assignedAdminName: row.assigned_admin_name, status: row.status, statusLabel: ENTERPRISE_STATUS_LABELS[row.status],
     customerId: row.customer_id == null ? null : Number(row.customer_id), source: row.source,
+    activationEmailSentAt: row.activation_email_sent_at ?? null,
     createdAt: row.created_at, updatedAt: row.updated_at,
   };
 }
@@ -189,15 +202,16 @@ export async function insertEnterpriseRequest(input: EnterpriseRequestInput): Pr
     try {
       await query(
         `INSERT INTO enterprise_requests (
-          request_uid, company_name, contact_name, business_email, phone, company_website, country, industry,
+          request_uid, company_name, contact_name, business_email, phone, company_website, address, country, state, industry,
           expected_products, expected_storage_gb, expected_monthly_bandwidth_gb,
           needs_more_storage, needs_more_bandwidth, needs_more_products, needs_team_members,
           needs_custom_branding, needs_dedicated_infrastructure, needs_priority_support, needs_sla,
           needs_qr, needs_embed, needs_share, needs_ar, needs_analytics,
           additional_requirements, source
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [uid, input.companyName, input.contactName, input.businessEmail, input.phone, input.companyWebsite ?? null,
-          input.country, input.industry, input.expectedProducts ?? null, input.expectedStorageGb ?? null,
+          input.address, input.country, input.state, input.industry,
+          input.expectedProducts ?? null, input.expectedStorageGb ?? null,
           input.expectedMonthlyBandwidthGb ?? null, Boolean(input.needsMoreStorage), Boolean(input.needsMoreBandwidth),
           Boolean(input.needsMoreProducts), Boolean(input.needsTeamMembers),
           Boolean(input.needsCustomBranding), Boolean(input.needsDedicatedInfrastructure),
@@ -306,7 +320,15 @@ export async function getEnterpriseRequestDetail(requestUidValue: string): Promi
   }
   const contracts: EnterpriseContract[] = contractRows.map((row) => ({ contractUid: row.contract_uid, customerId: Number(row.customer_id), customPlanUid: row.custom_plan_uid, subscriptionId: row.subscription_id, startsOn: row.starts_on, expiresOn: row.expires_on, status: row.status, renewalOfContractUid: row.renewal_of_contract_uid, createdAt: row.created_at, updatedAt: row.updated_at }));
   const billSummary = await getEnterpriseBillSummary(requestUidValue, request.id, quotes, payments);
-  return { ...request, notes, quotes, payments, contracts, billSummary };
+  const linkedPlanUid =
+    contracts.find((contract) => contract.status === "active")?.customPlanUid
+    || contracts[0]?.customPlanUid
+    || quotes[0]?.customPlanUid
+    || null;
+  const linkedCustomPlan = linkedPlanUid
+    ? await getEnterpriseCustomPlanByUid(linkedPlanUid)
+    : null;
+  return { ...request, notes, quotes, payments, contracts, billSummary, linkedCustomPlan };
 }
 
 function mapQuoteRow(row: any): EnterpriseQuote {
@@ -455,6 +477,55 @@ export async function assignEnterpriseRequest(requestUidValue: string, adminId: 
   await query("UPDATE enterprise_requests SET assigned_admin_id = ? WHERE request_uid = ?", [adminId, requestUidValue]);
 }
 
+export async function updateEnterpriseRequestRequirements(
+  requestUidValue: string,
+  patch: EnterpriseRequestRequirementsPatch,
+): Promise<void> {
+  await ensureEnterpriseRequestFeatureInterests();
+  const requestId = await requireRequestId(requestUidValue);
+  await query(
+    `UPDATE enterprise_requests SET
+        expected_products = ?,
+        expected_storage_gb = ?,
+        expected_monthly_bandwidth_gb = ?,
+        needs_more_storage = ?,
+        needs_more_bandwidth = ?,
+        needs_more_products = ?,
+        needs_team_members = ?,
+        needs_custom_branding = ?,
+        needs_dedicated_infrastructure = ?,
+        needs_priority_support = ?,
+        needs_sla = ?,
+        needs_qr = ?,
+        needs_embed = ?,
+        needs_share = ?,
+        needs_ar = ?,
+        needs_analytics = ?,
+        additional_requirements = ?
+      WHERE id = ?`,
+    [
+      patch.expectedProducts ?? null,
+      patch.expectedStorageGb ?? null,
+      patch.expectedMonthlyBandwidthGb ?? null,
+      Boolean(patch.needsMoreStorage),
+      Boolean(patch.needsMoreBandwidth),
+      Boolean(patch.needsMoreProducts),
+      Boolean(patch.needsTeamMembers),
+      Boolean(patch.needsCustomBranding),
+      Boolean(patch.needsDedicatedInfrastructure),
+      Boolean(patch.needsPrioritySupport),
+      Boolean(patch.needsSla),
+      Boolean(patch.needsQr),
+      Boolean(patch.needsEmbed),
+      Boolean(patch.needsShare),
+      Boolean(patch.needsAr),
+      Boolean(patch.needsAnalytics),
+      patch.additionalRequirements ?? null,
+      requestId,
+    ],
+  );
+}
+
 export async function insertEnterpriseNote(input: EnterpriseNoteInput): Promise<string> {
   const requestId = await requireRequestId(input.requestUid);
   const uid = publicUid("en");
@@ -514,6 +585,102 @@ export async function setEnterpriseCustomPlanActive(customPlanUid: string, isAct
   if (!plans[0]) return false;
   await query("UPDATE enterprise_custom_plans SET is_active = ? WHERE id = ?", [isActive, plans[0].id]);
   return true;
+}
+
+export async function getEnterpriseCustomPlanByUid(
+  customPlanUid: string,
+): Promise<EnterpriseCustomPlan | null> {
+  await ensureEnterpriseCustomPlanFeatureGates();
+  const rows = await query<any>(
+    "SELECT * FROM enterprise_custom_plans WHERE custom_plan_uid = ? LIMIT 1",
+    [customPlanUid],
+  );
+  return rows[0] ? mapCustomPlan(rows[0]) : null;
+}
+
+/** Updates limits + feature gates on any custom plan (including deal-specific ecp_ rows). */
+export async function updateEnterpriseCustomPlanRow(
+  customPlanUid: string,
+  input: EnterpriseCustomPlanInput,
+): Promise<boolean> {
+  await ensureEnterpriseCustomPlanFeatureGates();
+  const existing = await getEnterpriseCustomPlanByUid(customPlanUid);
+  if (!existing) return false;
+  await query(
+    `UPDATE enterprise_custom_plans SET
+      name = ?, billing_cycle = ?, price_paise = ?,
+      storage_limit_bytes = ?, bandwidth_limit_bytes = ?,
+      product_limit = ?, model_limit = ?, ar_experience_limit = ?, team_member_limit = ?,
+      custom_branding = ?,
+      allow_viewer = ?, allow_upload = ?, allow_ar = ?, allow_qr = ?, allow_share = ?,
+      allow_embed = ?, allow_object_capture = ?, allow_custom_domain = ?,
+      advanced_analytics = ?, qr_limit = ?, share_link_limit = ?,
+      oc_captures_per_month = ?, oc_compute_seconds_per_month = ?,
+      oc_concurrent_jobs = ?, oc_max_retries = ?,
+      priority_support = ?, dedicated_infrastructure = ?, sla_support = ?,
+      support_level = ?, notes = ?,
+      updated_at = CURRENT_TIMESTAMP
+     WHERE custom_plan_uid = ?`,
+    [
+      input.name,
+      input.billingCycle,
+      input.pricePaise,
+      input.storageLimitBytes ?? null,
+      input.bandwidthLimitBytes ?? null,
+      input.productLimit ?? null,
+      input.modelLimit ?? null,
+      input.arExperienceLimit ?? null,
+      input.teamMemberLimit ?? null,
+      Boolean(input.customBranding) ? 1 : 0,
+      input.allowViewer !== false ? 1 : 0,
+      input.allowUpload !== false ? 1 : 0,
+      input.allowAr !== false ? 1 : 0,
+      input.allowQr !== false ? 1 : 0,
+      input.allowShare !== false ? 1 : 0,
+      input.allowEmbed !== false ? 1 : 0,
+      input.allowObjectCapture !== false ? 1 : 0,
+      input.allowCustomDomain ? 1 : 0,
+      Boolean(input.advancedAnalytics) ? 1 : 0,
+      input.qrLimit ?? null,
+      input.shareLinkLimit ?? null,
+      input.ocCapturesPerMonth ?? null,
+      input.ocComputeSecondsPerMonth ?? null,
+      input.ocConcurrentJobs ?? null,
+      input.ocMaxRetries ?? null,
+      Boolean(input.prioritySupport) ? 1 : 0,
+      Boolean(input.dedicatedInfrastructure) ? 1 : 0,
+      Boolean(input.slaSupport) ? 1 : 0,
+      input.supportLevel ?? null,
+      input.notes ?? null,
+      customPlanUid,
+    ],
+  );
+  return true;
+}
+
+/** True when this custom plan is attached to the request via quote or contract. */
+export async function isCustomPlanLinkedToRequest(
+  requestUid: string,
+  customPlanUid: string,
+): Promise<boolean> {
+  const rows = await query<{ total: number }>(
+    `SELECT COUNT(*) AS total FROM enterprise_requests r
+      WHERE r.request_uid = ?
+        AND (
+          EXISTS (
+            SELECT 1 FROM enterprise_quotes q
+            JOIN enterprise_custom_plans p ON p.id = q.custom_plan_id
+            WHERE q.request_id = r.id AND p.custom_plan_uid = ?
+          )
+          OR EXISTS (
+            SELECT 1 FROM enterprise_contracts c
+            JOIN enterprise_custom_plans p ON p.id = c.custom_plan_id
+            WHERE c.request_id = r.id AND p.custom_plan_uid = ?
+          )
+        )`,
+    [requestUid, customPlanUid, customPlanUid],
+  );
+  return Number(rows[0]?.total || 0) > 0;
 }
 
 export async function insertEnterpriseQuote(input: EnterpriseQuoteInput): Promise<string> {
@@ -594,7 +761,7 @@ export async function insertEnterprisePayment(input: EnterprisePaymentInput): Pr
   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
     uid, requestId, quoteRows[0].id, contractRows[0]?.id ?? null, input.invoiceId ?? null, input.invoiceNumber ?? null,
     input.amountPaise, input.currency || "INR", input.paymentLink ?? null, input.transactionId ?? null,
-    input.paymentMethod ?? null, input.paidAt ?? null, input.status || "pending", input.notes ?? null,
+    input.paymentMethod ?? null, toMysqlDateTime(input.paidAt), input.status || "pending", input.notes ?? null,
     input.createdByAdminId ?? null,
     input.dueAt ?? null,
     label,
@@ -670,7 +837,7 @@ export async function getEnterprisePaymentStatus(requestUidValue: string, paymen
 export async function setEnterprisePaymentStatus(paymentUid: string, status: PaymentStatus, details: { transactionId?: string | null; paymentMethod?: string | null; paidAt?: string | null } = {}): Promise<void> {
   await query(`UPDATE enterprise_payments SET status = ?, transaction_id = COALESCE(?, transaction_id),
     payment_method = COALESCE(?, payment_method), paid_at = COALESCE(?, paid_at) WHERE payment_uid = ?`,
-  [status, details.transactionId ?? null, details.paymentMethod ?? null, details.paidAt ?? null, paymentUid]);
+  [status, details.transactionId ?? null, details.paymentMethod ?? null, toMysqlDateTime(details.paidAt), paymentUid]);
 }
 
 export async function insertEnterpriseContract(input: EnterpriseContractInput): Promise<string> {

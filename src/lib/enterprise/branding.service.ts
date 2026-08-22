@@ -29,6 +29,8 @@ export type BrandingConfig = {
   showProductTitle: boolean;
   /** Hide the drag / pinch tip chip above the model. */
   hideInteractionHint: boolean;
+  /** Replaces "AR360" in "Powered by …". Empty = AR360. */
+  poweredByLabel: string | null;
 };
 
 function mapBrandingRow(row: WorkspaceRow): BrandingConfig {
@@ -50,6 +52,7 @@ function mapBrandingRow(row: WorkspaceRow): BrandingConfig {
     faviconUrl: row.favicon_url ?? null,
     showProductTitle: row.show_product_title == null ? true : Boolean(row.show_product_title),
     hideInteractionHint: Boolean(row.hide_interaction_hint),
+    poweredByLabel: row.powered_by_label ?? null,
   };
 }
 
@@ -57,7 +60,7 @@ const BRANDING_SELECT = `logo_url, brand_name, brand_color, accent_color,
             viewer_watermark, remove_branding, custom_viewer_theme,
             viewer_tagline, cta_label, website_url, loading_message,
             button_style, header_style, viewer_font, favicon_url,
-            show_product_title, hide_interaction_hint`;
+            show_product_title, hide_interaction_hint, powered_by_label`;
 
 const DEFAULT_VIEWER_BRANDING: BrandingConfig = {
   logoUrl: null,
@@ -77,6 +80,7 @@ const DEFAULT_VIEWER_BRANDING: BrandingConfig = {
   faviconUrl: null,
   showProductTitle: true,
   hideInteractionHint: false,
+  poweredByLabel: null,
 };
 
 export async function getBranding(workspaceUid: string): Promise<BrandingConfig | null> {
@@ -115,6 +119,7 @@ export async function updateBranding(
     { input: "faviconUrl", column: "favicon_url" },
     { input: "showProductTitle", column: "show_product_title" },
     { input: "hideInteractionHint", column: "hide_interaction_hint" },
+    { input: "poweredByLabel", column: "powered_by_label" },
   ];
 
   const sets: string[] = [];

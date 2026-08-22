@@ -1,5 +1,6 @@
 import { query, type QueryValue } from "@/lib/db";
 import { ensureProductSchema, ensureQrSchema } from "@/lib/db";
+import { sanitizeOrigin } from "@/lib/url";
 import { ensureUserPanelSchema } from "@/lib/user-panel/schema";
 import { saveQrPng } from "@/lib/localCustomerStorage";
 import { parseBrowser, parseDevice } from "@/server/analytics/analytics.middleware";
@@ -128,7 +129,7 @@ export function resolveEffectiveQrStatus(row: {
 }
 
 function buildQrLinkUrl(origin: string, qrCode: string) {
-  return `${origin}/qr/${encodeURIComponent(qrCode)}`;
+  return `${sanitizeOrigin(origin)}/qr/${encodeURIComponent(qrCode)}`;
 }
 
 function mapRow(row: QrRow, origin: string): QrCodeRecord {
@@ -213,24 +214,36 @@ export async function ensurePermanentProductQr(input: {
     [input.productId, input.customerUid],
   );
 
-  const viewerUrl = `${input.origin}/viewer/${encodeURIComponent(input.publicId)}`;
+  const cleanOrigin = sanitizeOrigin(input.origin);
+  const viewerUrl = `${cleanOrigin}/viewer/${encodeURIComponent(input.publicId)}`;
 
   if (existing.length) {
     const row = existing[0];
     const qrCode = row.qr_code || row.qr_uid || row.public_id;
-    const qrLink = buildQrLinkUrl(input.origin, qrCode);
+    const qrLink = buildQrLinkUrl(cleanOrigin, qrCode);
     await query(`UPDATE product_qr_codes SET destination_url = ?, status = 'active', updated_at = NOW() WHERE id = ?`, [
       viewerUrl,
       row.id,
     ]);
-    await saveQrPng({ customerUid: input.customerUid, productUid: input.productId, destination: qrLink }).catch(
-      () => undefined,
-    );
+    const { resolveQrCenterLogoForCustomer } = await import("@/lib/growth/qr-logo");
+    const logo = await resolveQrCenterLogoForCustomer({
+      customerUid: input.customerUid,
+      customLogoUrl: row.logo_url,
+      customLogoSize: row.logo_size,
+      origin: cleanOrigin,
+    });
+    await saveQrPng({
+      customerUid: input.customerUid,
+      productUid: input.productId,
+      destination: qrLink,
+      logoUrl: logo.logoUrl,
+      logoSize: logo.logoSize,
+    }).catch(() => undefined);
     return { qrCode, qrLinkUrl: qrLink, created: false };
   }
 
-  const qrCode = await allocatePermanentQrCode();
-  const qrLink = buildQrLinkUrl(input.origin, qrCode);
+  const qrCode = input.publicId;
+  const qrLink = buildQrLinkUrl(cleanOrigin, qrCode);
 
   await query(
     `INSERT INTO product_qr_codes
@@ -239,9 +252,21 @@ export async function ensurePermanentProductQr(input: {
     [input.customerUid, input.userId, input.productId, qrCode, qrCode, qrCode, viewerUrl],
   );
 
-  await saveQrPng({ customerUid: input.customerUid, productUid: input.productId, destination: qrLink }).catch(
-    () => undefined,
-  );
+  {
+    const { resolveQrCenterLogoForCustomer } = await import("@/lib/growth/qr-logo");
+    const logo = await resolveQrCenterLogoForCustomer({
+      customerUid: input.customerUid,
+      customLogoUrl: null,
+      origin: cleanOrigin,
+    });
+    await saveQrPng({
+      customerUid: input.customerUid,
+      productUid: input.productId,
+      destination: qrLink,
+      logoUrl: logo.logoUrl,
+      logoSize: logo.logoSize,
+    }).catch(() => undefined);
+  }
 
   return { qrCode, qrLinkUrl: qrLink, created: true };
 }
@@ -255,7 +280,20 @@ export async function regenerateQrAsset(input: {
   const qr = await getQrCodeById(input.qrId, input.customerUid, input.userId, input.origin);
   if (!qr) return { error: "QR not found." as const };
   const qrLink = qr.qrLinkUrl;
-  await saveQrPng({ customerUid: input.customerUid, productUid: qr.productId, destination: qrLink });
+  const { resolveQrCenterLogoForCustomer } = await import("@/lib/growth/qr-logo");
+  const logo = await resolveQrCenterLogoForCustomer({
+    customerUid: input.customerUid,
+    customLogoUrl: qr.logoUrl,
+    customLogoSize: qr.logoSize,
+    origin: input.origin,
+  });
+  await saveQrPng({
+    customerUid: input.customerUid,
+    productUid: qr.productId,
+    destination: qrLink,
+    logoUrl: logo.logoUrl,
+    logoSize: logo.logoSize,
+  });
   return { success: true as const, qrLinkUrl: qrLink };
 }
 
@@ -363,22 +401,64 @@ export async function updateCustomerQrCode(input: {
   userId: number;
   id: number;
   patch: QrUpdateInput;
+  origin?: string;
 }) {
   await ensureQrSchema();
-  const rows = await query<{ id: number }>(
-    `SELECT id FROM product_qr_codes WHERE id = ? AND customer_uid = ? AND (user_id = ? OR user_id IS NULL) AND deleted_at IS NULL LIMIT 1`,
+  const rows = await query<QrRow>(
+    `SELECT q.*, p.title, p.poster, p.thumbnail_url, p.status AS product_status,
+            p.public_id AS product_public_id, p.qr_url
+       FROM product_qr_codes q
+       INNER JOIN products p ON p.id = q.product_id
+      WHERE q.id = ? AND q.customer_uid = ? AND (q.user_id = ? OR q.user_id IS NULL) AND q.deleted_at IS NULL
+      LIMIT 1`,
     [input.id, input.customerUid, input.userId],
   );
   if (!rows.length) return { error: "QR code not found." as const };
+  const existing = rows[0];
 
   const sets: string[] = [];
   const params: QueryValue[] = [];
   const p = input.patch;
+  let nextLogoUrlForAsset: string | null | undefined = undefined;
+
+  if (p.logoUrl !== undefined) {
+    const custom = String(p.logoUrl || "").trim();
+    if (custom) {
+      const { assertCan } = await import("@/lib/billing/permissions");
+      const { isAr360QrLogoUrl, persistQrLogoAsset } = await import("@/lib/growth/qr-logo");
+      if (!isAr360QrLogoUrl(custom)) {
+        const gate = await assertCan(input.customerUid, "custom_branding");
+        if (gate.allowed === false) {
+          return {
+            error: gate.message || "Custom QR logos require a plan with custom branding.",
+          } as const;
+        }
+      }
+      const stored =
+        (await persistQrLogoAsset({
+          customerUid: input.customerUid,
+          qrId: input.id,
+          logoUrl: custom,
+        })) || custom;
+      // Never write multi-MB data URLs into MySQL (max_allowed_packet).
+      if (stored.startsWith("data:")) {
+        return {
+          error: "Logo image is too large. Upload a smaller PNG/JPG under 1 MB.",
+        } as const;
+      }
+      nextLogoUrlForAsset = stored;
+      sets.push("logo_url = ?");
+      params.push(stored);
+    } else {
+      nextLogoUrlForAsset = null;
+      sets.push("logo_url = ?");
+      params.push(null);
+    }
+  }
   if (p.foregroundColor !== undefined) { sets.push("foreground_color = ?"); params.push(p.foregroundColor); }
   if (p.backgroundColor !== undefined) { sets.push("background_color = ?"); params.push(p.backgroundColor); }
   if (p.patternStyle !== undefined) { sets.push("pattern_style = ?"); params.push(p.patternStyle); }
   if (p.cornerStyle !== undefined) { sets.push("corner_style = ?"); params.push(p.cornerStyle); }
-  if (p.logoUrl !== undefined) { sets.push("logo_url = ?"); params.push(p.logoUrl); }
   if (p.logoSize !== undefined) { sets.push("logo_size = ?"); params.push(p.logoSize); }
   if (p.frameEnabled !== undefined) { sets.push("frame_enabled = ?"); params.push(p.frameEnabled ? 1 : 0); }
   if (p.frameStyle !== undefined) { sets.push("frame_style = ?"); params.push(p.frameStyle); }
@@ -387,6 +467,33 @@ export async function updateCustomerQrCode(input: {
   if (!sets.length) return { error: "No changes provided." as const };
 
   await query(`UPDATE product_qr_codes SET ${sets.join(", ")}, updated_at = NOW() WHERE id = ?`, [...params, input.id]);
+
+  // Keep stored qr.png in sync with style/logo so downloads match the preview.
+  try {
+    const { resolveQrCenterLogoForCustomer } = await import("@/lib/growth/qr-logo");
+    const nextLogoUrl =
+      nextLogoUrlForAsset !== undefined
+        ? nextLogoUrlForAsset
+        : existing.logo_url;
+    const nextLogoSize = p.logoSize !== undefined ? Number(p.logoSize) : Number(existing.logo_size);
+    const logo = await resolveQrCenterLogoForCustomer({
+      customerUid: input.customerUid,
+      customLogoUrl: nextLogoUrl,
+      customLogoSize: nextLogoSize,
+      origin: input.origin,
+    });
+    const mapped = mapRow(existing, input.origin || "");
+    await saveQrPng({
+      customerUid: input.customerUid,
+      productUid: existing.product_id,
+      destination: mapped.qrLinkUrl,
+      logoUrl: logo.logoUrl,
+      logoSize: logo.logoSize,
+    });
+  } catch (error) {
+    console.warn("[qr] regenerate after style update failed", error);
+  }
+
   return { success: true as const };
 }
 
@@ -452,16 +559,10 @@ export async function trackQrScan(input: {
     [input.qrCodeId, input.qrCode, input.customerUid, input.productId, input.sessionId, device, browser, country, referrer],
   );
 
-  const productPublic = await query<{ public_id: string | null }>(
-    `SELECT public_id FROM products WHERE id = ? LIMIT 1`,
-    [input.productId],
-  );
-  const publicId = productPublic[0]?.public_id || input.productId;
-
   await trackAnalyticsFromServer({
-    event: "download_qr",
+    event: "qr_scan",
     customerUid: input.customerUid,
-    productUid: publicId,
+    productUid: input.productId,
     sessionId: input.sessionId,
     request: input.request,
     meta: { source: "qr", qrCode: input.qrCode, trafficSource: "qr" },

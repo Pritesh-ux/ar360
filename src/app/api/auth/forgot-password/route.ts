@@ -21,11 +21,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Email is required." }, { status: 400 });
   }
 
-  const result = await requestPasswordReset(email);
-
-  return NextResponse.json({
-    success: true,
-    message: "If an account exists for that email, a reset link has been sent.",
-    devResetUrl: result.devResetUrl,
-  });
+  try {
+    const result = await requestPasswordReset(email);
+    return NextResponse.json({
+      success: true,
+      message: "If an account exists for that email, a reset link has been sent.",
+      devResetUrl: result.devResetUrl,
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "email_delivery_unavailable";
+    console.error("[api/auth/forgot-password]", detail);
+    return NextResponse.json(
+      {
+        error:
+          "Unable to send reset email right now. Please contact support or try again later.",
+      },
+      { status: 503 },
+    );
+  }
 }

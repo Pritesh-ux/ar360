@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { MoreHorizontal } from "lucide-react";
+import { MoreHorizontal, MoreVertical } from "lucide-react";
 import Link from "next/link";
 
 export type UserActionMenuItem = {
@@ -36,13 +36,19 @@ type Props = {
   /** Controlled open state. Omit for uncontrolled. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** Default = bordered circle. Plain = icon only (mobile lists). */
+  triggerVariant?: "default" | "plain";
+  iconOrientation?: "horizontal" | "vertical";
 };
 
 const PANEL_CLASS =
   "w-[190px] overflow-hidden rounded-[16px] border border-[#E8EAED] bg-white p-0 shadow-[0_12px_32px_rgba(15,23,42,0.12)]";
 
 const TRIGGER_CLASS =
-  "grid h-8 w-8 place-items-center rounded-full border border-[#111111] bg-white text-[#111111] transition hover:bg-[#FAFAFA]";
+  "up-icon-btn grid h-8 w-8 place-items-center rounded-full text-[#111111]";
+
+const TRIGGER_PLAIN_CLASS =
+  "grid h-9 w-9 place-items-center text-[#6B7280] transition hover:text-[#111111]";
 
 const ITEM_CLASS =
   "flex h-11 w-full items-center gap-3 px-4 text-left text-[13px] font-semibold transition-colors";
@@ -140,6 +146,8 @@ export default function UserActionMenu({
   triggerProps,
   open: openProp,
   onOpenChange,
+  triggerVariant = "default",
+  iconOrientation = "horizontal",
 }: Props) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const open = openProp ?? uncontrolledOpen;
@@ -210,9 +218,13 @@ export default function UserActionMenu({
           updatePosition();
           setOpen(true);
         }}
-        className={`${TRIGGER_CLASS} ${triggerClassName} ${triggerProps?.className || ""}`.trim()}
+        className={`${triggerVariant === "plain" ? TRIGGER_PLAIN_CLASS : TRIGGER_CLASS} ${triggerClassName} ${triggerProps?.className || ""}`.trim()}
       >
-        <MoreHorizontal size={15} />
+        {iconOrientation === "vertical" ? (
+          <MoreVertical size={18} strokeWidth={2.25} />
+        ) : (
+          <MoreHorizontal size={15} />
+        )}
       </button>
       {open && typeof document !== "undefined"
         ? createPortal(

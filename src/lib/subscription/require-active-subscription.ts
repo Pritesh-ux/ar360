@@ -1,10 +1,13 @@
 import { redirect } from "next/navigation";
-import { assertCan } from "@/lib/billing/permissions";
+import { assertCan, type PermissionAction } from "@/lib/billing/permissions";
 import { getSubscriptionContext } from "@/lib/billing/subscription-engine";
 import { checkSubscription, type SubscriptionCheckResult } from "@/lib/subscription/check-subscription";
 import { SUBSCRIPTION_EXPIRED_PATH } from "@/lib/subscription/subscription-paths";
 
-/** Redirect expired/inactive customers to the canonical subscription page. */
+/**
+ * Soft panel gate. Expired customers may browse; mutations use assertCan separately.
+ * Admin-suspended accounts are handled in layout via resolveAccountAccessLock.
+ */
 export async function requireActiveSubscription(
   customerUid: string,
 ): Promise<SubscriptionCheckResult> {
@@ -13,6 +16,28 @@ export async function requireActiveSubscription(
     redirect(SUBSCRIPTION_EXPIRED_PATH);
   }
   return permission.context.subscription;
+}
+
+/**
+ * Page-level plan feature gate.
+ * Inactive subscription → soft lock (page still opens; APIs block mutations).
+ * Feature OFF on plan → upgrade/subscription page (Master Admin toggle).
+ */
+export async function requirePlanPermission(
+  customerUid: string,
+  action: PermissionAction,
+) {
+  const permission = await assertCan(customerUid, action);
+  if (permission.allowed === false) {
+    if (permission.code === "SUBSCRIPTION_INACTIVE") {
+      return permission.context;
+    }
+    const upgradeUrl = permission.upgradeRequired
+      ? `/dashboard/subscription?expired=1&upgrade=1&feature=${encodeURIComponent(action)}`
+      : SUBSCRIPTION_EXPIRED_PATH;
+    redirect(upgradeUrl);
+  }
+  return permission.context;
 }
 
 /** Page/API helper: load full subscription engine context (active customers only). */

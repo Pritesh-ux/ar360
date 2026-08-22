@@ -5,11 +5,20 @@ export type ARExperienceProduct = {
   productUid?: string;
   title?: string;
   modelUrl?: string;
+  /** Smaller GLB for Scene Viewer / mobile AR when the main model is huge. */
+  arModelUrl?: string;
   usdzUrl?: string;
   poster?: string;
+  /** Full-quality model size in bytes (for mobile AR safety gate). */
+  modelBytes?: number | null;
   realScale?: boolean;
   /** floor (default) or wall — drives WebXR / Scene Viewer vertical placement. */
   arPlacement?: "floor" | "wall";
+  /**
+   * Uniform meters-per-authored-unit factor for Scene Viewer
+   * (e.g. 0.01 when the GLB was exported in centimeters).
+   */
+  arModelScale?: number | null;
 };
 
 export type ARExperienceEvent =
@@ -44,18 +53,18 @@ export function getAbsoluteUrl(pathOrUrl?: string) {
   if (!pathOrUrl) return "";
   if (pathOrUrl.startsWith("blob:") || pathOrUrl.startsWith("data:")) return pathOrUrl;
 
-  if (typeof window === "undefined") return pathOrUrl;
-
   try {
     if (pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")) {
       const url = new URL(pathOrUrl);
       if (["localhost", "127.0.0.1", "0.0.0.0"].includes(url.hostname)) {
-        return `${window.location.origin}${url.pathname}${url.search}${url.hash}`;
+        const base = typeof window !== "undefined" ? window.location.origin : (process.env.NEXT_PUBLIC_APP_URL || "https://ar360studio.com");
+        return `${base.replace(/\/$/, "")}${url.pathname}${url.search}${url.hash}`;
       }
       return pathOrUrl;
     }
 
-    return new URL(pathOrUrl, window.location.origin).toString();
+    const base = typeof window !== "undefined" ? window.location.origin : (process.env.NEXT_PUBLIC_APP_URL || "https://ar360studio.com");
+    return new URL(pathOrUrl, base.replace(/\/$/, "")).toString();
   } catch {
     return pathOrUrl;
   }
@@ -68,9 +77,10 @@ export function getProductKey(product: ARExperienceProduct, fallback = "") {
 export function getCleanViewerUrl(fallbackUrl?: string) {
   if (fallbackUrl) {
     try {
+      const base = typeof window !== "undefined" ? window.location.origin : (process.env.NEXT_PUBLIC_APP_URL || "https://ar360studio.com");
       const url = new URL(
         fallbackUrl,
-        typeof window !== "undefined" ? window.location.origin : "http://localhost",
+        base.replace(/\/$/, ""),
       );
       url.searchParams.delete("openAR");
       url.searchParams.delete("ar");
@@ -97,9 +107,10 @@ export function getPhoneShareViewerUrl(fallbackUrl?: string) {
   if (!clean) return "";
 
   try {
+    const base = typeof window !== "undefined" ? window.location.origin : (process.env.NEXT_PUBLIC_APP_URL || "https://ar360studio.com");
     const url = new URL(
       clean,
-      typeof window !== "undefined" ? window.location.origin : "http://localhost",
+      base.replace(/\/$/, ""),
     );
     url.searchParams.set("openAR", "1");
     return url.toString();
@@ -109,17 +120,30 @@ export function getPhoneShareViewerUrl(fallbackUrl?: string) {
 }
 
 export function buildSceneViewerIntent(product: ARExperienceProduct, fallbackUrl?: string) {
-  const file = getAbsoluteUrl(product.modelUrl);
+  // Prefer AR-lite when present — Scene Viewer downloads this URL outside the Safari tab.
+  let file = getAbsoluteUrl(product.arModelUrl || product.modelUrl);
   const fallback = getCleanViewerUrl(fallbackUrl);
 
   if (!file) return fallback;
+
+  // Scene Viewer loads the file URL directly and ignores <model-viewer scale>.
+  const arScale = Number(product.arModelScale);
+  if (Number.isFinite(arScale) && arScale > 0 && Math.abs(arScale - 1) >= 1e-9) {
+    try {
+      const scaled = new URL(file);
+      scaled.searchParams.set("arScale", String(Number(arScale.toPrecision(6))));
+      file = scaled.toString();
+    } catch {
+      // keep original file URL
+    }
+  }
 
   const params = new URLSearchParams({
     file,
     mode: "ar_preferred",
     title: product.title || "AR Product",
-    // realScale true => fixed scale; realScale false => user can resize.
-    resizable: product.realScale === false ? "true" : "false",
+    // Resizing is the default; only an explicit 1:1 lock pins the AR scale.
+    resizable: product.realScale === true ? "false" : "true",
     // Wall products (mirrors, fixtures) need vertical surface placement on Android.
     enable_vertical_placement: product.arPlacement === "wall" ? "true" : "false",
     disable_occlusion: "false",
@@ -134,13 +158,32 @@ export function buildQuickLookUrl(product: ARExperienceProduct, canonicalUrl?: s
   if (!usdz) return "";
 
   const params = new URLSearchParams();
-  // realScale true => fixed scale; realScale false => content scaling allowed.
-  params.set("allowsContentScaling", product.realScale === false ? "1" : "0");
+  // Resizing is the default; only an explicit 1:1 lock pins the AR scale.
+  params.set("allowsContentScaling", product.realScale === true ? "0" : "1");
 
   const canonical = getCleanViewerUrl(canonicalUrl);
   if (canonical) params.set("canonicalWebPageURL", canonical);
 
   return `${usdz}#${params.toString()}`;
+}
+
+/** Open Apple Quick Look via a temporary rel="ar" anchor (Safari requirement). */
+export function openQuickLookAr(product: ARExperienceProduct, canonicalUrl?: string) {
+  const href = buildQuickLookUrl(product, canonicalUrl);
+  if (!href || typeof document === "undefined") return false;
+
+  const anchor = document.createElement("a");
+  anchor.rel = "ar";
+  anchor.href = href;
+  const img = document.createElement("img");
+  img.alt = product.title || "AR";
+  img.src = getAbsoluteUrl(product.poster) || "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+  anchor.appendChild(img);
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  return true;
 }
 
 export function getARInstruction(

@@ -9,7 +9,11 @@ import {
 } from "./subscription.repository";
 import type { BillingPeriod } from "./subscription.types";
 import { sendSubscriptionStateEmail } from "@/lib/email/customer-lifecycle.service";
-import { mapLegacyPlanId } from "@/lib/billing/plan-enforcement";
+import {
+  formatTrialDurationLabel,
+  mapLegacyPlanId,
+  normalizeTrialHours,
+} from "@/lib/billing/plan-enforcement";
 import { mutateProviderSubscription, SubscriptionLifecycleError } from "./provider-subscription.service";
 import { mutateLocalSubscriptionLifecycle } from "./local-subscription-lifecycle";
 
@@ -100,8 +104,10 @@ export async function activatePaidSubscription(input: {
     currentPeriodEnd: toMysqlDate(periodEnd),
     trialEndsAt: null,
     graceEndsAt: null,
+    // One-time Razorpay Orders use pay_ ids — never store those as provider_subscription_id
+    // (that column is reserved for recurring sub_… subscriptions).
     provider: "razorpay",
-    providerSubscriptionId: input.razorpayPaymentId || null,
+    providerSubscriptionId: null,
     providerCustomerId: input.razorpayCustomerId || null,
     cancelAtPeriodEnd: false,
     resetBandwidth: input.resetBandwidth,
@@ -116,7 +122,10 @@ export async function activatePaidSubscription(input: {
 
 export async function startTrialSubscription(customerUid: string) {
   const now = new Date();
-  const trialEnd = addDays(now, 1);
+  const limits = await resolvePlanLimits("trial");
+  const trialHours = normalizeTrialHours(limits.trialHours);
+  const trialEnd = new Date(now.getTime() + trialHours * 60 * 60 * 1000);
+  const durationLabel = formatTrialDurationLabel(trialHours);
 
   return applySubscriptionChangeForPlan({
     customerUid,
@@ -131,8 +140,8 @@ export async function startTrialSubscription(customerUid: string) {
     cancelAtPeriodEnd: false,
     historyEvent: {
       eventType: "trial_started",
-      title: "24-hour trial started",
-      description: "Trial access is valid for 24 hours.",
+      title: `${durationLabel} trial started`,
+      description: `Trial access is valid for ${durationLabel} (Master Admin trial plan settings).`,
     },
   });
 }
@@ -164,26 +173,52 @@ export async function markSubscriptionPastDue(customerUid: string) {
   });
 }
 
+function canFallbackToLocalLifecycle(error: unknown) {
+  // PROVIDER_ID_INVALID must NOT fall back locally — that leaves Razorpay charging while
+  // we mark the customer cancelled. Only truly non-provider rows may use local lifecycle.
+  return error instanceof SubscriptionLifecycleError && error.code === "NOT_PROVIDER_MANAGED";
+}
+
 export async function cancelCustomerSubscription(
   customerUid: string,
   cancelAtPeriodEnd = true,
   actor?: { type: "customer" | "admin"; id?: string | null },
 ) {
-  const subscription = await mutateProviderSubscription({
-    customerUid,
-    action: "cancel",
-    cancelAtPeriodEnd,
-    actorType: actor?.type,
-    actorId: actor?.id,
-  });
-  await sendSubscriptionStateEmail({
-    customerUid,
-    state: "cancelled",
-    planId: subscription?.plan_id,
-    effectiveAt: cancelAtPeriodEnd ? subscription?.current_period_end : new Date(),
-    eventKey: String(subscription?.updated_at || Date.now()),
-  }).catch(() => undefined);
-  return subscription;
+  try {
+    const subscription = await mutateProviderSubscription({
+      customerUid,
+      action: "cancel",
+      cancelAtPeriodEnd,
+      actorType: actor?.type,
+      actorId: actor?.id,
+    });
+    await sendSubscriptionStateEmail({
+      customerUid,
+      state: "cancelled",
+      planId: subscription?.plan_id,
+      effectiveAt: cancelAtPeriodEnd ? subscription?.current_period_end : new Date(),
+      eventKey: String(subscription?.updated_at || Date.now()),
+    }).catch(() => undefined);
+    return subscription;
+  } catch (error) {
+    if (canFallbackToLocalLifecycle(error)) {
+      const subscription = await mutateLocalSubscriptionLifecycle(customerUid, "cancel", actor, {
+        cancelAtPeriodEnd,
+        forceLocal: true,
+      });
+      await sendSubscriptionStateEmail({
+        customerUid,
+        state: "cancelled",
+        planId: subscription?.plan_id,
+        effectiveAt: cancelAtPeriodEnd
+          ? subscription?.current_period_end || subscription?.trial_ends_at
+          : new Date(),
+        eventKey: String(subscription?.updated_at || Date.now()),
+      }).catch(() => undefined);
+      return subscription;
+    }
+    throw error;
+  }
 }
 
 export async function resumeCustomerSubscription(
@@ -205,8 +240,10 @@ export async function resumeCustomerSubscription(
     }).catch(() => undefined);
     return subscription;
   } catch (error) {
-    if (error instanceof SubscriptionLifecycleError && error.code === "NOT_PROVIDER_MANAGED") {
-      const subscription = await mutateLocalSubscriptionLifecycle(customerUid, "resume", actor);
+    if (canFallbackToLocalLifecycle(error)) {
+      const subscription = await mutateLocalSubscriptionLifecycle(customerUid, "resume", actor, {
+        forceLocal: true,
+      });
       await sendSubscriptionStateEmail({
         customerUid,
         state: "resumed",
@@ -231,8 +268,8 @@ export async function pauseCustomerSubscription(
       actorId: actor?.id,
     });
   } catch (error) {
-    if (error instanceof SubscriptionLifecycleError && error.code === "NOT_PROVIDER_MANAGED") {
-      return mutateLocalSubscriptionLifecycle(customerUid, "pause", actor);
+    if (canFallbackToLocalLifecycle(error)) {
+      return mutateLocalSubscriptionLifecycle(customerUid, "pause", actor, { forceLocal: true });
     }
     throw error;
   }

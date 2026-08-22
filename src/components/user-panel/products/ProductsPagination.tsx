@@ -82,7 +82,7 @@ export default function ProductsPagination({
               className={[
                 "flex h-8 min-w-8 items-center justify-center rounded-lg px-2.5 text-[13px] font-semibold transition",
                 currentPage === page
-                  ? "bg-[#84D400] text-[#102000]"
+                  ? "bg-[#B6FF38] text-[#102000]"
                   : "text-[#525252] hover:bg-white",
               ].join(" ")}
             >

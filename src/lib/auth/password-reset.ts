@@ -1,18 +1,36 @@
 import { createHash, randomBytes } from "crypto";
 import { findUserByEmail, hashPassword } from "@/lib/auth";
+import { issueEmailActionToken } from "@/lib/auth/email-action-token";
 import { ensureAuthSchema, query } from "@/lib/db";
+import { resolveEmailDeliveryConfig } from "@/lib/email/delivery-config";
 import { sendEmail } from "@/lib/email/send-email";
 import { enterpriseActivationEmail } from "@/lib/email/templates/enterprise-activation";
 import { passwordResetEmail } from "@/lib/email/templates/password-reset";
 
 const RESET_TTL_MINUTES = 60;
+let ensurePasswordResetSchemaPromise: Promise<void> | null = null;
+
+function shouldSkipRuntimeDdl(): boolean {
+  const flag = process.env.SKIP_RUNTIME_DDL?.trim().toLowerCase();
+  if (flag === "true" || flag === "1") return true;
+  if (flag === "false" || flag === "0") return false;
+  return process.env.NODE_ENV === "production";
+}
 
 function hashResetToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
 
-function getAppOrigin() {
-  return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+async function assertEmailDeliveryReady() {
+  if (process.env.NODE_ENV !== "production") return;
+  const delivery = await resolveEmailDeliveryConfig();
+  if (delivery.provider === "disabled") {
+    const reason =
+      delivery.reason === "disabled"
+        ? "Email notifications are disabled in Master Admin settings."
+        : "SMTP/Resend is not configured. Set SMTP in Master Admin → Settings (or .env) and send a test email.";
+    throw new Error(reason);
+  }
 }
 
 async function createResetToken(userId: number, email: string) {
@@ -26,12 +44,24 @@ async function createResetToken(userId: number, email: string) {
      VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE))`,
     [userId, email, hashResetToken(token), RESET_TTL_MINUTES],
   );
-  return `${getAppOrigin()}/reset-password?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
+  const destinationPath = `/reset-password?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
+  // Email only carries the opaque email-action URL — never a bare dashboard/reset deep link.
+  const issued = await issueEmailActionToken({
+    userId,
+    email,
+    action: "password_reset",
+    destinationPath,
+    ttlMinutes: RESET_TTL_MINUTES,
+    singleUse: true,
+  });
+  return issued.url;
 }
 
 export async function ensurePasswordResetSchema() {
   await ensureAuthSchema();
-  await query(`
+  if (shouldSkipRuntimeDdl()) return;
+  if (ensurePasswordResetSchemaPromise) return ensurePasswordResetSchemaPromise;
+  ensurePasswordResetSchemaPromise = query(`
     CREATE TABLE IF NOT EXISTS password_reset_tokens (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
       user_id BIGINT UNSIGNED NOT NULL,
@@ -46,12 +76,18 @@ export async function ensurePasswordResetSchema() {
       INDEX idx_password_reset_email (email),
       INDEX idx_password_reset_expires (expires_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
+  `).then(() => undefined).catch((error) => {
+    ensurePasswordResetSchemaPromise = null;
+    throw error;
+  });
+  return ensurePasswordResetSchemaPromise;
 }
 
 /** Always resolves without leaking whether the email exists. */
 export async function requestPasswordReset(email: string) {
   await ensurePasswordResetSchema();
+  await assertEmailDeliveryReady();
+
   const normalized = email.toLowerCase().trim();
   if (!normalized) return { ok: true as const };
 
@@ -63,12 +99,23 @@ export async function requestPasswordReset(email: string) {
   const resetUrl = await createResetToken(user.id, normalized);
   const emailContent = passwordResetEmail({ resetUrl, ttlMinutes: RESET_TTL_MINUTES });
 
-  await sendEmail({
-    to: normalized,
-    subject: emailContent.subject,
-    text: emailContent.text,
-    html: emailContent.html,
-  });
+  try {
+    const delivery = await sendEmail({
+      to: normalized,
+      subject: emailContent.subject,
+      text: emailContent.text,
+      html: emailContent.html,
+      template: "password-reset",
+    });
+    if (!delivery.delivered) {
+      console.error(
+        `[password-reset] Email not delivered for ${normalized} (mode=${delivery.mode}). Check SMTP/Resend settings.`,
+      );
+    }
+  } catch (error) {
+    // Do not fail the HTTP response after the account lookup — that would leak account existence.
+    console.error("[password-reset] send failed:", error);
+  }
 
   if (process.env.NODE_ENV !== "production") {
     console.log(`[password-reset] Dev reset link for ${normalized}: ${resetUrl}`);
@@ -181,12 +228,29 @@ export async function resetPasswordWithToken(input: { email: string; token: stri
   }
 
   const passwordHash = hashPassword(password);
+  const markUsed = await query(
+    "UPDATE password_reset_tokens SET used_at = NOW() WHERE id = ? AND used_at IS NULL",
+    [row.id],
+  );
+  if (Number((markUsed as unknown as { affectedRows?: number }).affectedRows || 0) !== 1) {
+    return { ok: false as const, error: "Reset link is invalid or expired." };
+  }
+
   await query("UPDATE users SET password_hash = ? WHERE id = ? AND email = ?", [
     passwordHash,
     row.user_id,
     normalized,
   ]);
-  await query("UPDATE password_reset_tokens SET used_at = NOW() WHERE id = ?", [row.id]);
+
+  try {
+    const { bumpSessionVersion } = await import("@/lib/account/sessions.service");
+    await bumpSessionVersion(row.user_id);
+  } catch {
+    // best-effort
+  }
+  await query("UPDATE customer_sessions SET revoked_at = NOW() WHERE user_id = ? AND revoked_at IS NULL", [
+    row.user_id,
+  ]).catch(() => {});
 
   return { ok: true as const };
 }

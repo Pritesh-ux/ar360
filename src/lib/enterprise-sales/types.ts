@@ -25,7 +25,9 @@ export interface EnterpriseRequestInput {
   businessEmail: string;
   phone: string;
   companyWebsite?: string | null;
+  address: string;
   country: string;
+  state: string;
   industry: string;
   expectedProducts?: number | null;
   expectedStorageGb?: number | null;
@@ -55,7 +57,9 @@ export interface EnterpriseRequest {
   businessEmail: string;
   phone: string;
   companyWebsite: string | null;
+  address: string | null;
   country: string;
+  state: string | null;
   industry: string;
   expectedProducts: number | null;
   expectedStorageGb: number | null;
@@ -80,6 +84,8 @@ export interface EnterpriseRequest {
   statusLabel: EnterpriseStatusLabel;
   customerId: number | null;
   source: string;
+  /** Set when password-setup / activation email was successfully recorded. */
+  activationEmailSentAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -95,6 +101,27 @@ export interface EnterpriseRequestListFilters {
   createdFrom?: string;
   createdTo?: string;
 }
+
+/** Admin-editable capacity / interest fields on an Enterprise request. */
+export type EnterpriseRequestRequirementsPatch = {
+  expectedProducts?: number | null;
+  expectedStorageGb?: number | null;
+  expectedMonthlyBandwidthGb?: number | null;
+  needsMoreStorage?: boolean;
+  needsMoreBandwidth?: boolean;
+  needsMoreProducts?: boolean;
+  needsTeamMembers?: boolean;
+  needsCustomBranding?: boolean;
+  needsDedicatedInfrastructure?: boolean;
+  needsPrioritySupport?: boolean;
+  needsSla?: boolean;
+  needsQr?: boolean;
+  needsEmbed?: boolean;
+  needsShare?: boolean;
+  needsAr?: boolean;
+  needsAnalytics?: boolean;
+  additionalRequirements?: string | null;
+};
 
 export interface EnterpriseNoteInput {
   requestUid: string;
@@ -288,4 +315,6 @@ export interface EnterpriseRequestDetail extends EnterpriseRequest {
   payments: EnterprisePayment[];
   contracts: EnterpriseContract[];
   billSummary: EnterpriseBillSummary;
+  /** Contract or latest-quote custom plan — used to edit live features after payment. */
+  linkedCustomPlan?: EnterpriseCustomPlan | null;
 }

@@ -2,7 +2,8 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import type { ReactNode } from "react";
-import ModelViewer from "@/components/shared/ModelViewer";
+import dynamic from "next/dynamic";
+const ModelViewer = dynamic(() => import("@/components/shared/ModelViewer"), { ssr: false });
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { AUTH_BRAND, AUTH_DEMO_MODEL } from "@/components/auth/constants";
 
@@ -62,13 +63,13 @@ export function AuthSplitLayout({
 
         <section className="relative flex min-h-[56vh] flex-col justify-center bg-white px-6 py-12 sm:px-10 lg:min-h-screen lg:px-16 lg:py-16">
           <div className="mx-auto w-full max-w-[460px]">
-            <AnimatePresence mode="wait">
+            <AnimatePresence mode="wait" initial={false}>
               <motion.div
                 key={stepKey}
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 1, y: 0 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
               >
                 {children}
               </motion.div>

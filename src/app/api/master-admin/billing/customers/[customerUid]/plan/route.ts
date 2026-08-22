@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { guardAdminPermission } from "@/lib/permissions/admin-rbac";
 import { getBillingPlans, getCustomerPlan, setCustomerPlan } from "@/lib/billing/admin-plans";
 import { getCustomerProductionBilling } from "@/lib/master-admin/production-billing.service";
+import { assertAdminPlanOverrideAllowed } from "@/lib/billing/admin-plan-override-guard";
 import { writeMasterAdminAudit } from "@/lib/master-admin/audit-log";
 
 export const runtime = "nodejs";
@@ -41,13 +42,8 @@ export async function PUT(request: Request, context: { params: Params }) {
   if (body.confirm !== true || reason.length < 5) {
     return NextResponse.json({ success: false, message: "Confirmation and a reason of at least 5 characters are required." }, { status: 400 });
   }
-  const current = await getCustomerProductionBilling(customerUid);
-  if (current.subscription?.provider_subscription_id) {
-    return NextResponse.json({ success: false, message: "Provider-managed subscriptions must be changed through Razorpay lifecycle controls." }, { status: 409 });
-  }
-  if (planId === "enterprise" && body.salesChannel !== "manual") {
-    return NextResponse.json({ success: false, message: "Enterprise is manual-only and requires salesChannel=manual." }, { status: 400 });
-  }
+  const blocked = await assertAdminPlanOverrideAllowed(customerUid);
+  if (blocked) return blocked;
 
   const subscription = await setCustomerPlan({
     customerUid,
@@ -59,13 +55,22 @@ export async function PUT(request: Request, context: { params: Params }) {
     trialEndsAt: body.trialEndsAt ?? undefined,
     currentPeriodStart: body.currentPeriodStart ?? undefined,
     currentPeriodEnd: body.currentPeriodEnd ?? undefined,
+    adminId: auth.admin.id,
   });
   await writeMasterAdminAudit({
     adminId: auth.admin.id,
     action: "billing.customer_plan_override",
     entityType: "customer_subscription",
     entityId: customerUid,
-    metadata: { reason, planId, status: body.status, manualEnterprise: planId === "enterprise" },
+    metadata: {
+      reason,
+      planId,
+      status: body.status,
+      manualEnterprise:
+        planId === "enterprise" ||
+        String(planId).toLowerCase().startsWith("ecp_") ||
+        String(subscription?.planId || "").toLowerCase().startsWith("ecp_"),
+    },
   });
 
   return NextResponse.json({ success: true, subscription });

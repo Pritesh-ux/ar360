@@ -1,28 +1,21 @@
 import {
   EnvironmentLibrary,
-  ExportRow,
-  MaterialColorRow,
-  MaterialSection,
-  MaterialSignedSliderRow,
-  MaterialSliderRow,
-  MaterialTextureRow,
   Panel,
   PosterQrThumb,
+  PreviewSharePanel,
   ToggleRow,
 } from "@/components/features/editor/EditorUi";
 import { getRangeStyle } from "@/components/features/editor/utils";
+import AppImage from "@/components/shared/AppImage";
 import StudioColorPicker from "@/components/features/editor/StudioColorPicker";
 import {
   Boxes,
-  Code2,
   Image as ImageIcon,
-  MonitorSmartphone,
-  QrCode,
-  Smartphone,
   Trash2,
   Upload,
 } from "lucide-react";
 import type { EditorPanelsProps } from "./types";
+import MaterialsInspectorPanel from "./MaterialsInspectorPanel";
 
 export default function EditorSidebarPanels({
   activeTab,
@@ -36,10 +29,10 @@ export default function EditorSidebarPanels({
   setUseSkybox,
   exposure,
   setExposure,
+  environmentSaturation,
+  setEnvironmentSaturation,
   backgroundColor,
   setBackgroundColor,
-  transparent,
-  setTransparent,
   shadowIntensity,
   setShadowIntensity,
   shadowSoftness,
@@ -65,43 +58,9 @@ export default function EditorSidebarPanels({
   selectedMaterialIndex,
   handleMaterialSlotChange,
   materials,
-  baseColor,
-  setBaseColor,
-  baseColorTexture,
-  setBaseColorTexture,
-  metalness,
-  setMetalness,
-  roughness,
-  setRoughness,
-  emissiveColor,
-  setEmissiveColor,
-  metallicRoughnessTexture,
-  setMetallicRoughnessTexture,
-  normalTexture,
-  setNormalTexture,
-  emissiveTexture,
-  setEmissiveTexture,
-  occlusionTexture,
-  setOcclusionTexture,
-  materialLogoImage,
-  setMaterialLogoImage,
-  materialLogoName,
-  setMaterialLogoName,
-  materialLogoMode,
-  setMaterialLogoMode,
-  materialLogoBlendMode,
-  setMaterialLogoBlendMode,
-  materialLogoScale,
-  setMaterialLogoScale,
-  materialLogoOffsetX,
-  setMaterialLogoOffsetX,
-  materialLogoOffsetY,
-  setMaterialLogoOffsetY,
-  materialLogoRotation,
-  setMaterialLogoRotation,
-  materialLogoOpacity,
-  setMaterialLogoOpacity,
-  saveCurrentMaterialSettings,
+  materialInspectorSetting,
+  nativeMaterialSetting,
+  onMaterialInspectorChange,
   autoRotate,
   setAutoRotate,
   cameraControls,
@@ -112,6 +71,8 @@ export default function EditorSidebarPanels({
   setInteractionPrompt,
   realScale,
   setRealScale,
+  arModelUnit,
+  setArModelUnit,
   autoPlay,
   setAutoPlay,
   hideControls,
@@ -192,35 +153,17 @@ export default function EditorSidebarPanels({
               <>
                 <PosterQrThumb
                   posterUrl={product.poster}
-                  qrDestination={`${publicOrigin}/viewer/${product.id}?source=qr&landing=1`}
+                  qrDestination={`${publicOrigin}/viewer/${product.publicId || product.id}?source=qr&landing=1`}
                 />
 
-                <Panel title="Preview & options" open>
-                  <ExportRow
-                    icon={<Code2 />}
-                    title="Universal Viewer"
-                    value={`${publicOrigin}/viewer/${product.id}`}
-                  />
-                  <ExportRow
-                    icon={<QrCode />}
-                    title="QR code"
-                    value={`${publicOrigin}/viewer/${product.id}?source=qr&landing=1`}
-                    hoverQrUrl={`${publicOrigin}/viewer/${product.id}?source=qr&landing=1`}
-                  />
-                  <ExportRow
-                    icon={<ImageIcon />}
-                    title="Poster"
-                    value={product.poster}
-                  />
-                  <ExportRow
-                    icon={<Smartphone />}
-                    title="iOS Quick Look"
-                    value={`${publicOrigin}/viewer/${product.id}?ar=ios`}
-                  />
-                  <ExportRow
-                    icon={<MonitorSmartphone />}
-                    title="Android Scene Viewer"
-                    value={`${publicOrigin}/viewer/${product.id}?ar=android`}
+                <Panel title="Preview & Share" open>
+                  <PreviewSharePanel
+                    publicId={String(product.publicId || product.id || "")}
+                    publicOrigin={publicOrigin}
+                    posterUrl={product.poster}
+                    productSlug={String(product.publicId || product.id || product.title || "product")}
+                    onCustomizePoster={() => void generatePoster()}
+                    onToast={showToast}
                   />
                 </Panel>
               </>
@@ -255,24 +198,43 @@ export default function EditorSidebarPanels({
                 return;
               }
 
-              const reader = new FileReader();
+              const productUid = product?.id || product?.productUid;
+              const customerUid = product?.customerUid;
+              if (!productUid) {
+                showToast("Save product first, then upload HDR.");
+                return;
+              }
 
-              reader.onload = () => {
-                const dataUrl = reader.result as string;
+              try {
+                const formData = new FormData();
+                formData.append("hdr", file);
+                formData.append("productUid", String(productUid));
+                if (customerUid) formData.append("customerUid", String(customerUid));
 
-                setEnvironmentImage(dataUrl);
-                setUseSkybox(false);
+                const res = await fetch("/api/products/hdr-upload", {
+                  method: "POST",
+                  body: formData,
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                  throw new Error(data.error || "HDR upload failed");
+                }
+
+                const nextUrl = String(data.environmentImage || "");
+                if (!nextUrl) throw new Error("HDR upload returned no URL");
+
+                setEnvironmentImage(nextUrl);
+                setUseSkybox(true);
                 setExposure(0.9);
                 setShadowIntensity(1.25);
                 setShadowSoftness(0.7);
-
                 showToast("HDR applied successfully");
-              };
-
-              reader.readAsDataURL(file);
+              } catch (err) {
+                showToast(err instanceof Error ? err.message : "HDR upload failed");
+              }
             }}
             onRemoveHdr={() => {
-              setEnvironmentImage("neutral");
+              setEnvironmentImage("/hdr/neutral.hdr");
               setUseSkybox(false);
               showToast("HDR removed");
             }}
@@ -297,17 +259,34 @@ export default function EditorSidebarPanels({
             </div>
           </div>
 
+          <label className="mt-5 block text-xs font-bold text-slate-400" title="Only HDR lighting color. Product Base Color stays.">
+            HDR Saturation
+          </label>
+          <div className="mt-2 flex items-center gap-3">
+            <input
+              type="range"
+              min="0"
+              max="2"
+              step="0.05"
+              value={environmentSaturation}
+              onInput={(e) => setEnvironmentSaturation(Number((e.target as HTMLInputElement).value))}
+              onChange={(e) => setEnvironmentSaturation(Number(e.target.value))}
+              className="editor-range flex-1"
+              style={getRangeStyle(environmentSaturation, 0, 2)}
+            />
+            <div className="editor-value-pill h-9 w-14 rounded-lg grid place-items-center text-sm font-bold">
+              {environmentSaturation.toFixed(2)}
+            </div>
+          </div>
+
           <div className="editor-panel-divider mt-6 border-t pt-5">
             <h4 className="font-black text-sm">Background</h4>
 
-            <label className="flex items-center gap-3 text-sm text-white/90 mt-4">
+            <label className="flex items-center gap-3 text-sm text-[#374151] mt-4">
               <input
                 type="checkbox"
                 checked={useSkybox}
-                disabled={
-                  environmentImage.startsWith("blob:") ||
-                  environmentImage.startsWith("data:")
-                }
+                disabled={!environmentImage || environmentImage === "default"}
                 onChange={(e) => setUseSkybox(e.target.checked)}
                 className="editor-checkbox disabled:opacity-40"
               />
@@ -326,16 +305,6 @@ export default function EditorSidebarPanels({
                 size="md"
                 title="Background color"
               />
-
-              <label className="flex items-center gap-2 text-sm text-slate-300 ml-auto">
-                <input
-                  type="checkbox"
-                  checked={transparent}
-                  onChange={(e) => setTransparent(e.target.checked)}
-                  className="editor-checkbox"
-                />
-                Transparent
-              </label>
             </div>
           </div>
 
@@ -418,7 +387,7 @@ export default function EditorSidebarPanels({
 
             {logoImage && (
               <div className="mt-4 rounded-2xl border border-[#ECECEC] bg-white/[.04] p-4">
-                <img
+                <AppImage
                   src={logoImage}
                   alt="Logo preview"
                   className="mx-auto max-h-24 object-contain"
@@ -499,7 +468,7 @@ export default function EditorSidebarPanels({
                     key={decal.id}
                     className="flex items-center gap-3 rounded-2xl border border-[#ECECEC] bg-white/[.04] p-3"
                   >
-                    <img
+                    <AppImage
                       src={decal.image}
                       alt={decal.name}
                       className="h-10 w-10 rounded-lg bg-white object-contain p-1"
@@ -524,224 +493,17 @@ export default function EditorSidebarPanels({
       )}
 
       {activeTab === "materials" && (
-        <>
-          <Panel title="Selected Material / Image Blending" open>
-            <select
-              value={selectedMaterialIndex}
-              onChange={(e) => handleMaterialSlotChange(Number(e.target.value))}
-              className="w-full h-12 bg-white border border-[#ECECEC] text-[#111111] rounded-lg px-4 outline-none text-sm font-bold"
-            >
-              {materials.length === 0 ? (
-                <option value={0}>No materials found</option>
-              ) : (
-                materials.map((mat) => (
-                  <option key={mat.index} value={mat.index}>
-                    ID-{mat.index + 1} — {mat.name}
-                  </option>
-                ))
-              )}
-            </select>
-          </Panel>
-
-          <MaterialSection title="Base Color" defaultOpen>
-            <MaterialColorRow
-              label="Factor"
-              value={baseColor}
-              onChange={setBaseColor}
-              onReset={() => setBaseColor("#ffffff")}
-            />
-            <MaterialTextureRow
-              label="Texture"
-              value={baseColorTexture}
-              onChange={setBaseColorTexture}
-              onReset={() => setBaseColorTexture("")}
-            />
-          </MaterialSection>
-
-          <MaterialSection title="Metallic Roughness">
-            <MaterialSliderRow
-              label="Metallic factor"
-              value={metalness}
-              onChange={setMetalness}
-              onReset={() => setMetalness(0)}
-            />
-            <MaterialSliderRow
-              label="Roughness factor"
-              value={roughness}
-              onChange={setRoughness}
-              onReset={() => setRoughness(0.5)}
-            />
-            <MaterialTextureRow
-              label="Texture"
-              value={metallicRoughnessTexture}
-              onChange={setMetallicRoughnessTexture}
-              onReset={() => setMetallicRoughnessTexture("")}
-            />
-          </MaterialSection>
-
-          <MaterialSection title="Normal Map">
-            <MaterialTextureRow
-              label="Texture"
-              value={normalTexture}
-              onChange={setNormalTexture}
-              onReset={() => setNormalTexture("")}
-            />
-          </MaterialSection>
-
-          <MaterialSection title="Emissive">
-            <MaterialColorRow
-              label="Factor"
-              value={emissiveColor}
-              onChange={setEmissiveColor}
-              onReset={() => setEmissiveColor("#000000")}
-            />
-            <MaterialTextureRow
-              label="Texture"
-              value={emissiveTexture}
-              onChange={setEmissiveTexture}
-              onReset={() => setEmissiveTexture("")}
-            />
-          </MaterialSection>
-
-          <MaterialSection title="Occlusion">
-            <MaterialTextureRow
-              label="Texture"
-              value={occlusionTexture}
-              onChange={setOcclusionTexture}
-              onReset={() => setOcclusionTexture("")}
-            />
-          </MaterialSection>
-
-          <MaterialSection title="Logo / Image Map" defaultOpen>
-            <div className="space-y-4">
-              <MaterialTextureRow
-                label="Logo image"
-                value={materialLogoImage}
-                onChange={setMaterialLogoImage}
-                onReset={() => setMaterialLogoImage("")}
-              />
-
-              <div>
-                <label className="text-sm font-bold text-slate-300">Layer name</label>
-                <input
-                  value={materialLogoName}
-                  onChange={(e) => setMaterialLogoName(e.target.value)}
-                  className="mt-2 h-11 w-full rounded-lg bg-white border border-[#ECECEC] text-[#111111] px-4 text-sm font-bold outline-none"
-                  placeholder="GRIVAN logo"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-sm font-bold text-slate-300">Mode</label>
-                  <select
-                    value={materialLogoMode}
-                    onChange={(e) => setMaterialLogoMode(e.target.value as "print" | "engrave" | "emboss")}
-                    className="mt-2 h-11 w-full rounded-lg bg-white border border-[#ECECEC] text-[#111111] px-3 text-sm font-bold outline-none"
-                  >
-                    <option value="print">Print</option>
-                    <option value="engrave">Engrave</option>
-                    <option value="emboss">Emboss</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-sm font-bold text-slate-300">Blend</label>
-                  <select
-                    value={materialLogoBlendMode}
-                    onChange={(e) => setMaterialLogoBlendMode(e.target.value as "normal" | "multiply" | "screen" | "overlay")}
-                    className="mt-2 h-11 w-full rounded-lg bg-white border border-[#ECECEC] text-[#111111] px-3 text-sm font-bold outline-none"
-                  >
-                    <option value="normal">Normal</option>
-                    <option value="multiply">Multiply</option>
-                    <option value="screen">Screen</option>
-                    <option value="overlay">Overlay</option>
-                  </select>
-                </div>
-              </div>
-
-              <MaterialSliderRow
-                label="Scale"
-                value={materialLogoScale}
-                onChange={setMaterialLogoScale}
-                onReset={() => setMaterialLogoScale(0.18)}
-              />
-
-              <MaterialSignedSliderRow
-                label="Offset X"
-                value={materialLogoOffsetX}
-                onChange={setMaterialLogoOffsetX}
-                onReset={() => setMaterialLogoOffsetX(0)}
-              />
-
-              <MaterialSignedSliderRow
-                label="Offset Y"
-                value={materialLogoOffsetY}
-                onChange={setMaterialLogoOffsetY}
-                onReset={() => setMaterialLogoOffsetY(0)}
-              />
-
-              <div>
-                <label className="text-sm font-bold text-slate-300">Rotation</label>
-                <div className="mt-2 flex items-center gap-3">
-                  <input
-                    type="range"
-                    min="-180"
-                    max="180"
-                    step="1"
-                    value={materialLogoRotation}
-                    onChange={(e) => setMaterialLogoRotation(Number(e.target.value))}
-                    className="editor-range flex-1"
-                    style={getRangeStyle(materialLogoRotation, -180, 180)}
-                  />
-                  <div className="editor-value-pill grid h-10 w-16 place-items-center rounded-lg font-bold">
-                    {materialLogoRotation}°
-                  </div>
-                </div>
-              </div>
-
-              <MaterialSliderRow
-                label="Opacity"
-                value={materialLogoOpacity}
-                onChange={setMaterialLogoOpacity}
-                onReset={() => setMaterialLogoOpacity(1)}
-              />
-
-              <button
-                type="button"
-                onClick={saveCurrentMaterialSettings}
-                className={`editor-primary-action h-11 w-full rounded-xl text-sm font-black ${primaryActionClass}`}
-              >
-                Apply Image Blend
-              </button>
-            </div>
-          </MaterialSection>
-
-          <MaterialSection title="Transparency">
-            <MaterialSliderRow
-              label="Alpha"
-              value={1}
-              onChange={() => {}}
-            />
-
-            <label className="flex items-center gap-3 mt-4 text-sm font-bold text-slate-200">
-              <input type="checkbox" className="editor-checkbox" />
-              Double Sided
-            </label>
-
-            <label className="block text-xs text-slate-400 font-bold mt-5">
-              Alpha Blend Mode:
-            </label>
-
-            <select className="w-full h-11 mt-2 bg-white border border-[#ECECEC] text-[#111111] rounded-lg px-4 outline-none text-sm font-bold">
-              <option>OPAQUE</option>
-              <option>BLEND</option>
-              <option>MASK</option>
-            </select>
-          </MaterialSection>
-        </>
+        <Panel title="Material Inspector" open>
+          <MaterialsInspectorPanel
+            materials={materials}
+            selectedMaterialIndex={selectedMaterialIndex}
+            onSelectMaterial={handleMaterialSlotChange}
+            setting={materialInspectorSetting}
+            nativeSetting={nativeMaterialSetting}
+            onChange={onMaterialInspectorChange}
+          />
+        </Panel>
       )}
-
       {activeTab === "viewer" && (
         <Panel title="Viewer Settings" open>
           <ToggleRow
@@ -774,6 +536,24 @@ export default function EditorSidebarPanels({
             onChange={setRealScale}
           />
 
+          <div className="space-y-1.5">
+            <label className="block text-xs text-slate-400 font-bold">Model units (AR size)</label>
+            <select
+              className="w-full h-11 bg-white border border-[#ECECEC] text-[#111111] rounded-lg px-4 outline-none text-sm font-bold"
+              value={arModelUnit}
+              onChange={(e) => setArModelUnit(e.target.value as typeof arModelUnit)}
+              title="GLB export units. Wrong unit makes AR look huge or tiny."
+            >
+              <option value="auto">Auto-detect</option>
+              <option value="m">Meters</option>
+              <option value="cm">Centimeters</option>
+              <option value="mm">Millimeters</option>
+            </select>
+            <p className="text-[11px] font-semibold leading-snug text-slate-500">
+              AR expects meters. If the product looks huge in AR, pick Centimeters or Millimeters.
+            </p>
+          </div>
+
           <ToggleRow
             label="Auto Play Animation"
             checked={autoPlay}
@@ -802,6 +582,10 @@ export default function EditorSidebarPanels({
                   <option value="whatsapp">WhatsApp</option>
                   <option value="contact_seller">Contact Seller</option>
                   <option value="request_quote">Request Quote</option>
+                  <option value="tel">Phone (tel)</option>
+                  <option value="mailto">Email (mailto)</option>
+                  <option value="pdf">PDF / Document URL</option>
+                  <option value="custom">Custom URL</option>
                 </select>
                 <label className="block text-xs text-slate-400 font-bold mt-3">Button label (optional)</label>
                 <input
@@ -810,13 +594,32 @@ export default function EditorSidebarPanels({
                   onChange={(e) => setCtaLabel(e.target.value)}
                   placeholder="Custom label"
                 />
-                <label className="block text-xs text-slate-400 font-bold mt-3">Destination URL</label>
+                <label className="block text-xs text-slate-400 font-bold mt-3">
+                  {ctaType === "whatsapp"
+                    ? "WhatsApp number"
+                    : ctaType === "tel"
+                      ? "Phone number"
+                      : ctaType === "mailto"
+                        ? "Email address"
+                        : "Destination URL"}
+                </label>
                 <input
                   className="w-full h-11 mt-1 bg-white border border-[#ECECEC] text-[#111111] rounded-lg px-4 outline-none text-sm font-bold"
                   value={ctaUrl}
                   onChange={(e) => setCtaUrl(e.target.value)}
-                  placeholder="https://"
+                  placeholder={
+                    ctaType === "whatsapp" || ctaType === "tel"
+                      ? "+91XXXXXXXXXX"
+                      : ctaType === "mailto"
+                        ? "hello@example.com"
+                        : "https://"
+                  }
                 />
+                {ctaEnabled && !String(ctaUrl || "").trim() ? (
+                  <p className="text-xs font-semibold text-amber-600">
+                    CTA stays disabled on the public viewer until a destination is set.
+                  </p>
+                ) : null}
               </>
             ) : null}
           </div>
@@ -829,18 +632,21 @@ export default function EditorSidebarPanels({
             <div className="flex gap-3 mt-2">
               <input
                 type="range"
-                min="20"
-                max="500"
+                min="0"
+                max="100"
                 value={initialZoom}
                 onChange={(e) => setInitialZoom(Number(e.target.value))}
                 className="editor-range flex-1"
-                style={getRangeStyle(initialZoom, 20, 500)}
+                style={getRangeStyle(initialZoom, 0, 100)}
               />
 
               <div className="editor-value-pill w-16 h-10 rounded-xl grid place-items-center font-bold">
-                {initialZoom}%
+                {initialZoom}
               </div>
             </div>
+            <p className="mt-1.5 text-[11px] font-medium text-slate-500">
+              0 = zoom out · 50 = center · 100 = zoom in
+            </p>
           </div>
 
           <div className="mt-6 border-t border-white/5 pt-5">
@@ -878,11 +684,7 @@ export default function EditorSidebarPanels({
             <button
               type="button"
               onClick={() => setIsPickingHotspot(true)}
-              className={`h-11 w-full rounded-xl font-black text-sm ${
-                isPickingHotspot
-                  ? "bg-[#84D400] text-white"
-                  : "bg-[#84D400] text-white hover:bg-[#0097ac]"
-              }`}
+              className={`editor-primary-action h-11 w-full rounded-xl text-sm font-black ${primaryActionClass}`}
             >
               {isPickingHotspot ? "Click on model..." : "Pick Position"}
             </button>
@@ -921,7 +723,7 @@ export default function EditorSidebarPanels({
             <button
               type="button"
               onClick={addHotspot}
-              className="mt-4 h-11 w-full rounded-xl bg-white text-slate-950 font-black text-sm"
+              className={`editor-primary-action mt-4 h-11 w-full rounded-xl text-sm font-black ${primaryActionClass}`}
             >
               Add Hotspot
             </button>
@@ -967,15 +769,16 @@ export default function EditorSidebarPanels({
           <Panel title="Configurations" open>
             <div className="flex gap-2 mb-5">
               <button
-                onClick={openAddVariantModal}
-                className="flex-1 h-10 rounded-xl bg-[#84D400] text-white font-black text-sm"
+                onClick={() => void openAddVariantModal()}
+                className={`flex-1 h-10 rounded-xl text-sm font-black ${primaryActionClass}`}
+                title="Save current materials & lighting as a new variant"
               >
                 + Add
               </button>
 
               <button
                 onClick={openDuplicateVariantModal}
-                className="flex-1 h-10 rounded-xl bg-[#2b3338] text-white font-black text-sm"
+                className="flex-1 h-10 rounded-xl border border-[#E5E7EB] bg-[#F4F5F5] text-[#111416] font-black text-sm hover:bg-[#ECEEF0]"
               >
                 Duplicate
               </button>
@@ -988,16 +791,16 @@ export default function EditorSidebarPanels({
                   onClick={() => loadVariant(variant)}
                   className={`p-4 rounded-2xl border cursor-pointer transition ${
                     activeVariantId === variant.id
-                      ? "editor-accent-card border-[#00B2CA]"
-                      : "bg-white/5 border-white/5 hover:bg-white/10"
+                      ? "editor-accent-card border-[color:var(--ar-primary-border)]"
+                      : "bg-[#FAFBFC] border-[#E8EBE8] hover:bg-[#F4F5F5]"
                   }`}
                 >
                   <div className="flex items-center gap-4">
-                    <div className="h-14 w-14 rounded-xl bg-white grid place-items-center overflow-hidden">
+                    <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-[#ECECEC] bg-white grid place-items-center">
                       {variant.poster ? (
-                        <img
+                        <AppImage
                           src={variant.poster}
-                          className="h-full w-full object-contain"
+                          className="h-full w-full object-contain bg-white"
                           alt={variant.name}
                         />
                       ) : (

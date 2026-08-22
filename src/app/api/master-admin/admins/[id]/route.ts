@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { guardAdminPermission } from "@/lib/permissions/admin-rbac";
+import { guardAdminPermission, logAdminAudit } from "@/lib/permissions/admin-rbac";
 import { updateMasterAdmin } from "@/lib/master-admin/admins.service";
 
 export const runtime = "nodejs";
@@ -30,6 +30,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       roleId,
     });
 
+    await logAdminAudit(auth.admin, "admin.update", "master_admin", String(adminId), { status, roleId });
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json(

@@ -11,7 +11,7 @@ const CANDIDATE_PATHS = [
 /** Returns GLB bytes for placeholder object-capture output when no real processor is configured. */
 export async function resolvePlaceholderModelBuffer(): Promise<Buffer> {
   for (const relative of CANDIDATE_PATHS) {
-    const absolute = path.join(process.cwd(), relative);
+    const absolute = path.join("./", relative);
     try {
       const data = await readFile(absolute);
       if (data.byteLength > 12) return data;

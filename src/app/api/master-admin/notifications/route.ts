@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { guardAdminPermission } from "@/lib/permissions/admin-rbac";
+import { guardAdminPermission, logAdminAudit } from "@/lib/permissions/admin-rbac";
 import { ensureAppSchema } from "@/lib/db";
 import {
   deleteAdminNotifications,
@@ -36,6 +36,7 @@ export async function PATCH(req: NextRequest) {
     "tickets.read",
   ]);
   if (auth instanceof NextResponse) return auth;
+  const { admin } = auth;
 
   await ensureAppSchema();
 
@@ -45,6 +46,7 @@ export async function PATCH(req: NextRequest) {
   }
   await markAdminNotificationsRead(mutation.data.ids, mutation.data.markAll);
   const feed = await getAdminNotificationsFeed(50, { sync: false });
+  await logAdminAudit(admin, "notification.mark_read", "admin_notification", null);
   return NextResponse.json({ ok: true, ...feed });
 }
 
@@ -56,6 +58,7 @@ export async function DELETE(req: NextRequest) {
     "tickets.read",
   ]);
   if (auth instanceof NextResponse) return auth;
+  const { admin } = auth;
 
   await ensureAppSchema();
   const mutation = validateDeleteNotificationPayload(await req.json().catch(() => null));
@@ -64,5 +67,6 @@ export async function DELETE(req: NextRequest) {
   }
   await deleteAdminNotifications(mutation.data.ids, mutation.data.clearAll);
   const feed = await getAdminNotificationsFeed(50, { sync: false });
+  await logAdminAudit(admin, "notification.delete", "admin_notification", null);
   return NextResponse.json({ ok: true, ...feed });
 }

@@ -6,12 +6,16 @@ import { resolveStorageRoot } from "@/lib/storage/paths";
 import { ensureProductSchema, query } from "@/lib/db";
 import { getProductFolder } from "@/lib/localCustomerStorage";
 import { normalizeScopedId } from "@/lib/customerIsolation";
-import { checkViewerEntitlement } from "@/lib/billing/plan-enforcement";
+import { checkArEntitlement, checkViewerEntitlement, planAllowsProductContact } from "@/lib/billing/plan-enforcement";
 import { resolveCustomerPlanLimits } from "@/lib/billing/resolve-plan-limits";
 import { getCustomerBandwidthUsedGb } from "@/lib/billing/bandwidth";
 import { toProtectedAssetUrl } from "@/lib/billing/asset-url";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { getViewerBranding } from "@/lib/enterprise/branding.service";
+import { parseLogoDesign, type LogoDesign } from "@/lib/branding/logo-design";
+import { getWorkspaceContactSettings } from "@/lib/viewer-contact/workspace-settings";
+import { readProductContactOverride, resolveViewerContact } from "@/lib/viewer-contact/resolve";
+import { applyControlledRuntimeToProduct } from "@/lib/platform-versioning/apply-versioned-runtime";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -109,6 +113,59 @@ function getRequestOrigin(req?: Request) {
   return host ? `${proto}://${host}` : "";
 }
 
+/** Fill modelBytes / arModelUrl from disk when product.json is missing them. */
+async function enrichModelAssetMeta(product: Record<string, any>) {
+  const customerUid = String(product.customerUid || "");
+  const productUid = String(product.productUid || product.id || "");
+  if (!customerUid || !productUid) return product;
+
+  const folder = getProductFolder(customerUid, productUid);
+  const next = { ...product };
+
+  if (!(Number(next.modelBytes) > 0)) {
+    try {
+      const st = await fs.stat(path.join(folder, "model.glb"));
+      if (st.isFile() && st.size > 0) next.modelBytes = st.size;
+    } catch {
+      // optional
+    }
+  }
+
+  if (!next.arModelUrl) {
+    try {
+      const st = await fs.stat(path.join(folder, "model.ar.glb"));
+      if (st.isFile() && st.size > 0) {
+        const modelUrl = String(next.modelUrl || "");
+        if (modelUrl.includes("/api/assets/") && /model\.glb/i.test(modelUrl)) {
+          next.arModelUrl = modelUrl.replace(/model\.glb/i, "model.ar.glb");
+        } else if (next.publicFolder) {
+          next.arModelUrl = `${String(next.publicFolder).replace(/\/$/, "")}/model.ar.glb`;
+        }
+      }
+    } catch {
+      // optional
+    }
+  }
+
+  if (!next.usdzUrl) {
+    try {
+      const st = await fs.stat(path.join(folder, "model.usdz"));
+      if (st.isFile() && st.size > 0) {
+        const modelUrl = String(next.modelUrl || "");
+        if (modelUrl.includes("/api/assets/") && /model\.glb/i.test(modelUrl)) {
+          next.usdzUrl = modelUrl.replace(/model\.glb/i, "model.usdz");
+        } else if (next.publicFolder) {
+          next.usdzUrl = `${String(next.publicFolder).replace(/\/$/, "")}/model.usdz`;
+        }
+      }
+    } catch {
+      // optional
+    }
+  }
+
+  return next;
+}
+
 function withRequestOrigin(url: string, origin = "") {
   if (!url) return "";
   if (isBrowserOnlyUrl(url)) return url;
@@ -144,6 +201,72 @@ function normalizeAssetUrl(value?: string | null, publicFolder = "", fallbackNam
   return withRequestOrigin(`${publicFolder}/${fallbackName}`, origin);
 }
 
+const MATERIAL_TEXTURE_FIELDS = [
+  "baseColorTexture",
+  "metallicRoughnessTexture",
+  "normalTexture",
+  "emissiveTexture",
+  "occlusionTexture",
+  "bumpTexture",
+] as const;
+
+function normalizeMaterialSettingUrls(
+  setting: Record<string, any> | null | undefined,
+  origin = "",
+): Record<string, any> | null | undefined {
+  if (!setting || typeof setting !== "object") return setting;
+  const next: Record<string, any> = { ...setting };
+  for (const field of MATERIAL_TEXTURE_FIELDS) {
+    const raw = next[field];
+    if (typeof raw === "string" && raw.trim() && !raw.startsWith("data:") && !raw.startsWith("blob:") && raw !== "__clear__") {
+      next[field] = withRequestOrigin(raw, origin);
+    }
+  }
+  if (next.logoLayer && typeof next.logoLayer === "object") {
+    const image = next.logoLayer.image;
+    if (typeof image === "string" && image.trim() && !image.startsWith("data:") && !image.startsWith("blob:")) {
+      next.logoLayer = {
+        ...next.logoLayer,
+        image: withRequestOrigin(image, origin),
+      };
+    }
+  }
+  return next;
+}
+
+function normalizeMaterialSettingsMap(
+  settings: Record<string, any> | null | undefined,
+  origin = "",
+) {
+  if (!settings || typeof settings !== "object") return settings;
+  const next: Record<string, any> = {};
+  for (const [key, value] of Object.entries(settings)) {
+    next[key] = normalizeMaterialSettingUrls(value as Record<string, any>, origin);
+  }
+  return next;
+}
+
+function normalizeVariantsUrls(variants: any, origin = "") {
+  if (!Array.isArray(variants)) return variants;
+  return variants.map((variant) => {
+    if (!variant || typeof variant !== "object") return variant;
+    const next = { ...variant };
+    if (next.materialSettings) {
+      next.materialSettings = normalizeMaterialSettingsMap(next.materialSettings, origin);
+    }
+    for (const field of MATERIAL_TEXTURE_FIELDS) {
+      const raw = next[field];
+      if (typeof raw === "string" && raw.trim() && !raw.startsWith("data:") && !raw.startsWith("blob:")) {
+        next[field] = withRequestOrigin(raw, origin);
+      }
+    }
+    if (typeof next.poster === "string" && next.poster.trim()) {
+      next.poster = withRequestOrigin(next.poster, origin);
+    }
+    return next;
+  });
+}
+
 function normalizeProductPayload(product: Record<string, any>, origin = ""): Record<string, any> {
   if (!product || typeof product !== "object") return product;
 
@@ -165,10 +288,45 @@ function normalizeProductPayload(product: Record<string, any>, origin = ""): Rec
       fileName ? encodeFileName(fileName) : "model.glb",
       origin,
     ),
+    arModelUrl: product.arModelUrl
+      ? normalizeAssetUrl(product.arModelUrl, normalizedPublicFolder, "model.ar.glb", origin)
+      : undefined,
+    usdzUrl: product.usdzUrl
+      ? normalizeAssetUrl(product.usdzUrl, normalizedPublicFolder, "model.usdz", origin)
+      : undefined,
+    modelBytes:
+      Number.isFinite(Number(product.modelBytes)) && Number(product.modelBytes) > 0
+        ? Number(product.modelBytes)
+        : undefined,
     poster: normalizeAssetUrl(product.poster, normalizedPublicFolder, "poster.png", origin),
     thumbnailUrl: normalizeAssetUrl(product.thumbnailUrl, normalizedPublicFolder, "thumbnail.png", origin),
     qrUrl: normalizeAssetUrl(product.qrUrl, normalizedPublicFolder, "qr.png", origin),
+    materialSettings: normalizeMaterialSettingsMap(product.materialSettings, origin),
+    variants: normalizeVariantsUrls(product.variants, origin),
   };
+
+  if (normalized.settings && typeof normalized.settings === "object") {
+    normalized.settings = {
+      ...normalized.settings,
+      materialSettings: normalizeMaterialSettingsMap(
+        (normalized.settings as { materialSettings?: Record<string, any> }).materialSettings,
+        origin,
+      ),
+    };
+  }
+
+  if (Array.isArray(normalized.logoDecals)) {
+    normalized.logoDecals = normalized.logoDecals.map((decal: any) => {
+      if (!decal || typeof decal !== "object") return decal;
+      if (typeof decal.image === "string" && decal.image.trim() && !decal.image.startsWith("data:")) {
+        return { ...decal, image: withRequestOrigin(decal.image, origin) };
+      }
+      return decal;
+    });
+  }
+
+  if (!normalized.arModelUrl) delete normalized.arModelUrl;
+  if (!normalized.usdzUrl) delete normalized.usdzUrl;
 
   delete normalized.folderPath;
   delete normalized.productFolder;
@@ -223,6 +381,7 @@ async function findPublishedProductInDb(id: string, origin = "") {
        FROM products
       WHERE (id = ? OR public_id = ? OR viewer_slug = ?)
         AND LOWER(status) IN ('published', 'active')
+        AND deleted_at IS NULL
       LIMIT 1`,
     [id, id, id],
   ).catch(() => []);
@@ -234,13 +393,80 @@ async function findPublishedProductInDb(id: string, origin = "") {
   const baseProduct = rowToPublicProduct(row, origin);
 
   if (json && isPublished(json)) {
-    return normalizeProductPayload({
+    const merged = normalizeProductPayload({
       ...baseProduct,
       ...json,
       customerUid: row.customer_uid,
       productUid: row.id,
       id: row.id,
     }, origin);
+
+    // Prefer non-empty MySQL hotspots when disk has [] / missing (stale product.json wipe).
+    const mysqlHotspots = Array.isArray(baseProduct.hotspots) ? baseProduct.hotspots : [];
+    const diskHotspots = Array.isArray((merged as { hotspots?: unknown }).hotspots)
+      ? ((merged as { hotspots: unknown[] }).hotspots)
+      : [];
+    if (diskHotspots.length === 0 && mysqlHotspots.length > 0) {
+      (merged as { hotspots: unknown }).hotspots = mysqlHotspots;
+    }
+
+    // Prefer MySQL materials when disk wiped them during a failed/partial save.
+    const mysqlMaterials = (baseProduct as { materialSettings?: Record<string, unknown> }).materialSettings;
+    const diskMaterials = (merged as { materialSettings?: Record<string, unknown> }).materialSettings;
+    const diskMaterialCount = diskMaterials ? Object.keys(diskMaterials).length : 0;
+    const mysqlMaterialCount = mysqlMaterials ? Object.keys(mysqlMaterials).length : 0;
+    if (diskMaterialCount === 0 && mysqlMaterialCount > 0) {
+      (merged as { materialSettings?: Record<string, unknown> }).materialSettings = mysqlMaterials;
+    }
+
+    // Prefer a non-default background from whichever source actually has one.
+    const diskBg = String((merged as { backgroundColor?: string }).backgroundColor || "");
+    const mysqlBg = String((baseProduct as { backgroundColor?: string }).backgroundColor || "");
+    if ((!diskBg || diskBg === "#ffffff" || diskBg === "#F0F2F5") && mysqlBg && mysqlBg !== diskBg) {
+      (merged as { backgroundColor?: string }).backgroundColor = mysqlBg;
+    }
+
+    if ((merged as { useSkybox?: boolean }).useSkybox == null && (baseProduct as any).useSkybox != null) {
+      (merged as { useSkybox?: boolean }).useSkybox = (baseProduct as any).useSkybox;
+    }
+
+    // Flatten settings → top-level so ViewerRuntime / getViewerSettings always see them.
+    const settingsObj =
+      (merged as { settings?: Record<string, unknown> }).settings &&
+      typeof (merged as { settings?: unknown }).settings === "object"
+        ? ((merged as { settings: Record<string, unknown> }).settings)
+        : {};
+    for (const key of [
+      "backgroundColor",
+      "backgroundType",
+      "transparent",
+      "useSkybox",
+      "environmentImage",
+      "environmentTint",
+      "environmentSaturation",
+      "exposure",
+      "cameraOrbit",
+      "cameraTarget",
+      "fov",
+      "materialSettings",
+      "ctaEnabled",
+      "ctaType",
+      "ctaLabel",
+      "ctaUrl",
+      "contactUseCustom",
+      "contactEnquireEnabled",
+      "contactWhatsappEnabled",
+      "contactWhatsappNumber",
+      "contactEnquireLabel",
+      "contactWhatsappLabel",
+    ] as const) {
+      const current = (merged as Record<string, unknown>)[key];
+      if ((current === undefined || current === null || current === "") && settingsObj[key] != null) {
+        (merged as Record<string, unknown>)[key] = settingsObj[key];
+      }
+    }
+
+    return merged;
   }
 
   return baseProduct;
@@ -307,10 +533,19 @@ async function checkProductViewerEntitlement(product: Record<string, any>) {
       WHERE c.customer_uid = ?
       LIMIT 1`,
     [customerUid],
-  ).catch(() => []);
+  ).catch((err) => {
+    console.error("[public-products] billing entitlement query failed", err);
+    return null;
+  });
+
+  if (billingRows == null) {
+    return { allowed: false, reason: "This AR experience is temporarily unavailable." };
+  }
 
   const billing = billingRows[0];
-  if (!billing) return { allowed: true };
+  if (!billing) {
+    return { allowed: false, reason: "This AR experience is temporarily unavailable." };
+  }
 
   const plan = await resolveCustomerPlanLimits(customerUid);
   const usage = {
@@ -332,18 +567,17 @@ async function incrementProductView(product: Record<string, any>) {
   await query("UPDATE products SET views = COALESCE(views, 0) + 1 WHERE id = ?", [productId]).catch(() => undefined);
 }
 
-async function applyWorkspaceBranding(product: Record<string, any>) {
-  const customerUid = String(product.customerUid || "");
+async function applyWorkspaceBranding(
+  product: Record<string, any>,
+  clientUid?: string | null,
+) {
+  // Always scope branding to the product owner — never another customer's workspace.
+  const customerUid = String(product.customerUid || "").trim();
   if (!customerUid) return product;
 
   try {
     const plan = await resolveCustomerPlanLimits(customerUid);
-    if (!plan.allowCustomBranding) return product;
-
-    const branding = await getViewerBranding(customerUid);
-    const brandName = branding.brandName?.trim() || product.brandName || undefined;
-    const brandLogoUrl =
-      branding.logoUrl ||
+    const ownerLogo =
       product.brandLogoUrl ||
       product.companyLogoUrl ||
       product.brandLogo ||
@@ -351,19 +585,75 @@ async function applyWorkspaceBranding(product: Record<string, any>) {
       product.logoUrl ||
       undefined;
 
+    if (!plan.allowCustomBranding) {
+      // Still return owner product logos only (no platform/other-client logo injection).
+      return {
+        ...product,
+        customerUid,
+        brandLogoUrl: ownerLogo || undefined,
+        brandLogo: ownerLogo || product.brandLogo || undefined,
+      };
+    }
+
+    const branding = await getViewerBranding(customerUid);
+    let brandName = branding.brandName?.trim() || product.brandName || undefined;
+    let brandLogoUrl = branding.logoUrl || ownerLogo || undefined;
+    let brandColor = branding.brandColor || product.enterpriseBrandColor;
+    const viewerTagline = branding.viewerTagline || undefined;
+    let poweredByLabel = String(branding.poweredByLabel || "").trim() || null;
+    let logoDesign: LogoDesign | undefined;
+
+    const scopedClient = String(clientUid || "").trim();
+    if (scopedClient) {
+      const clients = await query<{
+        logo_url: string | null;
+        company_name: string | null;
+        viewer_title: string | null;
+        brand_primary: string | null;
+        powered_by_label?: string | null;
+        branding_json?: unknown;
+        name: string;
+        customer_uid: string;
+        status: string;
+      }>(
+        `SELECT logo_url, company_name, viewer_title, brand_primary, powered_by_label, branding_json, name, customer_uid, status
+           FROM clients
+          WHERE client_uid = ? AND customer_uid = ?
+          LIMIT 1`,
+        [scopedClient, customerUid],
+      ).catch(() => []);
+      const client = clients[0];
+      if (client && String(client.status || "").toLowerCase() === "active") {
+        // Client branding overrides workspace for this catalog context.
+        brandLogoUrl = client.logo_url || brandLogoUrl;
+        brandName =
+          String(client.viewer_title || "").trim() ||
+          String(client.company_name || "").trim() ||
+          brandName ||
+          client.name;
+        brandColor = client.brand_primary || brandColor;
+        const clientPowered = String(client.powered_by_label || "").trim();
+        if (clientPowered) poweredByLabel = clientPowered;
+        logoDesign = parseLogoDesign(client.branding_json);
+      }
+    }
+
     return {
       ...product,
-      // Workspace branding wins when set — otherwise product editor values remain.
+      customerUid,
       brandName,
       brandLogoUrl,
-      brandLogo: brandLogoUrl || product.brandLogo,
-      enterpriseBrandColor: branding.brandColor || product.enterpriseBrandColor,
+      brandLogo: brandLogoUrl || undefined,
+      logoDesign,
+      enterpriseBrandColor: brandColor || product.enterpriseBrandColor,
       enterpriseAccentColor: branding.accentColor || product.enterpriseAccentColor,
       viewerWatermark: Boolean(branding.viewerWatermark),
       removeBranding: Boolean(branding.removeBranding),
       customViewerTheme: branding.customViewerTheme || product.customViewerTheme || "default",
-      viewerTagline: branding.viewerTagline || undefined,
-      ctaLabel: branding.ctaLabel || undefined,
+      viewerTagline,
+      ...(branding.ctaLabel?.trim()
+        ? { ctaLabel: branding.ctaLabel.trim() }
+        : {}),
       brandWebsiteUrl: branding.websiteUrl || undefined,
       loadingMessage: branding.loadingMessage || undefined,
       buttonStyle: branding.buttonStyle || "filled",
@@ -372,9 +662,10 @@ async function applyWorkspaceBranding(product: Record<string, any>) {
       faviconUrl: branding.faviconUrl || undefined,
       showProductTitle: branding.showProductTitle !== false,
       hideInteractionHint: Boolean(branding.hideInteractionHint),
+      poweredByLabel,
     };
   } catch {
-    return product;
+    return { ...product, customerUid };
   }
 }
 
@@ -390,10 +681,9 @@ export async function GET(req: Request, context: RouteContext) {
   }
 
   const requestOrigin = getRequestOrigin(req);
-  const dbProduct = await findPublishedProductInDb(id, requestOrigin);
-  const diskProduct = dbProduct ? null : await findPublishedProductOnDisk(id, requestOrigin);
-  const product = dbProduct || diskProduct;
-  const source = dbProduct ? "db" : diskProduct ? "disk" : "none";
+  // Disk-only products must never be public — deleted DB rows used to stay viewable via leftover folders.
+  const product = await findPublishedProductInDb(id, requestOrigin);
+  const source = product ? "db" : "none";
 
   if (!product) {
     return jsonResponse({ error: "Published product not found.", source }, 404);
@@ -410,10 +700,65 @@ export async function GET(req: Request, context: RouteContext) {
 
   void incrementProductView(product);
 
-  const brandedProduct = await applyWorkspaceBranding(product);
+  const clientUid = new URL(req.url).searchParams.get("client");
+  const brandedProduct = await applyWorkspaceBranding(
+    await enrichModelAssetMeta(product),
+    clientUid,
+  );
   // Keep legacy brandLogo field in sync for embed / share clients.
   if (brandedProduct.brandLogoUrl && !brandedProduct.brandLogo) {
     brandedProduct.brandLogo = brandedProduct.brandLogoUrl;
   }
-  return jsonResponse({ product: normalizeProductPayload(brandedProduct, requestOrigin), source });
+
+  const ownerPlan = await resolveCustomerPlanLimits(String(brandedProduct.customerUid || "")).catch(() => null);
+  const arAllowed = ownerPlan
+    ? checkArEntitlement(ownerPlan, {
+        productsUsed: 0,
+        storageUsedMb: 0,
+      }).allowed
+    : true;
+
+  const contactWorkspace = brandedProduct.customerUid
+    ? await getWorkspaceContactSettings(String(brandedProduct.customerUid)).catch(() => null)
+    : null;
+  let clientPhone: string | null = null;
+  const scopedClient = String(clientUid || "").trim();
+  if (scopedClient && brandedProduct.customerUid) {
+    const clientRows = await query<{ phone: string | null }>(
+      `SELECT phone FROM clients
+        WHERE client_uid = ? AND customer_uid = ?
+          AND LOWER(COALESCE(status, 'active')) = 'active'
+        LIMIT 1`,
+      [scopedClient, String(brandedProduct.customerUid)],
+    ).catch(() => []);
+    clientPhone = clientRows[0]?.phone || null;
+  }
+  const viewerContact = resolveViewerContact(
+    contactWorkspace?.settings,
+    readProductContactOverride(brandedProduct as Record<string, unknown>),
+    {
+      planAllowed: ownerPlan ? planAllowsProductContact(ownerPlan) : false,
+      clientPhone,
+    },
+  );
+
+  const payload = normalizeProductPayload(
+    {
+      ...brandedProduct,
+      allowAr: arAllowed,
+      viewerContact,
+    },
+    requestOrigin,
+  );
+
+  // Phase 4: default LEGACY. VERSIONED overlay only for explicit canary products.
+  // Pointer existence alone never switches runtime. Failures fall back to legacy.
+  const { product: runtimeProduct } = await applyControlledRuntimeToProduct(
+    payload as Record<string, unknown>,
+  );
+
+  return jsonResponse({
+    product: normalizeProductPayload(runtimeProduct, requestOrigin),
+    source,
+  });
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { guardAdminPermission } from "@/lib/permissions/admin-rbac";
+import { guardAdminPermission, logAdminAudit } from "@/lib/permissions/admin-rbac";
 import {
   listAddonLicenses,
   listAllAddonModules,
@@ -27,6 +27,7 @@ export async function GET() {
 export async function PATCH(req: Request) {
   const auth = await guardAdminPermission("billing.manual_payment");
   if (auth instanceof NextResponse) return auth;
+  const { admin } = auth;
 
   try {
     const body = (await req.json().catch(() => ({}))) as {
@@ -72,6 +73,7 @@ export async function PATCH(req: Request) {
     });
 
     const modules = await listAllAddonModules();
+    await logAdminAudit(admin, "addon.update", "addon", slug, { slug });
     return NextResponse.json({ success: true, modules });
   } catch (error) {
     console.error("PATCH /api/master-admin/addons error:", error);

@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { redirect } from "next/navigation";
 import { getCurrentMasterAdmin, requireApiAdmin, requireAdmin, type MasterAdminUser } from "@/lib/auth";
 import { query } from "@/lib/db";
+import { writeMasterAdminAudit } from "@/lib/master-admin/audit-log";
 import {
   type AdminPermission,
   type AdminRoleCode,
@@ -116,11 +117,10 @@ async function loadAdminRbac(adminId: number): Promise<Omit<AdminRbacContext, "a
     if (permissions.size === 0 && ROLE_PERMISSION_FALLBACK[roleCode]) {
       for (const code of ROLE_PERMISSION_FALLBACK[roleCode]) permissions.add(code);
     }
-  } else {
-    for (const code of ALL_ADMIN_PERMISSIONS) permissions.add(code);
   }
+  // Null role_id: default-deny (empty permissions). Never grant super_admin by accident.
 
-  const context = { roleCode: roleCode ?? SUPER_ADMIN_ROLE, permissions };
+  const context = { roleCode: roleCode ?? null, permissions };
   setCachedContext(adminId, context);
   return context;
 }
@@ -170,6 +170,23 @@ export function forbiddenResponse(message = "Forbidden") {
   return NextResponse.json({ error: message }, { status: 403 });
 }
 
+/** Record a master-admin mutation in the audit log. Fire-and-forget safe. */
+export async function logAdminAudit(
+  admin: Pick<MasterAdminUser, "id">,
+  action: string,
+  entityType: string,
+  entityId?: string | null,
+  metadata?: Record<string, unknown>,
+) {
+  await writeMasterAdminAudit({
+    adminId: admin.id,
+    action,
+    entityType,
+    entityId,
+    metadata,
+  });
+}
+
 type GuardOptions = { requireAll?: boolean; request?: NextRequest | Request };
 
 export async function guardAdminPermission(
@@ -203,7 +220,9 @@ export async function requireAdminPermission(permission: AdminPermission | Admin
   const rbac = await loadAdminRbac(admin.id);
   const required = Array.isArray(permission) ? permission : [permission];
   const allowed = hasAnyAdminPermission(rbac.roleCode, rbac.permissions, required);
-  if (!allowed) redirect("/master-admin?error=forbidden");
+  // Never redirect to /master-admin itself — that page also requires analytics.read and loops.
+  // Prefer a panel route that only needs an authenticated admin (layout), not analytics.read.
+  if (!allowed) redirect("/master-admin/settings?error=forbidden");
   return enrichMasterAdmin(admin);
 }
 

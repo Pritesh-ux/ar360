@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useDeferredEffect } from "@/lib/react/use-deferred-effect";
 import Link from "next/link";
 import { X } from "lucide-react";
 import { AdminButton } from "@/components/ui/admin";
+import UserFilterDropdown from "@/components/user-panel/UserFilterDropdown";
 import { fmtDateTime } from "@/components/features/master-admin/support-tickets-utils";
+import ViewportPortal from "@/components/shared/ViewportPortal";
 
 type TicketMessage = {
   id: number;
@@ -57,9 +60,10 @@ export default function TicketDetailModal({
   const [priority, setPriority] = useState("medium");
   const [assignedTo, setAssignedTo] = useState("");
   const [reply, setReply] = useState("");
+  const [processStatus, setProcessStatus] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     if (!open || !ticketId) return;
     setLoading(true);
     setError("");
@@ -72,6 +76,7 @@ export default function TicketDetailModal({
         setStatus(data.ticket.rawStatus || "open");
         setPriority(data.ticket.rawPriority || "medium");
         setAssignedTo(data.ticket.assignedTo === "Unassigned" ? "" : data.ticket.assignedTo);
+        setProcessStatus(data.ticket.processStatus || "");
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load ticket"))
       .finally(() => setLoading(false));
@@ -92,6 +97,7 @@ export default function TicketDetailModal({
           priority,
           assignedTo: assignedTo || "Unassigned",
           reply,
+          processStatus,
         }),
       });
       const data = await res.json();
@@ -114,7 +120,8 @@ export default function TicketDetailModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/40 p-4">
+    <ViewportPortal>
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/40 p-4">
       <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-6">
           <div>
@@ -151,47 +158,48 @@ export default function TicketDetailModal({
           {ticket ? (
             <>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <label className="space-y-1">
-                  <span className="text-[11px] font-bold uppercase text-slate-500">Status</span>
-                  <select
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value)}
-                    className="h-10 w-full rounded-xl border border-slate-200 px-3 text-[13px] font-semibold"
-                  >
-                    <option value="open">Open</option>
-                    <option value="pending">Pending</option>
-                    <option value="resolved">Resolved</option>
-                    <option value="closed">Closed</option>
-                  </select>
-                </label>
-                <label className="space-y-1">
-                  <span className="text-[11px] font-bold uppercase text-slate-500">Priority</span>
-                  <select
-                    value={priority}
-                    onChange={(e) => setPriority(e.target.value)}
-                    className="h-10 w-full rounded-xl border border-slate-200 px-3 text-[13px] font-semibold"
-                  >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                  </select>
-                </label>
-                <label className="space-y-1">
-                  <span className="text-[11px] font-bold uppercase text-slate-500">Assigned To</span>
-                  <select
-                    value={assignedTo}
-                    onChange={(e) => setAssignedTo(e.target.value)}
-                    className="h-10 w-full rounded-xl border border-slate-200 px-3 text-[13px] font-semibold"
-                  >
-                    <option value="">Unassigned</option>
-                    {assigneeOptions.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <UserFilterDropdown
+                  compact
+                  label="Status"
+                  menuTitle="Status"
+                  value={status}
+                  options={["open", "pending", "resolved", "closed"]}
+                  onChange={setStatus}
+                  renderOption={(v) => v.charAt(0).toUpperCase() + v.slice(1)}
+                  renderValue={(v) => v.charAt(0).toUpperCase() + v.slice(1)}
+                />
+                <UserFilterDropdown
+                  compact
+                  label="Priority"
+                  menuTitle="Priority"
+                  value={priority}
+                  options={["low", "medium", "high"]}
+                  onChange={setPriority}
+                  renderOption={(v) => v.charAt(0).toUpperCase() + v.slice(1)}
+                  renderValue={(v) => v.charAt(0).toUpperCase() + v.slice(1)}
+                />
+                <UserFilterDropdown
+                  compact
+                  label="Assigned To"
+                  menuTitle="Assigned To"
+                  value={assignedTo || "none"}
+                  options={["none", ...assigneeOptions]}
+                  onChange={(v) => setAssignedTo(v === "none" ? "" : v)}
+                  renderOption={(v) => (v === "none" ? "Unassigned" : v)}
+                  renderValue={(v) => (v === "none" ? "Unassigned" : v)}
+                />
               </div>
+
+              <label className="block space-y-1">
+                <span className="text-[11px] font-bold uppercase text-slate-500">User-Visible Process Status / Custom Status Message</span>
+                <input
+                  type="text"
+                  value={processStatus}
+                  onChange={(e) => setProcessStatus(e.target.value)}
+                  className="h-10 w-full rounded-xl border border-slate-200 px-3 text-[13px] font-semibold text-slate-900 outline-none focus:border-slate-950 focus:ring-1 focus:ring-slate-950"
+                  placeholder="e.g. Under technical review, Checking DB, Discussing with Razorpay..."
+                />
+              </label>
 
               <div className="rounded-2xl bg-slate-50 p-4">
                 <p className="text-[11px] font-bold uppercase text-slate-500">Original request</p>
@@ -242,5 +250,6 @@ export default function TicketDetailModal({
         </div>
       </div>
     </div>
+    </ViewportPortal>
   );
 }

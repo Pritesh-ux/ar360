@@ -14,6 +14,7 @@ import {
   resumeCustomerSubscription,
 } from "@/server/billing/subscription.service";
 import { guardBillingMutation } from "@/server/billing/billing-mutation-guard";
+import { assertAdminPlanOverrideAllowed } from "@/lib/billing/admin-plan-override-guard";
 import { SubscriptionLifecycleError } from "@/server/billing/provider-subscription.service";
 import { writeMasterAdminAudit } from "@/lib/master-admin/audit-log";
 import {
@@ -27,37 +28,6 @@ export const dynamic = "force-dynamic";
 type Context = { params: Promise<{ id: string }> };
 
 type SubscriptionStatus = "trialing" | "active" | "past_due" | "cancelled" | "expired";
-
-async function safeAudit(input: {
-  adminId?: string | number | null;
-  action: string;
-  customerUid: string;
-  metadata?: Record<string, unknown>;
-}) {
-  try {
-    await query(
-      `CREATE TABLE IF NOT EXISTS master_admin_audit_logs (
-        id BIGINT AUTO_INCREMENT PRIMARY KEY,
-        admin_id VARCHAR(128) NULL,
-        action VARCHAR(120) NOT NULL,
-        entity_type VARCHAR(80) NOT NULL,
-        entity_id VARCHAR(120) NULL,
-        metadata JSON NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_master_admin_audit_entity (entity_type, entity_id),
-        INDEX idx_master_admin_audit_action (action),
-        INDEX idx_master_admin_audit_created (created_at)
-      )`,
-    );
-    await query(
-      `INSERT INTO master_admin_audit_logs (admin_id, action, entity_type, entity_id, metadata)
-       VALUES (?, ?, 'customer', ?, ?)`,
-      [String(input.adminId || ""), input.action, input.customerUid, JSON.stringify(input.metadata || {})],
-    );
-  } catch (error) {
-    console.warn("[master-admin audit skipped]", error);
-  }
-}
 
 export async function GET(_req: NextRequest, context: Context) {
   const auth = await guardAdminPermission("subscriptions.read");
@@ -105,12 +75,17 @@ export async function POST(req: NextRequest, context: Context) {
     const status = String(body.status || "active") as SubscriptionStatus;
     if (!planId) return NextResponse.json({ error: "planId is required" }, { status: 400 });
 
+    const blocked = await assertAdminPlanOverrideAllowed(id);
+    if (blocked) return blocked;
+
     const subscription = await setCustomerPlan({ customerUid: id, planId, status });
     await audit({ planId, status });
     return NextResponse.json({ subscription });
   }
 
   if (action === "extend_trial") {
+    const blocked = await assertAdminPlanOverrideAllowed(id);
+    if (blocked) return blocked;
     const hours = Math.max(1, Math.min(Number(body.hours || 24), 24 * 365));
     const current = await getCustomerPlan(id);
     const planId = current?.planId || "trial";
@@ -168,6 +143,8 @@ export async function POST(req: NextRequest, context: Context) {
   }
 
   if (action === "expire") {
+    const blocked = await assertAdminPlanOverrideAllowed(id);
+    if (blocked) return blocked;
     const status: SubscriptionStatus = "expired";
     const current = await getCustomerPlan(id);
     await applySubscriptionChangeForPlan({

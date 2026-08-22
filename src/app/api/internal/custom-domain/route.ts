@@ -1,12 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { timingSafeEqual } from "crypto";
 import {
   getWorkspaceByDomain,
   markSslActiveFromHttpsHost,
 } from "@/lib/enterprise/domains.service";
 import {
-  CUSTOM_DOMAIN_CUSTOMER_HEADER,
-  CUSTOM_DOMAIN_HOST_HEADER,
-  CUSTOM_DOMAIN_WORKSPACE_HEADER,
   getPlatformHosts,
   normalizeRequestHost,
 } from "@/lib/enterprise/custom-domain-headers";
@@ -15,8 +13,18 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function internalKeyOk(req: NextRequest) {
-  const expected = process.env.AR360_INTERNAL_KEY || "ar360-dev-internal";
-  return req.headers.get("x-ar360-internal-key") === expected;
+  const expected = process.env.AR360_INTERNAL_KEY;
+  if (!expected) {
+    if (process.env.NODE_ENV === "production") {
+      console.error("AR360_INTERNAL_KEY is not set. Internal APIs are inaccessible in production.");
+      return false;
+    }
+    // Dev fallback — only when explicitly unset
+    return req.headers.get("x-ar360-internal-key") === "ar360-dev-internal";
+  }
+  const provided = req.headers.get("x-ar360-internal-key") || "";
+  if (!provided || provided.length !== expected.length) return false;
+  return timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
 }
 
 /**

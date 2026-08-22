@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { guardAdminPermission } from "@/lib/permissions/admin-rbac";
+import { guardAdminPermission, logAdminAudit } from "@/lib/permissions/admin-rbac";
 import { ensureAppSchema } from "@/lib/db";
 import { paginationMeta } from "@/lib/master-admin/pagination";
 import {
@@ -11,6 +11,7 @@ import {
   PLATFORM_BANDWIDTH_TB,
   PLATFORM_STORAGE_TB,
 } from "@/components/features/master-admin/storage-utils";
+import { getHostingerVpsLiveMetrics, liveBytesToTb } from "@/lib/hostinger/vps-live-metrics";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,6 +50,66 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(data);
   } catch (error) {
     console.error("[master-admin/storage]", error);
+    // Still try to surface live Hostinger/VPS disk so the page is not blank.
+    try {
+      const live = await getHostingerVpsLiveMetrics({ force: true });
+      const usedTb = liveBytesToTb(live.diskUsedBytes);
+      const totalTb =
+        live.diskTotalBytes > 0 ? liveBytesToTb(live.diskTotalBytes) : PLATFORM_STORAGE_TB;
+      const freeTb = Math.max(totalTb - usedTb, 0);
+      const usedPct = totalTb > 0 ? Math.min(100, Math.round((usedTb / totalTb) * 1000) / 10) : 0;
+      const bandwidthLimitTb =
+        live.bandwidthLimitBytes != null && live.bandwidthLimitBytes > 0
+          ? liveBytesToTb(live.bandwidthLimitBytes)
+          : PLATFORM_BANDWIDTH_TB;
+      const bandwidthUsedTb =
+        live.bandwidthUsedBytes != null ? liveBytesToTb(live.bandwidthUsedBytes) : 0;
+      return NextResponse.json({
+        items: [],
+        pagination: paginationMeta(0, 1, pageSize),
+        summary: {
+          totalStorageTb: totalTb,
+          usedStorageTb: usedTb,
+          freeStorageTb: freeTb,
+          usedPct,
+          freePct: Math.max(0, Math.round((100 - usedPct) * 10) / 10),
+          bandwidthUsedTb,
+          bandwidthLimitTb,
+          bandwidthPct:
+            bandwidthLimitTb > 0
+              ? Math.min(100, Math.round((bandwidthUsedTb / bandwidthLimitTb) * 1000) / 10)
+              : 0,
+          totalUsedMB: Math.round(live.diskUsedBytes / (1024 * 1024)),
+          totalBandwidthMB: Math.round(bandwidthUsedTb * 1024 * 1024),
+          warnings: 0,
+          critical: 0,
+          customerCount: 0,
+          storageTrend: `Live Hostinger disk · ${live.source}`,
+          bandwidthTrend: "Partial load — customer table failed",
+          growthDays,
+          liveSource: live.source,
+          liveHostname: live.hostname,
+          liveVmId: live.vmId,
+          livePlan: live.plan,
+          liveSampledAt: live.sampledAt,
+          liveNotes: live.notes,
+        },
+        hostinger: live,
+        analytics: {
+          storageGrowth: [],
+          fileTypeBreakdown: [],
+          usedVsFree: { usedTb, freeTb, totalTb },
+          scanMeta: { scannedCustomers: 0, scannedFiles: 0 },
+        },
+        topUsers: [],
+        largestFiles: [],
+        storageByPlan: [],
+        recentActivities: [],
+        error: "Customer storage table failed; showing live Hostinger/VPS disk.",
+      });
+    } catch {
+      /* fall through */
+    }
     return NextResponse.json({
       items: [],
       pagination: paginationMeta(0, 1, pageSize),
@@ -109,6 +170,7 @@ export async function POST(req: NextRequest) {
       orphanPaths,
       adminId: admin.id,
     });
+    await logAdminAudit(admin, `storage.${action}`, "storage", null, { dryRun });
     return NextResponse.json({ ok: true, ...payload });
   } catch (error) {
     console.error("[master-admin/storage POST]", error);

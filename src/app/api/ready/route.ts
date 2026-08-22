@@ -86,6 +86,16 @@ export async function GET() {
       : "live rollout disabled",
   };
 
+  // Custom-domain middleware always calls /api/internal/custom-domain in production.
+  const internalKey = String(process.env.AR360_INTERNAL_KEY || "").trim();
+  checks.ar360InternalKey = {
+    ok: process.env.NODE_ENV !== "production" || internalKey.length >= 16,
+    detail:
+      internalKey.length >= 16
+        ? "configured"
+        : "missing — set AR360_INTERNAL_KEY for custom domains / internal APIs",
+  };
+
   const ok = Object.values(checks).every((check) => check.ok);
 
   return NextResponse.json(

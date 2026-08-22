@@ -5,6 +5,8 @@ import {
   Building2,
   Camera,
   House,
+  Inbox,
+  Info,
   MessageCircle,
   Palette,
   QrCode,
@@ -13,7 +15,6 @@ import {
   ScanLine,
   Settings,
   Share2,
-  Users,
 } from "lucide-react";
 
 export type DashboardNavItem = {
@@ -31,7 +32,7 @@ export const DASHBOARD_NAV_ITEMS: DashboardNavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: House, exact: true },
   { label: "Products", href: "/dashboard/products", icon: Box },
   { label: "Clients", href: "/dashboard/clients", icon: Building2 },
-  { label: "Team", href: "/dashboard/team", icon: Users },
+  { label: "Enquiries", href: "/dashboard/enquiries", icon: Inbox },
   { label: "Object Capture", href: "/dashboard/object-capture", icon: Camera },
   { label: "QR Center", href: "/dashboard/qr-center", icon: QrCode },
   { label: "Share Center", href: "/dashboard/share-center", icon: Share2 },
@@ -41,14 +42,12 @@ export const DASHBOARD_NAV_ITEMS: DashboardNavItem[] = [
   { label: "Subscription", href: "/dashboard/subscription", icon: ScanLine },
   { label: "Billing", href: "/dashboard/billing", icon: ReceiptText },
   { label: "Support", href: "/dashboard/support", icon: MessageCircle },
+  { label: "Platform", href: "/dashboard/platform", icon: Info },
   { label: "Settings", href: "/dashboard/settings", icon: Settings },
 ];
 
-export const ENTERPRISE_DASHBOARD_NAV_ITEM: DashboardNavItem = {
-  label: "Enterprise",
-  href: "/dashboard/enterprise",
-  icon: Building2,
-};
+// Intentionally no customer-panel "Enterprise" nav — contract/plan details are on Billing & Subscription.
+// Direct URL /dashboard/enterprise may still work for bookmarked links.
 
 export function isDashboardNavActive(pathname: string, item: DashboardNavItem): boolean {
   const normalized = pathname.endsWith("/") && pathname.length > 1 ? pathname.slice(0, -1) : pathname;
@@ -65,4 +64,60 @@ export function isDashboardNavActive(pathname: string, item: DashboardNavItem): 
   }
 
   return normalized === href || normalized.startsWith(`${href}/`);
+}
+
+export type DashboardNavAccess = {
+  objectCaptureEnabled?: boolean;
+  clientManagement?: boolean;
+  /** @deprecated Team Management removed from customer panel — always hidden. */
+  teamManagement?: boolean;
+  /** Live Master Admin plan gates (default allow when omitted for backward compat). */
+  allowQr?: boolean;
+  allowShare?: boolean;
+  allowEmbed?: boolean;
+  allowAnalytics?: boolean;
+  allowCustomBranding?: boolean;
+  allowObjectCapture?: boolean;
+  allowProductContact?: boolean;
+  /** False once the trial or paid period lapsed — mutations stay locked; nav stays visible (soft lock). */
+  subscriptionActive?: boolean;
+  /** Master-admin account suspend — Support only. */
+  accountSuspended?: boolean;
+};
+
+/** @deprecated Soft-lock shows full nav; kept for older callers. Prefer upgrade CTAs over hiding nav. */
+export const SUBSCRIPTION_LOCKED_ALLOWED_HREFS = [
+  "/dashboard/subscription",
+  "/dashboard/billing",
+];
+
+/** Routes an admin-suspended customer may still open. */
+export const ACCOUNT_SUSPENDED_ALLOWED_HREFS = ["/dashboard/support"];
+
+/** Hide nav entries the current user cannot access (plan gates + add-ons + platform). */
+export function filterDashboardNavItems(
+  items: DashboardNavItem[],
+  access: DashboardNavAccess = {},
+): DashboardNavItem[] {
+  if (access.accountSuspended === true) {
+    return items.filter((item) => ACCOUNT_SUSPENDED_ALLOWED_HREFS.includes(item.href));
+  }
+
+  // Expired trial/plan: keep full nav visible; backend assertCan blocks working actions.
+
+  return items.filter((item) => {
+    // Team Management retired from customer panel.
+    if (item.href === "/dashboard/team") return false;
+    if (item.href === "/dashboard/clients") return access.clientManagement === true;
+    if (item.href === "/dashboard/object-capture") {
+      return access.objectCaptureEnabled !== false && access.allowObjectCapture !== false;
+    }
+    if (item.href === "/dashboard/qr-center") return access.allowQr !== false;
+    if (item.href === "/dashboard/share-center") return access.allowShare !== false;
+    if (item.href === "/dashboard/embed-center") return access.allowEmbed === true;
+    if (item.href === "/dashboard/analytics") return access.allowAnalytics === true;
+    if (item.href === "/dashboard/branding") return access.allowCustomBranding === true;
+    if (item.href === "/dashboard/enquiries") return access.allowProductContact === true;
+    return true;
+  });
 }

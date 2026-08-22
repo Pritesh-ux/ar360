@@ -68,8 +68,7 @@ export function AuthPrimaryButton({
       type={type}
       disabled={disabled}
       onClick={onClick}
-      className="inline-flex h-12 w-full items-center justify-center rounded-xl px-5 text-[15px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
-      style={{ background: AUTH_BRAND, color: AUTH_BRAND_INK }}
+      className="inline-flex h-12 w-full items-center justify-center rounded-xl bg-[#b9ff2c] px-5 text-[15px] font-semibold text-[#111111] transition hover:bg-[#a3f020] disabled:cursor-not-allowed disabled:opacity-50"
     >
       {children}
     </button>

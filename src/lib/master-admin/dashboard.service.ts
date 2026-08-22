@@ -63,7 +63,7 @@ export type MasterAdminDashboardData = {
   revenueDaily: { label: string; value: number }[];
   customerDaily: { label: string; value: number }[];
   planBreakdown: { plan: string; value: number }[];
-  topProducts: { product: string; customer: string; views: number; ar: number }[];
+  topProducts: { id: string; product: string; customer: string; views: number; ar: number }[];
   topCountries: { country: string; count: number; pct: number }[];
   systemHealth: DashboardSystemHealthItem[];
   liveActivity: DashboardLiveActivity;
@@ -424,8 +424,9 @@ export async function getMasterAdminDashboardData(): Promise<MasterAdminDashboar
     loadDailyProducts(DAY_SERIES),
     loadDailySubscriptions(DAY_SERIES),
     loadDailyAnalytics(DAY_SERIES),
-    query<{ product: string; customer: string; views: number; ar: number }>(`
-      SELECT pr.title AS product,
+    query<{ id: string; product: string; customer: string; views: number; ar: number }>(`
+      SELECT pr.id AS id,
+        pr.title AS product,
         COALESCE(c.company_name, c.contact_name, c.email, 'Unknown') AS customer,
         COALESCE(pr.views, 0) AS views,
         COALESCE(SUM(a.ar_launches), 0) AS ar
@@ -472,7 +473,8 @@ export async function getMasterAdminDashboardData(): Promise<MasterAdminDashboar
   ]);
 
   const storageUsedMB = Number(customers[0]?.storageUsedMB || 0);
-  const storageCapacityMB = PLATFORM_STORAGE_TB * 1024 * 1024;
+  const storageLimitGb = settings?.platformStorageLimitGb || 50;
+  const storageCapacityMB = storageLimitGb * 1024;
   const storageUsedPct = Math.min(100, Math.round((storageUsedMB / storageCapacityMB) * 1000) / 10) || 0;
 
   const storageSparkline =
@@ -517,7 +519,7 @@ export async function getMasterAdminDashboardData(): Promise<MasterAdminDashboar
     totalProducts: Number(products[0]?.totalProducts || 0),
     publishedProducts: Number(products[0]?.publishedProducts || 0),
     storageUsedMB,
-    storageCapacityTB: PLATFORM_STORAGE_TB,
+    storageCapacityTB: Number((storageLimitGb / 1024).toFixed(3)),
     storageUsedPct,
     bandwidthUsedMB: Number(customers[0]?.bandwidthUsedMB || 0),
     viewerVisits: Number(products[0]?.viewerVisits || 0),
@@ -545,6 +547,7 @@ export async function getMasterAdminDashboardData(): Promise<MasterAdminDashboar
       value: row.value,
     })),
     topProducts: topProducts.map((row) => ({
+      id: String(row.id || `${row.product}-${row.customer}`),
       product: String(row.product || "Untitled"),
       customer: String(row.customer || "Unknown"),
       views: Number(row.views || 0),

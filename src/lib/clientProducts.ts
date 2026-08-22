@@ -96,10 +96,6 @@ export function getLocalProducts({ customerUid }: { customerUid?: string | null 
     ? all.filter((p) => !p.customerUid || p.customerUid === uid)
     : all;
 
-  if (process.env.NODE_ENV === "development") {
-    console.log("[getLocalProducts] uid:", uid, "total:", result.length);
-  }
-
   return result;
 }
 
@@ -151,23 +147,20 @@ export function upsertLocalProduct(product: LocalProduct) {
   }
 
   localStorage.setItem(key, JSON.stringify(current));
-  console.log("[upsertLocalProduct] Saved to key:", key, "product id:", nextProduct.id, "customerUid:", customerUid, "total in key:", current.length);
 
   const global = safeParseProducts(localStorage.getItem(LOCAL_PRODUCTS_KEY));
   const rest = customerUid
     ? global.filter((item) => item.customerUid !== customerUid)
     : global.filter((item) => item.id !== nextProduct.id && item.productUid !== nextProduct.productUid);
   localStorage.setItem(LOCAL_PRODUCTS_KEY, JSON.stringify([...rest, ...current]));
-  console.log("[upsertLocalProduct] Synced global key, total in global:", rest.length + current.length);
-  
+
   // Notify same-window listeners that products changed
   try {
     if (typeof window !== "undefined") {
       const ev = new CustomEvent("ar_products_updated", { detail: { id: nextProduct.id } });
       window.dispatchEvent(ev);
-      console.log("[upsertLocalProduct] Dispatched custom event ar_products_updated for product:", nextProduct.id);
     }
-  } catch (e) {
+  } catch {
     // no-op
   }
 }

@@ -69,7 +69,7 @@ export async function getOnboardingChecklist(customerUid: string): Promise<Onboa
 
   const items: ChecklistItem[] = [
     { id: "profile", label: "Complete company profile", completed: profileDone, href: "/dashboard/settings" },
-    { id: "product", label: "Create first product", completed: products > 0, href: "/dashboard/products/new" },
+    { id: "product", label: "Create first product", completed: products > 0, href: "/dashboard/products?upload=1" },
     { id: "publish", label: "Publish product", completed: published > 0, href: "/dashboard/products" },
     { id: "qr", label: "Create QR code", completed: qr > 0, href: "/dashboard/qr-center" },
     { id: "share", label: "Share product", completed: shares > 0, href: "/dashboard/share-center" },

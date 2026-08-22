@@ -9,7 +9,7 @@ import {
 } from "@/lib/enterprise/workspace.service";
 import { writeAuditLog } from "@/lib/enterprise/audit.service";
 import { ASSIGNABLE_ROLES, type WorkspaceRole } from "@/lib/enterprise/permissions";
-import { hasTeamAddon } from "@/lib/billing/addons";
+import { hasTeamManagementAccess } from "@/lib/billing/addons";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,7 +18,7 @@ async function requireTeamAddon(customerUid: string | null | undefined) {
   if (!customerUid) {
     return NextResponse.json({ error: "Customer context missing." }, { status: 400 });
   }
-  const active = await hasTeamAddon(customerUid);
+  const active = await hasTeamManagementAccess(customerUid);
   if (!active) {
     return NextResponse.json(
       { error: "Team Management module is not active. Please purchase the add-on." },

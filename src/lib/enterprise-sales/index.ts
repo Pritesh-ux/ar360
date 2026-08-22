@@ -1,5 +1,7 @@
 export * from "./types";
 export * from "./validation";
+export * from "./geo";
+export * from "./compose-mail";
 export * from "./repository";
 export * from "./service";
 export * from "./activation";

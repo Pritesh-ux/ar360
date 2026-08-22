@@ -1,12 +1,15 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getCurrentMasterAdminWithPermissions } from "@/lib/permissions/admin-rbac";
+import { NextResponse } from "next/server";
+import {
+  clearAdminPermissionCache,
+  getCurrentMasterAdminWithPermissions,
+} from "@/lib/permissions/admin-rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(request: NextRequest) {
-  const token = request.cookies.get("ar360_master_admin_session")?.value;
-  const admin = await getCurrentMasterAdminWithPermissions(token);
+export async function GET() {
+  clearAdminPermissionCache();
+  const admin = await getCurrentMasterAdminWithPermissions();
   if (!admin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -17,7 +20,7 @@ export async function GET(request: NextRequest) {
       adminUid: admin.adminUid,
       name: admin.name,
       email: admin.email,
-      roleCode: admin.roleCode ?? "super_admin",
+      roleCode: admin.roleCode ?? "unassigned",
       permissions: admin.permissions ?? [],
     },
   });

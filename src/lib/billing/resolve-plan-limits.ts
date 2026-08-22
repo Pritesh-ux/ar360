@@ -2,6 +2,7 @@ import { getBillingPlans, type AdminBillingPlan } from "@/lib/billing/admin-plan
 import {
   DEFAULT_PLAN_LIMITS,
   mapLegacyPlanId,
+  planAllowsProductContact,
   type PlanLimits,
 } from "@/lib/billing/plan-enforcement";
 import { query } from "@/lib/db";
@@ -66,6 +67,7 @@ function adminPlanToLimits(plan: AdminBillingPlan): PlanLimits {
     ocConcurrentJobs: plan.ocConcurrentJobs ?? null,
     ocMaxRetries: plan.ocMaxRetries ?? null,
     allowCustomDomain: Boolean(plan.limits?.allowCustomDomain),
+    allowProductContact: planAllowsProductContact(plan.id),
   };
 }
 
@@ -110,6 +112,7 @@ function enterprisePlanToLimits(plan: EnterpriseCustomPlanRow): PlanLimits {
     ocConcurrentJobs: plan.oc_concurrent_jobs == null ? null : Number(plan.oc_concurrent_jobs),
     ocMaxRetries: plan.oc_max_retries == null ? null : Number(plan.oc_max_retries),
     allowCustomDomain: Boolean(plan.allow_custom_domain),
+    allowProductContact: true,
   };
 }
 
@@ -118,7 +121,11 @@ export async function resolvePlanLimits(planId: string): Promise<PlanLimits> {
   const exactPlanId = String(planId || "trial").trim();
   const mappedId = mapLegacyPlanId(exactPlanId);
   const billingPlans = await getBillingPlans({ activeOnly: false }).catch(() => []);
-  const adminPlan = billingPlans.find((plan) => plan.id === mappedId);
+  // Match exact id, mapped id, or legacy aliases stored on the row (e.g. basic → starter).
+  const adminPlan = billingPlans.find((plan) => {
+    const rowId = String(plan.id || "").trim();
+    return rowId === exactPlanId || rowId === mappedId || mapLegacyPlanId(rowId) === mappedId;
+  });
   if (adminPlan) return adminPlanToLimits(adminPlan);
   if (DEFAULT_PLAN_LIMITS[mappedId]) return DEFAULT_PLAN_LIMITS[mappedId];
 
@@ -141,11 +148,32 @@ export async function resolvePlanLimits(planId: string): Promise<PlanLimits> {
   return DEFAULT_PLAN_LIMITS.trial;
 }
 
-/** Resolves the subscription's raw plan UID so Enterprise IDs are never collapsed to Trial. */
+/** Resolves limits from subscription — or active enterprise custom plan when catalog plan drifted (e.g. still trial). */
 export async function resolveCustomerPlanLimits(customerUid: string): Promise<PlanLimits> {
+  const uid = String(customerUid || "").trim();
+  if (!uid) return DEFAULT_PLAN_LIMITS.trial;
+
+  // Active enterprise contract is authoritative when present (avoids Trial badge + trial quotas).
+  const contractPlans = await query<{ custom_plan_uid: string }>(
+    `SELECT cp.custom_plan_uid
+       FROM customers customer
+       JOIN enterprise_contracts ec ON ec.customer_id = customer.id
+       JOIN enterprise_custom_plans cp ON cp.id = ec.custom_plan_id AND cp.is_active = 1
+      WHERE customer.customer_uid = ?
+        AND ec.status = 'active'
+        AND ec.starts_on <= CURDATE()
+        AND ec.expires_on >= CURDATE()
+      ORDER BY ec.expires_on DESC, ec.id DESC
+      LIMIT 1`,
+    [uid],
+  ).catch(() => []);
+  if (contractPlans[0]?.custom_plan_uid) {
+    return resolvePlanLimits(contractPlans[0].custom_plan_uid);
+  }
+
   const rows = await query<{ plan_id: string | null }>(
     "SELECT plan_id FROM customer_subscriptions WHERE customer_uid = ? LIMIT 1",
-    [customerUid],
+    [uid],
   ).catch(() => []);
   return resolvePlanLimits(rows[0]?.plan_id || "trial");
 }

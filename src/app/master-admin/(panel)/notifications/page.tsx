@@ -2,7 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { Bell, CheckCheck, Loader2, RefreshCw, Trash2 } from "lucide-react";
+import AdminPageHeader from "@/components/features/master-admin/AdminPageHeader";
 import { useMasterAdminNotifications } from "@/components/features/master-admin/MasterAdminNotificationsContext";
+import "@/components/dashboard/dashboard-premium.css";
 
 const CATEGORY_CLASS: Record<string, string> = {
   billing: "bg-violet-50 text-violet-700",
@@ -38,50 +40,63 @@ export default function NotificationsPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-5xl p-4 md:p-8">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-black text-slate-900">Notifications</h1>
-          <p className="mt-1 text-sm font-medium text-slate-500">
-            {unreadCount ? `${unreadCount} unread platform alert${unreadCount === 1 ? "" : "s"}` : "All caught up"}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={() => void refresh()} className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 hover:bg-slate-50">
-            <RefreshCw size={15} /> Refresh
-          </button>
-          {unreadCount > 0 ? (
-            <button type="button" onClick={() => void markRead([], true)} className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 hover:bg-slate-50">
-              <CheckCheck size={15} /> Mark all read
+    <div className="master-admin-panel dash-premium animate-dash-fade-in flex min-h-0 flex-1 flex-col gap-3">
+      <AdminPageHeader
+        title="Notifications"
+        subtitle={
+          unreadCount
+            ? `${unreadCount} unread platform alert${unreadCount === 1 ? "" : "s"}`
+            : "All caught up"
+        }
+        actions={
+          <>
+            <button type="button" onClick={() => void refresh()} className="dash-premium-btn-secondary h-10 px-3 text-[12px]">
+              <RefreshCw size={15} />
+              Refresh
             </button>
-          ) : null}
-          {notifications.length > 0 ? (
-            <button type="button" onClick={clearAll} className="flex h-10 items-center gap-2 rounded-xl bg-red-50 px-3 text-xs font-bold text-red-700 hover:bg-red-100">
-              <Trash2 size={15} /> Clear all
-            </button>
-          ) : null}
-        </div>
-      </div>
+            {unreadCount > 0 ? (
+              <button type="button" onClick={() => void markRead([], true)} className="dash-premium-btn-secondary h-10 px-3 text-[12px]">
+                <CheckCheck size={15} />
+                Mark all read
+              </button>
+            ) : null}
+            {notifications.length > 0 ? (
+              <button type="button" onClick={clearAll} className="inline-flex h-10 items-center gap-2 rounded-[14px] border border-[#FEE2E2] bg-[#FEF2F2] px-3 text-[12px] font-bold text-[#991B1B] transition hover:bg-[#FEE2E2]">
+                <Trash2 size={15} />
+                Clear all
+              </button>
+            ) : null}
+          </>
+        }
+      />
 
-      {error ? <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</div> : null}
+      {error ? (
+        <div className="dash-premium-card flex items-center justify-between gap-3 border-[#FEE2E2] bg-[#FEF2F2] px-4 py-3">
+          <p className="text-[13px] font-semibold text-[#991B1B]">{error}</p>
+        </div>
+      ) : null}
+
       {loading && notifications.length === 0 ? (
-        <div className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white py-20 text-sm font-semibold text-slate-400">
-          <Loader2 size={18} className="animate-spin" /> Loading notifications...
+        <div className="dash-premium-card flex items-center justify-center gap-2 py-20 text-[13px] font-semibold text-[#9CA3AF]">
+          <Loader2 size={18} className="animate-spin" />
+          Loading notifications...
         </div>
       ) : null}
+
       {!loading && notifications.length === 0 ? (
-        <div className="rounded-2xl border border-slate-200 bg-white py-20 text-center">
-          <Bell size={30} className="mx-auto mb-3 text-slate-300" />
-          <p className="font-bold text-slate-700">No notifications</p>
-          <p className="mt-1 text-sm text-slate-400">New platform alerts will appear here.</p>
+        <div className="dash-premium-card py-20 text-center">
+          <Bell size={30} className="mx-auto mb-3 text-[#D1D5DB]" />
+          <p className="font-bold text-[#374151]">No notifications</p>
+          <p className="mt-1 text-[13px] text-[#9CA3AF]">New platform alerts will appear here.</p>
         </div>
       ) : null}
+
       {notifications.length > 0 ? (
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <div className="dash-premium-card overflow-hidden">
           {notifications.map((item) => (
             <div
               key={item.id}
-              className={`flex gap-3 border-b border-slate-100 p-4 last:border-0 ${item.isRead ? "" : "bg-[#F4FBEA]"}`}
+              className={`flex gap-3 border-b border-[#F3F4F6] p-4 last:border-0 ${item.isRead ? "" : "bg-[#F4FBEA]"}`}
             >
               <button
                 type="button"
@@ -92,18 +107,20 @@ export default function NotificationsPage() {
                 }}
               >
                 <div className="mb-1.5 flex flex-wrap items-center gap-2">
-                  <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold uppercase ${CATEGORY_CLASS[item.category] || CATEGORY_CLASS.system}`}>{item.category}</span>
-                  <span className="text-[11px] font-semibold text-slate-400">{timestamp(item.createdAt)}</span>
+                  <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold uppercase ${CATEGORY_CLASS[item.category] || CATEGORY_CLASS.system}`}>
+                    {item.category}
+                  </span>
+                  <span className="text-[11px] font-semibold text-[#9CA3AF]">{timestamp(item.createdAt)}</span>
                   {!item.isRead ? <span className="h-2 w-2 rounded-full bg-red-500" aria-label="Unread" /> : null}
                 </div>
-                <p className="text-sm font-bold text-slate-900">{item.title}</p>
-                {item.body ? <p className="mt-1 text-sm text-slate-500">{item.body}</p> : null}
+                <p className="text-[13px] font-bold text-[#111827]">{item.title}</p>
+                {item.body ? <p className="mt-1 text-[13px] text-[#6B7280]">{item.body}</p> : null}
               </button>
               <button
                 type="button"
                 onClick={() => void remove([item.id])}
                 aria-label={`Delete ${item.title}`}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600"
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] text-[#9CA3AF] transition hover:bg-red-50 hover:text-red-600"
               >
                 <Trash2 size={16} />
               </button>

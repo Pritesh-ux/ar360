@@ -5,6 +5,7 @@ import { useState } from "react";
 import CustomerDetailView, { type CustomerDetailPayload } from "@/components/features/master-admin/CustomerDetailView";
 import ConfirmModal from "@/components/features/master-admin/ConfirmModal";
 import { AdminActionMessage } from "@/components/ui/admin";
+import UserFilterDropdown from "@/components/user-panel/UserFilterDropdown";
 
 type AddonAction = {
   type: "grant" | "revoke";
@@ -211,18 +212,22 @@ export default function CustomerDetailClient({ data }: { data: CustomerDetailPay
       >
         <div className="mb-4 space-y-3">
           {addonAction?.type === "grant" ? (
-            <label className="block text-[12px] font-bold text-slate-600">
-              Duration
-              <select
-                value={addonDuration}
-                onChange={(e) => setAddonDuration(e.target.value as "never" | "monthly" | "yearly")}
-                className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[13px] font-semibold text-slate-800"
-              >
-                <option value="never">No expiry (manual)</option>
-                <option value="monthly">1 month</option>
-                <option value="yearly">1 year</option>
-              </select>
-            </label>
+            <UserFilterDropdown
+              compact
+              className="w-full"
+              menuWidth={240}
+              label="Duration"
+              menuTitle="Duration"
+              value={addonDuration}
+              options={["never", "monthly", "yearly"]}
+              onChange={(value) => setAddonDuration(value as "never" | "monthly" | "yearly")}
+              renderOption={(value) =>
+                value === "never" ? "No expiry (manual)" : value === "monthly" ? "1 month" : "1 year"
+              }
+              renderValue={(value) =>
+                value === "never" ? "No expiry (manual)" : value === "monthly" ? "1 month" : "1 year"
+              }
+            />
           ) : null}
           <label className="block text-[12px] font-bold text-slate-600">
             Reason (required)

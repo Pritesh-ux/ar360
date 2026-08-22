@@ -19,6 +19,8 @@ import { ProductErrorCode } from "@/lib/products/product-errors";
 import { checkEnterpriseArExperienceLimit } from "@/lib/billing/limit-enforcement";
 
 export const runtime = "nodejs";
+/** Large poster + material texture persist can exceed default serverless window. */
+export const maxDuration = 300;
 
 /** Strip internal path fields that must never be overwritten by client input. */
 function cleanPatch(input: unknown): Record<string, unknown> {
@@ -29,6 +31,14 @@ function cleanPatch(input: unknown): Record<string, unknown> {
     if (blocked.has(key) || value === undefined) continue;
     patch[key] = value;
   }
+
+  // Never persist browser-only HDR data URLs — they blank the canvas on reopen.
+  const env = String(patch.environmentImage || "");
+  if (env.startsWith("blob:") || env.startsWith("data:") || env.length > 2048) {
+    patch.environmentImage = "/hdr/neutral.hdr";
+    patch.useSkybox = false;
+  }
+
   return patch;
 }
 
@@ -44,7 +54,7 @@ export async function POST(req: Request) {
     const productUid = normalizeScopedId(body.productUid || body.id);
     const posterDataUrl = String(body.posterDataUrl || "");
     const destination = String(body.destination || "");
-    const status = String(body.status || "Draft");
+    const status = String(body.status || "published");
     const productPatch = cleanPatch(body.productPatch || body.product || {});
     const expectedVersion =
       typeof body.expectedVersion === "number"
@@ -155,6 +165,9 @@ export async function POST(req: Request) {
         {
           error: error.message,
           code: error.code || ProductErrorCode.SAVE_FAILED,
+          ...(typeof error.currentVersion === "number"
+            ? { currentVersion: error.currentVersion }
+            : {}),
         },
         { status },
       );

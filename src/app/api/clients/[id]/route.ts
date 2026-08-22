@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { query } from "@/lib/db";
-import { hasClientAddon } from "@/lib/billing/addons";
+import { hasClientManagementAccess } from "@/lib/billing/addons";
 import { ensurePermanentProductQr } from "@/lib/growth/qr.service.impl";
+import { parseOptionalYmd } from "@/lib/user-panel/client-plan";
 
 export const runtime = "nodejs";
 
@@ -125,7 +126,7 @@ async function unlinkProductQrsFromClient(
 }
 
 async function requireClientAccess(customerUid: string) {
-  const active = await hasClientAddon(customerUid);
+  const active = await hasClientManagementAccess(customerUid);
   if (!active) {
     return NextResponse.json(
       { error: "Client Management module is not active." },
@@ -289,23 +290,46 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       company_name: string | null;
       status: string;
       tags: unknown;
+      viewer_catalog_enabled?: number | boolean;
       created_at: string;
     }>("SELECT * FROM clients WHERE client_uid = ? AND customer_uid = ? LIMIT 1", [
       clientUid,
       customerUid,
     ]);
 
-    const client = clients[0];
-    if (!client) {
+    const clientRow = clients[0];
+    if (!clientRow) {
       return NextResponse.json({ error: "Client not found." }, { status: 404 });
     }
 
-    const resources = await query<{ resource_type: string; resource_id: string }>(
-      "SELECT resource_type, resource_id FROM client_resources WHERE client_uid = ?",
+    const client = {
+      ...clientRow,
+      viewer_catalog_enabled: Boolean(Number(clientRow.viewer_catalog_enabled ?? 1)),
+      logo_url: (clientRow as { logo_url?: string | null }).logo_url ?? null,
+      brand_primary: (clientRow as { brand_primary?: string | null }).brand_primary ?? "#C6FF32",
+      brand_theme: (clientRow as { brand_theme?: string | null }).brand_theme ?? "light",
+      branding_json: (clientRow as { branding_json?: unknown }).branding_json ?? null,
+      viewer_title: (clientRow as { viewer_title?: string | null }).viewer_title ?? null,
+      notes: (clientRow as { notes?: string | null }).notes ?? null,
+      powered_by_label: (clientRow as { powered_by_label?: string | null }).powered_by_label ?? null,
+    };
+
+    const resources = await query<{
+      resource_type: string;
+      resource_id: string;
+      viewer_active?: number | boolean;
+    }>(
+      `SELECT resource_type, resource_id, COALESCE(viewer_active, 1) AS viewer_active
+         FROM client_resources WHERE client_uid = ?`,
       [clientUid],
     );
 
     const productIds = resources.filter((r) => r.resource_type === "product").map((r) => r.resource_id);
+    const viewerActiveByProduct = new Map(
+      resources
+        .filter((r) => r.resource_type === "product")
+        .map((r) => [r.resource_id, Boolean(Number(r.viewer_active ?? 1))] as const),
+    );
 
     const origin = new URL(req.url).origin;
     const userId = Number(user.id) || 0;
@@ -319,17 +343,24 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       status: string;
       created_at: string;
       model_url: string | null;
+      viewer_active?: boolean;
     }> = [];
     if (productIds.length > 0) {
       linkedProducts = await query(
-        `SELECT id AS product_uid, title AS name, category, status, created_at, model_url,
-                poster, thumbnail_url, file_name, views, product_folder
-           FROM products
-          WHERE customer_uid = ?
-            AND deleted_at IS NULL
-            AND id IN (${productIds.map(() => "?").join(",")})`,
-        [customerUid, ...productIds],
+        `SELECT p.id AS product_uid, p.public_id, p.title AS name, p.category, p.status, p.created_at, p.model_url,
+                p.poster, p.thumbnail_url, p.file_name, p.views, p.product_folder, cr.id AS resource_order
+           FROM client_resources cr
+           INNER JOIN products p ON p.id = cr.resource_id AND p.customer_uid = ?
+          WHERE cr.client_uid = ?
+            AND cr.resource_type = 'product'
+            AND p.deleted_at IS NULL
+          ORDER BY cr.id ASC`,
+        [customerUid, clientUid],
       );
+      linkedProducts = linkedProducts.map((row) => ({
+        ...row,
+        viewer_active: viewerActiveByProduct.get(row.product_uid) !== false,
+      }));
     }
 
     const qrIds = resources.filter((r) => r.resource_type === "qr_code").map((r) => r.resource_id);
@@ -398,9 +429,50 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       body.companyName !== undefined ? String(body.companyName || "").trim() || null : undefined;
     const status = body.status !== undefined ? String(body.status || "active").trim() : undefined;
     const tags = body.tags !== undefined ? (body.tags ? JSON.stringify(body.tags) : null) : undefined;
+    const viewerCatalogEnabled =
+      body.viewerCatalogEnabled !== undefined ? Boolean(body.viewerCatalogEnabled) : undefined;
+    const logoUrl =
+      body.logoUrl !== undefined ? String(body.logoUrl || "").trim() || null : undefined;
+    const brandPrimary =
+      body.brandPrimary !== undefined ? String(body.brandPrimary || "").trim() || null : undefined;
+    const brandTheme =
+      body.brandTheme !== undefined ? String(body.brandTheme || "").trim() || null : undefined;
+    const brandingJson =
+      body.brandingJson !== undefined
+        ? body.brandingJson
+          ? JSON.stringify(body.brandingJson)
+          : null
+        : undefined;
+    const viewerTitle =
+      body.viewerTitle !== undefined ? String(body.viewerTitle || "").trim() || null : undefined;
+    const notes = body.notes !== undefined ? String(body.notes || "").trim() || null : undefined;
+    const poweredByLabel =
+      body.poweredByLabel !== undefined ? String(body.poweredByLabel || "").trim() || null : undefined;
+    const planStartsAt =
+      body.planStartsAt !== undefined || body.plan_starts_at !== undefined
+        ? parseOptionalYmd(body.planStartsAt ?? body.plan_starts_at)
+        : undefined;
+    const planExpiresAt =
+      body.planExpiresAt !== undefined || body.plan_expires_at !== undefined
+        ? parseOptionalYmd(body.planExpiresAt ?? body.plan_expires_at)
+        : undefined;
+    const linkExpiresAt =
+      body.linkExpiresAt !== undefined || body.link_expires_at !== undefined
+        ? parseOptionalYmd(body.linkExpiresAt ?? body.link_expires_at)
+        : undefined;
+
+    if (planStartsAt === undefined && (body.planStartsAt !== undefined || body.plan_starts_at !== undefined)) {
+      return NextResponse.json({ error: "Invalid plan start date." }, { status: 400 });
+    }
+    if (planExpiresAt === undefined && (body.planExpiresAt !== undefined || body.plan_expires_at !== undefined)) {
+      return NextResponse.json({ error: "Invalid plan expire date." }, { status: 400 });
+    }
+    if (linkExpiresAt === undefined && (body.linkExpiresAt !== undefined || body.link_expires_at !== undefined)) {
+      return NextResponse.json({ error: "Invalid link expire date." }, { status: 400 });
+    }
 
     const updates: string[] = [];
-    const values: Array<string | null> = [];
+    const values: Array<string | number | null> = [];
 
     if (name !== undefined) {
       if (!name) return NextResponse.json({ error: "Client Name is required." }, { status: 400 });
@@ -426,6 +498,53 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (tags !== undefined) {
       updates.push("tags = ?");
       values.push(tags);
+    }
+    if (viewerCatalogEnabled !== undefined) {
+      updates.push("viewer_catalog_enabled = ?");
+      values.push(viewerCatalogEnabled ? 1 : 0);
+    }
+    if (logoUrl !== undefined) {
+      updates.push("logo_url = ?");
+      values.push(logoUrl);
+    }
+    if (brandPrimary !== undefined) {
+      updates.push("brand_primary = ?");
+      values.push(brandPrimary);
+    }
+    if (brandTheme !== undefined) {
+      updates.push("brand_theme = ?");
+      values.push(brandTheme);
+    }
+    if (brandingJson !== undefined) {
+      updates.push("branding_json = ?");
+      values.push(brandingJson);
+    }
+    if (viewerTitle !== undefined) {
+      updates.push("viewer_title = ?");
+      values.push(viewerTitle);
+    }
+    if (notes !== undefined) {
+      updates.push("notes = ?");
+      values.push(notes);
+    }
+    if (poweredByLabel !== undefined) {
+      if (poweredByLabel && poweredByLabel.length > 80) {
+        return NextResponse.json({ error: "White-label name is too long." }, { status: 400 });
+      }
+      updates.push("powered_by_label = ?");
+      values.push(poweredByLabel);
+    }
+    if (planStartsAt !== undefined) {
+      updates.push("plan_starts_at = ?");
+      values.push(planStartsAt);
+    }
+    if (planExpiresAt !== undefined) {
+      updates.push("plan_expires_at = ?");
+      values.push(planExpiresAt);
+    }
+    if (linkExpiresAt !== undefined) {
+      updates.push("link_expires_at = ?");
+      values.push(linkExpiresAt);
     }
 
     if (updates.length === 0) {
@@ -544,6 +663,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (resourceType === "qr") resourceType = "qr_code";
     const resourceId = String(body.resourceId || "").trim();
 
+    if (action === "setViewerActive") {
+      if (resourceType !== "product" || !resourceId) {
+        return NextResponse.json({ error: "Product id required." }, { status: 400 });
+      }
+      const viewerActive = Boolean(body.viewerActive);
+      await query(
+        `UPDATE client_resources
+            SET viewer_active = ?
+          WHERE client_uid = ?
+            AND resource_type = 'product'
+            AND resource_id = ?`,
+        [viewerActive ? 1 : 0, clientUid, resourceId],
+      );
+      return NextResponse.json({ success: true, viewerActive });
+    }
+
     if (!resourceType || !resourceId) {
       return NextResponse.json({ error: "Resource properties missing." }, { status: 400 });
     }
@@ -564,6 +699,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         );
       }
       if (resourceType === "product") {
+        // Exclusive assignment — clear any other client's link for this product.
         await query(
           `DELETE FROM client_resources
             WHERE resource_type = 'product' AND resource_id = ?`,
@@ -571,14 +707,21 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         );
       }
       await query(
-        `INSERT IGNORE INTO client_resources (client_uid, resource_type, resource_id)
-         VALUES (?, ?, ?)`,
+        `INSERT INTO client_resources (client_uid, resource_type, resource_id, viewer_active)
+         VALUES (?, ?, ?, 1)
+         ON DUPLICATE KEY UPDATE client_uid = VALUES(client_uid), viewer_active = 1`,
         [clientUid, resourceType, resourceId],
       );
       if (resourceType === "product") {
         const origin = new URL(req.url).origin;
         const userId = Number(user.id) || 0;
         await syncProductQrToClient(clientUid, customerUid, resourceId, origin, userId);
+        // Delivery workspace: show product rail in Viewer/AR automatically.
+        await query(
+          `UPDATE clients SET viewer_catalog_enabled = 1, updated_at = NOW()
+            WHERE client_uid = ? AND customer_uid = ?`,
+          [clientUid, customerUid],
+        ).catch(() => undefined);
       }
     } else {
       if (resourceType === "product") {

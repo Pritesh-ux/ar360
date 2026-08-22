@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { createCustomerSampleProduct } from "@/lib/onboarding/sample-product.service";
 import { logOnboardingEvent } from "@/lib/onboarding/activity";
 import { onboardingErrorMessage } from "@/lib/onboarding/onboarding-errors";
+import { requireActiveSubscriptionApi } from "@/lib/subscription/api-subscription-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +13,9 @@ export async function POST() {
   if (!user?.customerUid) {
     return NextResponse.json({ success: false, error: "Login required." }, { status: 401 });
   }
+
+  const gate = await requireActiveSubscriptionApi(user.customerUid);
+  if (!gate.ok) return gate.response;
 
   const result = await createCustomerSampleProduct({
     customerUid: user.customerUid,

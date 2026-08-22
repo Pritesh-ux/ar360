@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useDeferredEffect } from "@/lib/react/use-deferred-effect";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   ArrowDownCircle,
   ArrowUpCircle,
   CalendarClock,
-  ChevronDown,
   Clock,
   CreditCard,
   Download,
@@ -18,15 +18,18 @@ import {
   Mail,
   Plus,
   RefreshCw,
+  Search,
   Send,
   TrendingDown,
   TrendingUp,
   Upload,
   Users,
+  X,
   XCircle,
 } from "lucide-react";
 import AdminActionMenu from "@/components/features/master-admin/AdminActionMenu";
 import AdminPageHeader from "@/components/features/master-admin/AdminPageHeader";
+import { AdminAreaChart } from "@/components/features/master-admin/AdminSparkline";
 import CustomerAvatar from "@/components/features/master-admin/CustomerAvatar";
 import PlanBadge from "@/components/features/master-admin/PlanBadge";
 import {
@@ -37,8 +40,18 @@ import {
   renewalHint,
   renewalHintClass,
 } from "@/components/features/master-admin/subscriptions-utils";
-import { AdminPagination, AdminActionMessage, AdminBulkActions } from "@/components/ui/admin";
+import {
+  AdminBulkActions,
+  AdminEmptyState,
+  AdminLoadingState,
+  AdminMetricCard,
+  AdminPagination,
+  adminTableHeadClass,
+  adminTableRowClass,
+} from "@/components/ui/admin";
+import UserFilterDropdown from "@/components/user-panel/UserFilterDropdown";
 import { type PaginationMeta } from "@/lib/master-admin/pagination";
+import "@/components/dashboard/dashboard-premium.css";
 
 type Subscription = {
   customerUid: string;
@@ -74,8 +87,8 @@ type Summary = {
   trialUsers: number;
   expiringSoon: number;
   expiredUsers: number;
-  mrrGrowthPct: number;
-  arrGrowthPct: number;
+  mrrGrowthPct: number | null;
+  arrGrowthPct: number | null;
   churnRate: number;
   manualEnterpriseRevenue: number;
 };
@@ -93,7 +106,10 @@ type Sidebar = {
 };
 
 const PAGE_SIZE = 8;
-const planOptions = ["trial", "basic", "professional", "enterprise"];
+const planOptions = ["all", "trial", "basic", "professional", "enterprise"];
+const billingCycleOptions = ["all", "monthly", "yearly"];
+const autoRenewOptions = ["all", "yes", "no"];
+const expiringWithinOptions = ["all", "7", "30", "90"];
 const statusOptions = [
   { label: "All Status", value: "all" },
   { label: "Active", value: "active" },
@@ -102,21 +118,10 @@ const statusOptions = [
   { label: "Expired", value: "expired" },
   { label: "Cancelled", value: "cancelled" },
 ];
+const statusFilterOptions = statusOptions.map((item) => item.value);
 
-function MiniLineChart({ rows, color = "#7AE02E" }: { rows: { label: string; value: number }[]; color?: string }) {
-  const max = Math.max(...rows.map((r) => r.value), 1);
-  const points = rows
-    .map((row, index) => {
-      const x = (index / Math.max(rows.length - 1, 1)) * 100;
-      const y = 100 - (row.value / max) * 80 - 10;
-      return `${x},${y}`;
-    })
-    .join(" ");
-  return (
-    <svg viewBox="0 0 100 100" className="mt-3 h-28 w-full" preserveAspectRatio="none">
-      <polyline fill="none" stroke={color} strokeWidth="2" points={points} />
-    </svg>
-  );
+function MiniLineChart({ rows, color = "#84D400" }: { rows: { label: string; value: number }[]; color?: string }) {
+  return <AdminAreaChart rows={rows} color={color} className="mt-3 h-28 w-full" />;
 }
 
 function DonutLegend({
@@ -237,7 +242,7 @@ export default function SubscriptionsPage() {
     }
   }
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     setPage(1);
   }, [search, plan, status, billingCycle, autoRenew, expiringWithin]);
 
@@ -365,58 +370,61 @@ export default function SubscriptionsPage() {
     setMessage(`${label} will be available in a future release.`);
   }
 
+  const fmtGrowthNote = (pct: number | null | undefined, suffix = "vs last period") => {
+    if (pct == null) return undefined;
+    const arrow = pct >= 0 ? "↑" : "↓";
+    return `${arrow} ${Math.abs(pct)}% ${suffix}`;
+  };
+
   const statCards = [
     {
       title: "Active Plans",
       value: summary?.activePlans ?? 0,
-      note: `↑ ${summary?.mrrGrowthPct ?? 0}% vs last month`,
+      note: fmtGrowthNote(summary?.mrrGrowthPct, "vs last period") || "Active subscriptions",
       icon: Users,
-      iconBg: "bg-emerald-50 text-emerald-600",
+      iconClassName: "bg-emerald-50 text-emerald-600",
     },
     {
       title: "Monthly Revenue",
       value: fmtMoneyInr(summary?.monthlyRevenue ?? 0),
       note: "MRR",
       icon: IndianRupee,
-      iconBg: "bg-sky-50 text-sky-600",
-      isText: true,
+      iconClassName: "bg-sky-50 text-sky-600",
     },
     {
       title: "Annual Revenue",
       value: fmtMoneyInr(summary?.annualRevenue ?? 0),
-      note: `↑ ${summary?.arrGrowthPct ?? 0}% vs last month`,
+      note: fmtGrowthNote(summary?.arrGrowthPct, "vs last period") || "ARR",
       icon: TrendingUp,
-      iconBg: "bg-violet-50 text-violet-600",
-      isText: true,
+      iconClassName: "bg-violet-50 text-violet-600",
     },
     {
       title: "Enterprise Revenue",
       value: fmtMoneyInr(summary?.manualEnterpriseRevenue ?? 0),
       note: "Manual · excluded from MRR",
       icon: IndianRupee,
-      iconBg: "bg-amber-50 text-amber-700",
-      isText: true,
+      iconClassName: "bg-amber-50 text-amber-700",
     },
     {
       title: "Trial Users",
       value: summary?.trialUsers ?? 0,
       note: "Active trials",
       icon: Clock,
-      iconBg: "bg-amber-50 text-amber-600",
+      iconClassName: "bg-amber-50 text-amber-600",
     },
     {
       title: "Expiring Soon",
       value: summary?.expiringSoon ?? 0,
       note: "Next 7 days",
       icon: CalendarClock,
-      iconBg: "bg-orange-50 text-orange-600",
+      iconClassName: "bg-orange-50 text-orange-600",
     },
     {
       title: "Expired Users",
       value: summary?.expiredUsers ?? 0,
       note: "Cancelled / expired",
       icon: XCircle,
-      iconBg: "bg-red-50 text-red-500",
+      iconClassName: "bg-red-50 text-red-500",
     },
   ];
 
@@ -439,9 +447,9 @@ export default function SubscriptionsPage() {
   ];
 
   return (
-    <div className="master-admin-panel">
-      <div className="flex flex-col gap-5 xl:flex-row">
-        <div className="min-w-0 flex-1 space-y-5">
+    <div className="master-admin-panel dash-premium animate-dash-fade-in flex min-h-0 flex-1 flex-col gap-3">
+      <div className="flex flex-col gap-3 xl:flex-row">
+        <div className="min-w-0 flex-1 flex flex-col gap-3">
           <AdminPageHeader
             title="Subscriptions"
             subtitle="Manage all customer subscriptions and billing information."
@@ -450,24 +458,17 @@ export default function SubscriptionsPage() {
                 <button
                   type="button"
                   onClick={exportCsv}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-[13px] font-bold text-slate-700"
+                  className="dash-premium-btn-secondary h-10 px-3 text-[12px]"
                 >
-                  <Download size={16} />
+                  <Download size={15} />
                   Export
-                  <ChevronDown size={14} className="text-slate-400" />
                 </button>
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-[13px] font-bold text-slate-700"
-                >
-                  <Upload size={16} />
+                <button type="button" className="dash-premium-btn-secondary h-10 px-3 text-[12px]">
+                  <Upload size={15} />
                   Import
                 </button>
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-2 rounded-xl bg-[#A6FF2E] px-4 py-2.5 text-[13px] font-black text-slate-900"
-                >
-                  <Plus size={16} />
+                <button type="button" className="dash-premium-btn-primary h-10 px-4 text-[12px]">
+                  <Plus size={15} strokeWidth={2.2} />
                   Add Subscription
                 </button>
               </>
@@ -475,17 +476,38 @@ export default function SubscriptionsPage() {
           />
 
           {message ? (
-            <AdminActionMessage
-              message={message}
-              variant={message.toLowerCase().includes("fail") || message.toLowerCase().includes("unable") ? "error" : "success"}
-            />
+            <div
+              className={`dash-premium-card flex items-center justify-between gap-3 px-4 py-3 ${
+                message.toLowerCase().includes("fail") || message.toLowerCase().includes("unable")
+                  ? "border-[#FECACA] bg-[#FEF2F2]"
+                  : "border-[#DCFCE7] bg-[#F0FDF4]"
+              }`}
+            >
+              <p
+                className={`text-[13px] font-semibold ${
+                  message.toLowerCase().includes("fail") || message.toLowerCase().includes("unable")
+                    ? "text-[#B91C1C]"
+                    : "text-[#166534]"
+                }`}
+              >
+                {message}
+              </p>
+              <button
+                type="button"
+                onClick={() => setMessage("")}
+                className="grid h-8 w-8 place-items-center rounded-[10px] hover:bg-white/70"
+                aria-label="Dismiss"
+              >
+                <X size={15} />
+              </button>
+            </div>
           ) : null}
           {alerts.length > 0 ? (
-            <section className="rounded-2xl border border-red-200 bg-red-50 p-4">
-              <h2 className="text-sm font-black text-red-900">Persistent billing alerts ({alerts.length})</h2>
+            <section className="dash-premium-card border-[#FECACA] bg-[#FEF2F2] p-4">
+              <h2 className="text-sm font-black text-[#991B1B]">Persistent billing alerts ({alerts.length})</h2>
               <div className="mt-2 grid gap-2 md:grid-cols-2">
                 {alerts.slice(0, 8).map((alert) => (
-                  <div key={alert.alert_uid} className="rounded-xl bg-white p-3 text-xs font-semibold text-red-800">
+                  <div key={alert.alert_uid} className="rounded-[14px] bg-white p-3 text-xs font-semibold text-[#B91C1C]">
                     <p className="font-black">{String(alert.alert_type).replace(/_/g, " ")}</p>
                     <p>{alert.summary}</p>
                   </div>
@@ -495,77 +517,99 @@ export default function SubscriptionsPage() {
           ) : null}
 
           <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
-            {statCards.map((card) => {
-              const Icon = card.icon;
-              return (
-                <div
-                  key={card.title}
-                  className="flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_2px_10px_rgba(15,23,42,0.04)]"
-                >
-                  <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${card.iconBg}`}>
-                    <Icon size={20} />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-semibold text-slate-500">{card.title}</p>
-                    <p className="truncate text-[22px] font-black leading-none text-slate-950">
-                      {card.isText ? card.value : Number(card.value).toLocaleString("en-IN")}
-                    </p>
-                    <p className="mt-1 text-[10px] font-semibold text-emerald-600">{card.note}</p>
-                  </div>
-                </div>
-              );
-            })}
+            {statCards.map((card) => (
+              <AdminMetricCard
+                key={card.title}
+                title={card.title}
+                value={card.value}
+                note={card.note}
+                iconComponent={card.icon}
+                iconClassName={card.iconClassName}
+                layout="compact"
+              />
+            ))}
           </section>
 
-          <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-            <div className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row lg:flex-wrap lg:items-center">
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search subscriptions..."
-                className="h-10 min-w-[200px] flex-1 rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-[13px] font-medium outline-none focus:border-[#A6FF2E] focus:bg-white"
-              />
-              <select
+          <section className="dash-premium-card overflow-hidden">
+            <div className="flex flex-wrap items-center gap-2 border-b border-[#ECECEC] px-4 py-3">
+              <div className="relative min-w-[200px] flex-1 basis-[220px] max-w-sm">
+                <Search
+                  size={15}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]"
+                />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search subscriptions..."
+                  className="h-10 w-full rounded-[14px] border border-[#ECECEC] bg-white pl-9 pr-3 text-[13px] font-medium text-[#111827] outline-none transition focus:border-[#84D400] focus:shadow-[0_0_0_3px_rgba(182,255,56,0.18)]"
+                />
+              </div>
+              <UserFilterDropdown
+                hideLabel
+                compact
+                className="w-[140px] shrink-0"
+                label="Plan"
+                menuTitle="Plan"
                 value={plan}
-                onChange={(e) => setPlan(e.target.value)}
-                className="h-10 rounded-xl border border-slate-200 px-3 text-[13px] font-semibold text-slate-700"
-              >
-                <option value="all">All Plans</option>
-                {planOptions.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-              <select
+                options={planOptions}
+                onChange={setPlan}
+                renderOption={(value) =>
+                  value === "all" ? "All Plans" : value.charAt(0).toUpperCase() + value.slice(1)
+                }
+                renderValue={(value) =>
+                  value === "all" ? "All Plans" : value.charAt(0).toUpperCase() + value.slice(1)
+                }
+              />
+              <UserFilterDropdown
+                hideLabel
+                compact
+                className="w-[150px] shrink-0"
+                label="Billing Cycle"
+                menuTitle="Billing Cycle"
                 value={billingCycle}
-                onChange={(e) => setBillingCycle(e.target.value)}
-                className="h-10 rounded-xl border border-slate-200 px-3 text-[13px] font-semibold text-slate-700"
-              >
-                <option value="all">All Billing Cycles</option>
-                <option value="monthly">Monthly</option>
-                <option value="yearly">Yearly</option>
-              </select>
-              <select
+                options={billingCycleOptions}
+                onChange={setBillingCycle}
+                renderOption={(value) =>
+                  value === "all" ? "All Billing Cycles" : value.charAt(0).toUpperCase() + value.slice(1)
+                }
+                renderValue={(value) =>
+                  value === "all" ? "All Billing Cycles" : value.charAt(0).toUpperCase() + value.slice(1)
+                }
+              />
+              <UserFilterDropdown
+                hideLabel
+                compact
+                className="w-[148px] shrink-0"
+                label="Status"
+                menuTitle="Status"
                 value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                className="h-10 rounded-xl border border-slate-200 px-3 text-[13px] font-semibold text-slate-700"
-              >
-                {statusOptions.map((item) => (
-                  <option key={item.value} value={item.value}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-              <select
+                options={statusFilterOptions}
+                onChange={setStatus}
+                renderOption={(value) => statusOptions.find((item) => item.value === value)?.label || value}
+                renderValue={(value) => statusOptions.find((item) => item.value === value)?.label || value}
+              />
+              <UserFilterDropdown
+                hideLabel
+                compact
+                className="w-[150px] shrink-0"
+                label="Auto Renew"
+                menuTitle="Auto Renew"
                 value={autoRenew}
-                onChange={(e) => setAutoRenew(e.target.value)}
-                className="h-10 rounded-xl border border-slate-200 px-3 text-[13px] font-semibold text-slate-700"
-              >
-                <option value="all">Auto Renew: All</option>
-                <option value="yes">Auto Renew: On</option>
-                <option value="no">Auto Renew: Off</option>
-              </select>
+                options={autoRenewOptions}
+                onChange={setAutoRenew}
+                renderOption={(value) =>
+                  ({ all: "Auto Renew: All", yes: "Auto Renew: On", no: "Auto Renew: Off" } as Record<
+                    string,
+                    string
+                  >)[value] || value
+                }
+                renderValue={(value) =>
+                  ({ all: "Auto Renew: All", yes: "Auto Renew: On", no: "Auto Renew: Off" } as Record<
+                    string,
+                    string
+                  >)[value] || value
+                }
+              />
               <AdminBulkActions
                 value={bulkAction}
                 onChange={setBulkAction}
@@ -582,10 +626,10 @@ export default function SubscriptionsPage() {
               <button
                 type="button"
                 onClick={() => setMoreFiltersOpen((open) => !open)}
-                className={`inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-[13px] font-bold transition ${
+                className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-[14px] border px-3 text-[12px] font-semibold transition ${
                   moreFiltersOpen
-                    ? "border-[#A6FF2E] bg-[#A6FF2E]/10 text-slate-900"
-                    : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                    ? "border-[#84D400] bg-[#F0FDF4] text-[#111827]"
+                    : "border-[#ECECEC] bg-white text-[#6B7280] hover:bg-[#FAFAFB]"
                 }`}
               >
                 <Filter size={15} />
@@ -594,24 +638,40 @@ export default function SubscriptionsPage() {
             </div>
 
             {moreFiltersOpen && (
-              <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 bg-slate-50/50 px-4 py-3">
-                <select
+              <div className="flex flex-wrap items-center gap-2 border-b border-[#ECECEC] bg-[#FAFAFB] px-4 py-3">
+                <UserFilterDropdown
+                  hideLabel
+                  compact
+                  className="w-[190px] shrink-0"
+                  label="Renewal"
+                  menuTitle="Renewal window"
                   value={expiringWithin}
-                  onChange={(e) => setExpiringWithin(e.target.value)}
-                  className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-700"
-                >
-                  <option value="all">Renewal: Any time</option>
-                  <option value="7">Renewal within 7 days</option>
-                  <option value="30">Renewal within 30 days</option>
-                  <option value="90">Renewal within 90 days</option>
-                </select>
+                  options={expiringWithinOptions}
+                  onChange={setExpiringWithin}
+                  renderOption={(value) =>
+                    ({
+                      all: "Renewal: Any time",
+                      "7": "Renewal within 7 days",
+                      "30": "Renewal within 30 days",
+                      "90": "Renewal within 90 days",
+                    } as Record<string, string>)[value] || value
+                  }
+                  renderValue={(value) =>
+                    ({
+                      all: "Renewal: Any time",
+                      "7": "Renewal within 7 days",
+                      "30": "Renewal within 30 days",
+                      "90": "Renewal within 90 days",
+                    } as Record<string, string>)[value] || value
+                  }
+                />
                 <button
                   type="button"
                   onClick={() => {
                     setExpiringWithin("all");
                     setMoreFiltersOpen(false);
                   }}
-                  className="text-[13px] font-bold text-slate-500 hover:text-slate-800"
+                  className="text-[12px] font-semibold text-[#6B7280] hover:text-[#111827]"
                 >
                   Clear extra filters
                 </button>
@@ -619,14 +679,19 @@ export default function SubscriptionsPage() {
             )}
 
             {loading ? (
-              <div className="p-16 text-center text-[13px] font-semibold text-slate-400">Loading subscriptions...</div>
+              <AdminLoadingState label="Loading subscriptions..." />
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[1600px] text-left">
                   <thead>
-                    <tr className="border-b border-slate-100 bg-slate-50/60 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                      <th className="w-10 p-3">
-                        <input type="checkbox" checked={allPageSelected} onChange={toggleAllPage} />
+                    <tr className={adminTableHeadClass}>
+                      <th className="w-10 px-3 py-3">
+                        <input
+                          type="checkbox"
+                          checked={allPageSelected}
+                          onChange={toggleAllPage}
+                          className="h-4 w-4 rounded border-[#D1D5DB] accent-[#84D400]"
+                        />
                       </th>
                       <th className="p-3">Customer</th>
                       <th className="p-3">Company</th>
@@ -657,26 +722,14 @@ export default function SubscriptionsPage() {
                       ];
 
                       return (
-                        <tr key={s.customerUid} className="border-b border-slate-50 hover:bg-slate-50/70">
-                          <td className="p-3">
+                        <tr key={s.customerUid} className={adminTableRowClass}>
+                          <td className="px-3 py-3">
                             <input
                               type="checkbox"
                               checked={selected.has(s.customerUid)}
                               onChange={() => toggleRow(s.customerUid)}
+                              className="h-4 w-4 rounded border-[#D1D5DB] accent-[#84D400]"
                             />
-                          </td>
-                          <td className="p-3 text-[11px] font-semibold text-slate-700">
-                            <p>{s.provider} {s.providerMode ? `· ${s.providerMode}` : ""}</p>
-                            <p className="max-w-[180px] truncate text-slate-400">{s.providerSubscriptionId || "No provider subscription"}</p>
-                            <p>{s.providerStatus || "—"} · mandate {s.mandateStatus || "unknown"}</p>
-                          </td>
-                          <td className="p-3 text-[11px] font-semibold text-slate-700">
-                            <p>{fmtDateShort(s.nextChargeAt)}</p>
-                            {s.nextRetryAt ? <p className="text-amber-600">Retry {fmtDateShort(s.nextRetryAt)}</p> : null}
-                          </td>
-                          <td className="p-3 text-[11px] font-semibold text-slate-700">
-                            <p>{s.renewalAttemptCount} attempt(s)</p>
-                            {s.lastFailure ? <p className="max-w-[180px] truncate text-red-600" title={s.lastFailure.message || s.lastFailure.code}>{s.lastFailure.code}</p> : "No failure"}
                           </td>
                           <td className="p-3">
                             <div className="flex items-center gap-3">
@@ -712,6 +765,25 @@ export default function SubscriptionsPage() {
                               {s.paymentStatus}
                             </span>
                           </td>
+                          <td className="p-3 text-[11px] font-semibold text-slate-700">
+                            <p>{s.provider} {s.providerMode ? `· ${s.providerMode}` : ""}</p>
+                            <p className="max-w-[180px] truncate text-slate-400">{s.providerSubscriptionId || "No provider subscription"}</p>
+                            <p>{s.providerStatus || "—"} · mandate {s.mandateStatus || "unknown"}</p>
+                          </td>
+                          <td className="p-3 text-[11px] font-semibold text-slate-700">
+                            <p>{fmtDateShort(s.nextChargeAt)}</p>
+                            {s.nextRetryAt ? <p className="text-amber-600">Retry {fmtDateShort(s.nextRetryAt)}</p> : null}
+                          </td>
+                          <td className="p-3 text-[11px] font-semibold text-slate-700">
+                            <p>{s.renewalAttemptCount} attempt(s)</p>
+                            {s.lastFailure ? (
+                              <p className="max-w-[180px] truncate text-red-600" title={s.lastFailure.message || s.lastFailure.code}>
+                                {s.lastFailure.code}
+                              </p>
+                            ) : (
+                              "No failure"
+                            )}
+                          </td>
                           <td className="p-3">
                             <AutoRenewToggle enabled={s.autoRenew} />
                           </td>
@@ -723,8 +795,8 @@ export default function SubscriptionsPage() {
                     })}
                     {pageItems.length === 0 && (
                       <tr>
-                        <td colSpan={14} className="p-16 text-center text-[13px] font-semibold text-slate-400">
-                          No subscriptions found.
+                        <td colSpan={14}>
+                          <AdminEmptyState title="No subscriptions found." />
                         </td>
                       </tr>
                     )}
@@ -733,32 +805,46 @@ export default function SubscriptionsPage() {
               </div>
             )}
 
-            <AdminPagination
-              page={page}
-              totalPages={pagination.totalPages}
-              meta={pagination}
-              onPageChange={setPage}
-            />
+            <div className="border-t border-[#ECECEC] px-2">
+              <AdminPagination
+                page={page}
+                totalPages={pagination.totalPages}
+                meta={pagination}
+                onPageChange={setPage}
+              />
+            </div>
           </section>
 
-          <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
+          <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <div className="dash-premium-card p-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-[14px] font-black text-slate-900">MRR</h3>
-                <span className="text-[12px] font-bold text-emerald-600">↑ {summary?.mrrGrowthPct ?? 0}%</span>
+                <span className={`text-[12px] font-bold ${
+                  (summary?.mrrGrowthPct ?? 0) >= 0 ? "text-emerald-600" : "text-red-500"
+                }`}>
+                  {summary?.mrrGrowthPct == null
+                    ? "—"
+                    : `${summary.mrrGrowthPct >= 0 ? "↑" : "↓"} ${Math.abs(summary.mrrGrowthPct)}%`}
+                </span>
               </div>
               <MiniLineChart rows={analytics?.mrrDaily || []} />
             </div>
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
+            <div className="dash-premium-card p-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-[14px] font-black text-slate-900">ARR</h3>
-                <span className="text-[12px] font-bold text-emerald-600">↑ {summary?.arrGrowthPct ?? 0}%</span>
+                <h3 className="text-[14px] font-black text-[#111827]">ARR</h3>
+                <span className={`text-[12px] font-bold ${
+                  (summary?.arrGrowthPct ?? 0) >= 0 ? "text-emerald-600" : "text-red-500"
+                }`}>
+                  {summary?.arrGrowthPct == null
+                    ? "—"
+                    : `${summary.arrGrowthPct >= 0 ? "↑" : "↓"} ${Math.abs(summary.arrGrowthPct)}%`}
+                </span>
               </div>
               <MiniLineChart rows={analytics?.arrDaily || []} color="#8B5CF6" />
             </div>
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
+            <div className="dash-premium-card p-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-[14px] font-black text-slate-900">Churn</h3>
+                <h3 className="text-[14px] font-black text-[#111827]">Churn</h3>
                 <span className="inline-flex items-center gap-1 text-[12px] font-bold text-red-500">
                   <TrendingDown size={14} />
                   {summary?.churnRate ?? 0}%
@@ -766,8 +852,8 @@ export default function SubscriptionsPage() {
               </div>
               <MiniLineChart rows={analytics?.churnDaily || []} color="#EF4444" />
             </div>
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
-              <h3 className="text-[14px] font-black text-slate-900">Revenue by Plan</h3>
+            <div className="dash-premium-card p-4">
+              <h3 className="text-[14px] font-black text-[#111827]">Revenue by Plan</h3>
               <p className="mt-1 text-[11px] font-semibold text-slate-400">
                 MRR {fmtMoneyInr(summary?.monthlyRevenue ?? 0)}
               </p>
@@ -776,8 +862,8 @@ export default function SubscriptionsPage() {
           </section>
         </div>
 
-        <aside className="hidden w-[280px] shrink-0 space-y-4 xl:block">
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
+        <aside className="hidden w-[280px] shrink-0 space-y-3 xl:block">
+          <div className="dash-premium-card p-4">
             <h3 className="text-[13px] font-black text-slate-900">Renewals in 7 Days</h3>
             <div className="mt-3 space-y-3">
               {(sidebar?.renewals7 || []).map((item) => (
@@ -812,8 +898,8 @@ export default function SubscriptionsPage() {
             </button>
           </div>
 
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
-            <h3 className="text-[13px] font-black text-slate-900">Renewals in 30 Days</h3>
+          <div className="dash-premium-card p-4">
+            <h3 className="text-[13px] font-black text-[#111827]">Renewals in 30 Days</h3>
             <div className="mt-3 space-y-2">
               {(sidebar?.renewals30 || []).map((item) => (
                 <Link
@@ -834,8 +920,8 @@ export default function SubscriptionsPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
-            <h3 className="text-[13px] font-black text-slate-900">Quick Actions</h3>
+          <div className="dash-premium-card p-4">
+            <h3 className="text-[13px] font-black text-[#111827]">Quick Actions</h3>
             <div className="mt-3 space-y-1">
               {quickActions.map(({ label, icon: Icon }) => (
                 <button
@@ -852,7 +938,7 @@ export default function SubscriptionsPage() {
           </div>
 
           {(summary?.expiringSoon ?? 0) > 0 && (
-            <div className="rounded-2xl border border-amber-100 bg-amber-50/80 p-4">
+            <div className="dash-premium-card border-[#FDE68A] bg-[#FFFBEB] p-4">
               <div className="flex items-start gap-2">
                 <AlertTriangle size={16} className="mt-0.5 text-amber-600" />
                 <div>

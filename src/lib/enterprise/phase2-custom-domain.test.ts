@@ -50,6 +50,7 @@ test("Phase 2 domain instructions use _arverify TXT host", () => {
 
 test("Phase 2 public path matcher for Host middleware", () => {
   assert.equal(isPublicCustomDomainPath("/viewer/abc"), true);
+  assert.equal(isPublicCustomDomainPath("/c/cli_abc"), true);
   assert.equal(isPublicCustomDomainPath("/embed/abc"), true);
   assert.equal(isPublicCustomDomainPath("/s/token"), true);
   assert.equal(isPublicCustomDomainPath("/qr/code"), true);

@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useDeferredEffect } from "@/lib/react/use-deferred-effect";
 import { X } from "lucide-react";
 import { AdminButton } from "@/components/ui/admin";
+import ViewportPortal from "@/components/shared/ViewportPortal";
 
 type CustomerOption = {
   customer_uid: string;
@@ -35,7 +37,7 @@ export default function TransferOwnerModal({
   const [selectedUid, setSelectedUid] = useState("");
   const [error, setError] = useState("");
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     if (!open) return;
     setSearch("");
     setSelectedUid("");
@@ -84,7 +86,8 @@ export default function TransferOwnerModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/40 p-4">
+    <ViewportPortal>
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/40 p-4">
       <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <div>
@@ -146,5 +149,6 @@ export default function TransferOwnerModal({
         </div>
       </div>
     </div>
+    </ViewportPortal>
   );
 }

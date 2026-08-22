@@ -2,23 +2,37 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useDeferredEffect } from "@/lib/react/use-deferred-effect";
 import {
-  Calendar,
   CheckCircle2,
-  ChevronDown,
   Clock,
   Download,
   Eye,
   MessageSquare,
   Plus,
+  Search,
+  X,
   XCircle,
 } from "lucide-react";
 import AdminPageHeader from "@/components/features/master-admin/AdminPageHeader";
 import CustomerAvatar from "@/components/features/master-admin/CustomerAvatar";
 import TicketDetailModal from "@/components/features/master-admin/TicketDetailModal";
 import CreateTicketModal from "@/components/features/master-admin/CreateTicketModal";
-import { AdminActionMessage, AdminPagination } from "@/components/ui/admin";
-import { paginationRange, type PaginationMeta } from "@/lib/master-admin/pagination";
+import {
+  AdminEmptyState,
+  AdminLoadingState,
+  AdminMetricCard,
+  AdminPagination,
+  adminTableHeadClass,
+  adminTableRowClass,
+} from "@/components/ui/admin";
+import UserFilterDropdown from "@/components/user-panel/UserFilterDropdown";
+import UserDateRangePicker, {
+  defaultDateRange,
+  type DateRangeValue,
+} from "@/components/user-panel/UserDateRangePicker";
+import type { PaginationMeta } from "@/lib/master-admin/pagination";
+import "@/components/dashboard/dashboard-premium.css";
 import {
   fmtDateTime,
   ticketPriorityClass,
@@ -155,18 +169,13 @@ function DonutChart({
   );
 }
 
-function defaultDateRange() {
-  const end = new Date();
-  const start = new Date();
-  start.setDate(start.getDate() - 7);
-  return {
-    from: start.toISOString().slice(0, 10),
-    to: end.toISOString().slice(0, 10),
-  };
+const priorityFilterOptions = priorityOptions.map((p) => p.value);
+
+function defaultTicketDateRange(): DateRangeValue {
+  return defaultDateRange("7d");
 }
 
 export default function SupportTicketsPage() {
-  const initialRange = defaultDateRange();
   const [tickets, setTickets] = useState<TicketRow[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [statusBreakdown, setStatusBreakdown] = useState<StatusBreakdown[]>([]);
@@ -179,14 +188,12 @@ export default function SupportTicketsPage() {
   const [status, setStatus] = useState("all");
   const [priority, setPriority] = useState("all");
   const [assigned, setAssigned] = useState("all");
-  const [dateFrom, setDateFrom] = useState(initialRange.from);
-  const [dateTo, setDateTo] = useState(initialRange.to);
+  const [dateRange, setDateRange] = useState<DateRangeValue>(() => defaultTicketDateRange());
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState<PaginationMeta>({ page: 1, pageSize: PAGE_SIZE, total: 0, totalPages: 1 });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detailId, setDetailId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
 
   async function load(nextPage = page) {
     setLoading(true);
@@ -198,8 +205,8 @@ export default function SupportTicketsPage() {
     if (status !== "all") params.set("status", status);
     if (priority !== "all") params.set("priority", priority);
     if (assigned !== "all") params.set("assigned", assigned);
-    if (dateFrom) params.set("dateFrom", dateFrom);
-    if (dateTo) params.set("dateTo", dateTo);
+    if (dateRange.from) params.set("dateFrom", dateRange.from);
+    if (dateRange.to) params.set("dateTo", dateRange.to);
 
     try {
       const response = await fetch(`/api/master-admin/support-tickets?${params}`, { cache: "no-store" });
@@ -223,27 +230,29 @@ export default function SupportTicketsPage() {
     }
   }
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     setPage(1);
-  }, [search, status, priority, assigned, dateFrom, dateTo]);
+  }, [search, status, priority, assigned, dateRange.from, dateRange.to, dateRange.preset]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void load(page), 250);
     return () => window.clearTimeout(timer);
-  }, [search, status, priority, assigned, dateFrom, dateTo, page]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [search, status, priority, assigned, dateRange.from, dateRange.to, dateRange.preset, page]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pageItems = tickets;
-  const range = paginationRange(pagination);
 
   function resetFilters() {
     setSearch("");
     setStatus("all");
     setPriority("all");
     setAssigned("all");
-    const range = defaultDateRange();
-    setDateFrom(range.from);
-    setDateTo(range.to);
+    setDateRange(defaultTicketDateRange());
   }
+
+  const assignedOptions = ["all", "unassigned", ...assigneeOptions];
+  const hasFilters = Boolean(
+    search || status !== "all" || priority !== "all" || assigned !== "all" || dateRange.preset !== "7d",
+  );
 
   function exportCsv() {
     const params = new URLSearchParams();
@@ -252,8 +261,8 @@ export default function SupportTicketsPage() {
     if (status !== "all") params.set("status", status);
     if (priority !== "all") params.set("priority", priority);
     if (assigned !== "all") params.set("assigned", assigned);
-    if (dateFrom) params.set("dateFrom", dateFrom);
-    if (dateTo) params.set("dateTo", dateTo);
+    if (dateRange.from) params.set("dateFrom", dateRange.from);
+    if (dateRange.to) params.set("dateTo", dateRange.to);
     window.open(`/api/master-admin/support-tickets?${params}`, "_blank");
   }
 
@@ -277,30 +286,30 @@ export default function SupportTicketsPage() {
     {
       title: "Open Tickets",
       value: summary?.open ?? 0,
-      subtitle: filterLabel,
+      note: filterLabel,
       icon: MessageSquare,
-      iconBg: "bg-emerald-50 text-emerald-600",
+      iconClassName: "bg-emerald-50 text-emerald-600",
     },
     {
       title: "Pending Tickets",
       value: summary?.pending ?? 0,
-      subtitle: "Awaiting customer or admin",
+      note: "Awaiting customer or admin",
       icon: Clock,
-      iconBg: "bg-amber-50 text-amber-600",
+      iconClassName: "bg-amber-50 text-amber-600",
     },
     {
       title: "Resolved Tickets",
       value: summary?.resolved ?? 0,
-      subtitle: summary?.avgResolutionLabel || "Resolution time",
+      note: summary?.avgResolutionLabel || "Resolution time",
       icon: CheckCircle2,
-      iconBg: "bg-sky-50 text-sky-600",
+      iconClassName: "bg-sky-50 text-sky-600",
     },
     {
       title: "Closed Tickets",
       value: summary?.closed ?? 0,
-      subtitle: "Archived tickets",
+      note: "Archived tickets",
       icon: XCircle,
-      iconBg: "bg-violet-50 text-violet-600",
+      iconClassName: "bg-violet-50 text-violet-600",
     },
   ];
 
@@ -314,7 +323,7 @@ export default function SupportTicketsPage() {
   const categoryMax = Math.max(...categoryBreakdown.map((c) => c.count), 1);
 
   return (
-    <div className="master-admin-panel space-y-5">
+    <div className="master-admin-panel dash-premium animate-dash-fade-in flex min-h-0 flex-1 flex-col gap-3">
       <AdminPageHeader
         title="Support Tickets"
         subtitle="Manage and respond to customer support tickets."
@@ -323,18 +332,17 @@ export default function SupportTicketsPage() {
             <button
               type="button"
               onClick={exportCsv}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-[13px] font-bold text-slate-700"
+              className="dash-premium-btn-secondary h-10 px-3 text-[12px]"
             >
-              <Download size={16} />
+              <Download size={15} />
               Export
-              <ChevronDown size={14} className="text-slate-400" />
             </button>
             <button
               type="button"
               onClick={() => setCreateOpen(true)}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#A6FF2E] px-4 py-2.5 text-[13px] font-black text-slate-900"
+              className="dash-premium-btn-primary h-10 px-4 text-[12px]"
             >
-              <Plus size={16} />
+              <Plus size={15} strokeWidth={2.2} />
               New Ticket
             </button>
           </>
@@ -342,210 +350,220 @@ export default function SupportTicketsPage() {
       />
 
       {message ? (
-        <AdminActionMessage
-          message={message}
-          variant={message.toLowerCase().includes("fail") || message.toLowerCase().includes("unable") ? "error" : "success"}
-        />
+        <div
+          className={`dash-premium-card flex items-center justify-between gap-3 px-4 py-3 ${
+            message.toLowerCase().includes("fail") || message.toLowerCase().includes("unable")
+              ? "border-[#FECACA] bg-[#FEF2F2]"
+              : "border-[#DCFCE7] bg-[#F0FDF4]"
+          }`}
+        >
+          <p
+            className={`text-[13px] font-semibold ${
+              message.toLowerCase().includes("fail") || message.toLowerCase().includes("unable")
+                ? "text-[#B91C1C]"
+                : "text-[#166534]"
+            }`}
+          >
+            {message}
+          </p>
+          <button
+            type="button"
+            onClick={() => setMessage("")}
+            className="grid h-8 w-8 place-items-center rounded-[10px] hover:bg-white/70"
+            aria-label="Dismiss"
+          >
+            <X size={15} />
+          </button>
+        </div>
       ) : null}
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {statCards.map((card) => {
-          const Icon = card.icon;
-          return (
-            <div
-              key={card.title}
-              className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_2px_10px_rgba(15,23,42,0.04)]"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${card.iconBg}`}>
-                  <Icon size={16} />
-                </div>
-              </div>
-              <p className="mt-3 text-[11px] font-semibold text-slate-500">{card.title}</p>
-              <p className="mt-0.5 text-[24px] font-black leading-none text-slate-950">
-                {Number(card.value).toLocaleString("en-IN")}
-              </p>
-              <p className="mt-1 text-[10px] font-semibold text-slate-400">{card.subtitle}</p>
-            </div>
-          );
-        })}
+        {statCards.map((card) => (
+          <AdminMetricCard
+            key={card.title}
+            title={card.title}
+            value={card.value}
+            note={card.note}
+            iconComponent={card.icon}
+            iconClassName={card.iconClassName}
+            layout="compact"
+          />
+        ))}
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row lg:flex-wrap lg:items-center">
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by ticket ID, subject or customer..."
-            className="h-10 min-w-[240px] flex-1 rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-[13px] font-medium outline-none focus:border-[#A6FF2E] focus:bg-white"
-          />
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-700"
-          >
-            {statusOptions.map((s) => (
-              <option key={s.value} value={s.value}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-          <select
-            value={priority}
-            onChange={(e) => setPriority(e.target.value)}
-            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-700"
-          >
-            {priorityOptions.map((p) => (
-              <option key={p.value} value={p.value}>
-                {p.label}
-              </option>
-            ))}
-          </select>
-          <select
-            value={assigned}
-            onChange={(e) => setAssigned(e.target.value)}
-            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-700"
-          >
-            <option value="all">All Assigned</option>
-            <option value="unassigned">Unassigned</option>
-            {assigneeOptions.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
-          <div className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-[12px] font-semibold text-slate-600">
-            <Calendar size={14} className="text-slate-400" />
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="border-none bg-transparent outline-none"
+      <section className="dash-premium-card overflow-hidden">
+        <div className="flex flex-wrap items-center gap-2 border-b border-[#ECECEC] px-4 py-3">
+          <div className="relative min-w-[240px] flex-1 basis-[260px] max-w-md">
+            <Search
+              size={15}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]"
             />
-            <span className="text-slate-300">–</span>
             <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="border-none bg-transparent outline-none"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by ticket ID, subject or customer..."
+              className="h-10 w-full rounded-[14px] border border-[#ECECEC] bg-white pl-9 pr-3 text-[13px] font-medium text-[#111827] outline-none transition focus:border-[#84D400] focus:shadow-[0_0_0_3px_rgba(182,255,56,0.18)]"
             />
           </div>
-          <button
-            type="button"
-            onClick={resetFilters}
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 text-[13px] font-bold text-slate-600"
-          >
-            Reset
-          </button>
+          <UserFilterDropdown
+            hideLabel
+            compact
+            className="w-[138px] shrink-0"
+            label="Status"
+            menuTitle="Status"
+            value={status}
+            options={statusOptions.map((s) => s.value)}
+            onChange={setStatus}
+            renderOption={(value) => statusOptions.find((s) => s.value === value)?.label || value}
+            renderValue={(value) => statusOptions.find((s) => s.value === value)?.label || value}
+          />
+          <UserFilterDropdown
+            hideLabel
+            compact
+            className="w-[140px] shrink-0"
+            label="Priority"
+            menuTitle="Priority"
+            value={priority}
+            options={priorityFilterOptions}
+            onChange={setPriority}
+            renderOption={(value) => priorityOptions.find((p) => p.value === value)?.label || value}
+            renderValue={(value) => priorityOptions.find((p) => p.value === value)?.label || value}
+          />
+          <UserFilterDropdown
+            hideLabel
+            compact
+            className="w-[160px] shrink-0"
+            label="Assigned"
+            menuTitle="Assigned"
+            value={assigned}
+            options={assignedOptions}
+            onChange={setAssigned}
+            renderOption={(value) =>
+              value === "all" ? "All Assigned" : value === "unassigned" ? "Unassigned" : value
+            }
+            renderValue={(value) =>
+              value === "all" ? "All Assigned" : value === "unassigned" ? "Unassigned" : value
+            }
+          />
+          <UserDateRangePicker value={dateRange} onChange={setDateRange} />
+          {hasFilters ? (
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="ml-auto inline-flex h-10 shrink-0 items-center rounded-[14px] px-3 text-[12px] font-semibold text-[#6B7280] transition hover:bg-[#F3F4F6] hover:text-[#111827]"
+            >
+              Clear
+            </button>
+          ) : null}
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1100px] text-left text-[13px]">
             <thead>
-              <tr className="border-b border-slate-100 bg-slate-50/60 text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                <th className="px-4 py-3">
+              <tr className={adminTableHeadClass}>
+                <th className="px-3 py-3">
                   <input
                     type="checkbox"
                     checked={pageItems.length > 0 && pageItems.every((row) => selected.has(row.id))}
                     onChange={(e) => toggleAll(e.target.checked)}
-                    className="rounded border-slate-300"
+                    className="h-4 w-4 rounded border-[#D1D5DB] accent-[#84D400]"
                   />
                 </th>
-                <th className="px-4 py-3">Ticket</th>
-                <th className="px-4 py-3">Customer</th>
-                <th className="px-4 py-3">Subject</th>
-                <th className="px-4 py-3">Priority</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Assigned To</th>
-                <th className="px-4 py-3">Created At</th>
-                <th className="px-4 py-3">Last Updated</th>
-                <th className="px-4 py-3 text-right">Actions</th>
+                <th className="px-3 py-3">Ticket</th>
+                <th className="px-3 py-3">Customer</th>
+                <th className="px-3 py-3">Subject</th>
+                <th className="px-3 py-3">Priority</th>
+                <th className="px-3 py-3">Status</th>
+                <th className="px-3 py-3">Assigned To</th>
+                <th className="px-3 py-3">Created At</th>
+                <th className="px-3 py-3">Last Updated</th>
+                <th className="px-3 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-12 text-center font-semibold text-slate-400">
-                    Loading tickets...
+                  <td colSpan={10}>
+                    <AdminLoadingState label="Loading tickets..." />
                   </td>
                 </tr>
               ) : pageItems.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-12 text-center font-semibold text-slate-400">
-                    No tickets found.
+                  <td colSpan={10}>
+                    <AdminEmptyState title="No tickets found." />
                   </td>
                 </tr>
               ) : (
                 pageItems.map((row) => (
-                  <tr key={row.id} className="border-b border-slate-50 transition hover:bg-slate-50/60">
-                    <td className="px-4 py-3">
+                  <tr key={row.id} className={adminTableRowClass}>
+                    <td className="px-3 py-3">
                       <input
                         type="checkbox"
                         checked={selected.has(row.id)}
                         onChange={() => toggleOne(row.id)}
-                        className="rounded border-slate-300"
+                        className="h-4 w-4 rounded border-[#D1D5DB] accent-[#84D400]"
                       />
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3">
                       <button
                         type="button"
                         onClick={() => setDetailId(row.id)}
-                        className="font-black text-slate-900 hover:text-[#4D9A00] hover:underline"
+                        className="font-black text-[#111827] transition hover:text-[#5AA700] hover:underline"
                       >
                         {row.ticketNumber}
                       </button>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3">
                       <div className="flex items-center gap-2.5">
                         <CustomerAvatar name={row.customerName} seed={row.customerEmail} size="sm" />
                         <div className="min-w-0">
                           {row.customerUid ? (
                             <Link
                               href={`/master-admin/customers/${row.customerUid}`}
-                              className="truncate font-bold text-slate-900 hover:text-[#4D9A00]"
+                              className="truncate font-bold text-[#111827] transition hover:text-[#5AA700]"
                             >
                               {row.customerName}
                             </Link>
                           ) : (
-                            <p className="truncate font-bold text-slate-900">{row.customerName}</p>
+                            <p className="truncate font-bold text-[#111827]">{row.customerName}</p>
                           )}
-                          <p className="truncate text-[11px] font-medium text-slate-400">{row.customerEmail}</p>
+                          <p className="truncate text-[11px] font-medium text-[#9CA3AF]">{row.customerEmail}</p>
                         </div>
                       </div>
                     </td>
-                    <td className="max-w-[220px] px-4 py-3">
-                      <p className="truncate font-bold text-slate-900">{row.subject}</p>
-                      <p className="mt-0.5 line-clamp-1 text-[11px] font-medium text-slate-400">{row.description}</p>
+                    <td className="max-w-[220px] px-3 py-3">
+                      <p className="truncate font-bold text-[#111827]">{row.subject}</p>
+                      <p className="mt-0.5 line-clamp-1 text-[11px] font-medium text-[#9CA3AF]">{row.description}</p>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3">
                       <span
                         className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ring-inset ${ticketPriorityClass(row.priority)}`}
                       >
                         {row.priority}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3">
                       <span
                         className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ring-inset ${ticketStatusClass(row.status)}`}
                       >
                         {row.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3">
                       <div className="flex items-center gap-2">
                         <CustomerAvatar name={row.assignedTo} seed={row.assignedTo} size="sm" />
-                        <span className="font-semibold text-slate-700">{row.assignedTo}</span>
+                        <span className="font-semibold text-[#374151]">{row.assignedTo}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 font-semibold text-slate-600">{fmtDateTime(row.createdAt)}</td>
-                    <td className="px-4 py-3 font-semibold text-slate-600">{fmtDateTime(row.updatedAt)}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3 font-semibold text-[#374151]">{fmtDateTime(row.createdAt)}</td>
+                    <td className="px-3 py-3 font-semibold text-[#374151]">{fmtDateTime(row.updatedAt)}</td>
+                    <td className="px-3 py-3">
                       <div className="flex items-center justify-end gap-1">
                         <button
                           type="button"
                           onClick={() => setDetailId(row.id)}
                           title="View"
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] text-[#6B7280] transition hover:bg-[#F3F4F6] hover:text-[#111827]"
                         >
                           <Eye size={15} />
                         </button>
@@ -558,24 +576,26 @@ export default function SupportTicketsPage() {
           </table>
         </div>
 
-        <AdminPagination
-          page={page}
-          totalPages={pagination.totalPages}
-          meta={pagination}
-          onPageChange={setPage}
-        />
+        <div className="border-t border-[#ECECEC] px-2">
+          <AdminPagination
+            page={page}
+            totalPages={pagination.totalPages}
+            meta={pagination}
+            onPageChange={setPage}
+          />
+        </div>
       </section>
 
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
+      <section className="grid grid-cols-1 gap-3 xl:grid-cols-3">
+        <div className="dash-premium-card p-4">
           <h3 className="text-[13px] font-black text-slate-900">Ticket Overview</h3>
           <div className="mt-4">
             <DonutChart items={donutItems} total={donutTotal} centerLabel="Total Tickets" />
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
-          <h3 className="text-[13px] font-black text-slate-900">Top Ticket Categories</h3>
+        <div className="dash-premium-card p-4">
+          <h3 className="text-[13px] font-black text-[#111827]">Top Ticket Categories</h3>
           <div className="mt-4 space-y-3">
             {categoryBreakdown.length === 0 ? (
               <p className="text-[12px] font-semibold text-slate-400">No category data</p>
@@ -601,8 +621,8 @@ export default function SupportTicketsPage() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
-          <h3 className="text-[13px] font-black text-slate-900">Open Ticket Aging</h3>
+        <div className="dash-premium-card p-4">
+          <h3 className="text-[13px] font-black text-[#111827]">Open Ticket Aging</h3>
           <div className="mt-4 space-y-3">
             {openAging.length === 0 ? (
               <p className="text-[12px] font-semibold text-slate-400">No open tickets in filter</p>
@@ -622,7 +642,7 @@ export default function SupportTicketsPage() {
         open={Boolean(detailId)}
         ticketId={detailId}
         assigneeOptions={assigneeOptions}
-        saving={saving}
+        saving={false}
         onClose={() => setDetailId(null)}
         onSaved={(msg) => {
           if (msg) setMessage(msg);
@@ -632,7 +652,7 @@ export default function SupportTicketsPage() {
       <CreateTicketModal
         open={createOpen}
         assigneeOptions={assigneeOptions}
-        saving={saving}
+        saving={false}
         onClose={() => setCreateOpen(false)}
         onCreated={() => {
           setCreateOpen(false);

@@ -49,11 +49,11 @@ export default function AdminTopBar({
 
   return (
     <>
-      <header className="sticky top-0 z-30 flex h-[72px] shrink-0 items-center gap-4 border-b border-slate-200/80 bg-white/90 px-4 backdrop-blur-xl md:px-6">
+      <header className="sticky top-0 z-30 flex min-h-[64px] shrink-0 items-center gap-3 border-b border-[#ECECEC] bg-white px-4 md:gap-4 md:px-6">
         <button
           type="button"
           onClick={onMenuClick}
-          className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-50 lg:hidden"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] border border-[#ECECEC] text-[#4B5563] transition hover:bg-[#FAFAFB] lg:hidden"
           aria-label="Open menu"
         >
           <Menu size={20} />
@@ -65,37 +65,37 @@ export default function AdminTopBar({
             setSearchOpen(true);
             setNotificationsOpen(false);
           }}
-          className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-50 md:hidden"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] border border-[#ECECEC] text-[#4B5563] transition hover:bg-[#FAFAFB] md:hidden"
           aria-label="Open search"
         >
           <Search size={18} />
         </button>
 
-        <div className="relative mx-auto hidden w-full max-w-2xl md:block">
-          <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+        <div className="relative mx-auto hidden min-w-0 w-full max-w-xl flex-1 md:block lg:max-w-2xl">
+          <Search size={18} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
           <button
             type="button"
             onClick={() => {
               setSearchOpen(true);
               setNotificationsOpen(false);
             }}
-            className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50/80 pl-11 pr-14 text-left text-sm font-medium text-slate-400 transition hover:border-[#7AE02E] hover:bg-white"
+            className="h-10 w-full rounded-[14px] border border-[#ECECEC] bg-[#FAFAFB] pl-11 pr-14 text-left text-sm font-medium text-[#9CA3AF] transition hover:border-[#84D400] hover:bg-white"
           >
             Search users, products, invoices, tickets...
           </button>
-          <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 items-center rounded-md border border-slate-200 bg-white px-1.5 py-0.5 font-mono text-[10px] font-semibold text-slate-400 sm:inline-flex">
+          <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 items-center rounded-[8px] border border-[#ECECEC] bg-white px-1.5 py-0.5 font-mono text-[10px] font-semibold text-[#9CA3AF] sm:inline-flex">
             ⌘ K
           </kbd>
         </div>
 
-        <div className="ml-auto flex items-center gap-2 md:gap-3">
+        <div className="ml-auto flex shrink-0 items-center gap-1.5 md:gap-2">
           {onComposeMailOpen && (
             <button
               type="button"
               onClick={onComposeMailOpen}
-              className="hidden h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 text-[12px] font-bold text-slate-600 transition hover:bg-slate-50 sm:inline-flex"
+              className="hidden h-9 items-center gap-1.5 rounded-[12px] border border-[#ECECEC] px-2.5 text-[12px] font-semibold text-[#374151] transition hover:bg-[#FAFAFB] lg:inline-flex"
             >
-              <Mail size={16} className="text-[#4D9A00]" />
+              <Mail size={15} className="text-[#5AA700]" />
               Compose
             </button>
           )}
@@ -103,9 +103,9 @@ export default function AdminTopBar({
             <button
               type="button"
               onClick={onQuickActionsOpen}
-              className="hidden h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 text-[12px] font-bold text-slate-600 transition hover:bg-slate-50 sm:inline-flex"
+              className="hidden h-9 items-center gap-1.5 rounded-[12px] border border-[#ECECEC] px-2.5 text-[12px] font-semibold text-[#374151] transition hover:bg-[#FAFAFB] lg:inline-flex"
             >
-              <Zap size={16} className="text-[#4D9A00]" />
+              <Zap size={15} className="text-[#5AA700]" />
               Quick Actions
             </button>
           )}
@@ -113,10 +113,10 @@ export default function AdminTopBar({
           <button
             type="button"
             onClick={() => setDark((v) => !v)}
-            className="hidden h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-50 sm:flex"
+            className="hidden h-9 w-9 items-center justify-center rounded-[12px] border border-[#ECECEC] text-[#6B7280] transition hover:bg-[#FAFAFB] sm:flex"
             aria-label="Toggle theme"
           >
-            {dark ? <Sun size={18} /> : <Moon size={18} />}
+            {dark ? <Sun size={16} /> : <Moon size={16} />}
           </button>
 
           <div ref={bellRef} className="relative">
@@ -126,12 +126,12 @@ export default function AdminTopBar({
                 setNotificationsOpen((v) => !v);
                 setSearchOpen(false);
               }}
-              className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-50"
+              className="relative flex h-9 w-9 items-center justify-center rounded-[12px] border border-[#ECECEC] text-[#6B7280] transition hover:bg-[#FAFAFB]"
               aria-label="Notifications"
             >
-              <Bell size={18} />
+              <Bell size={16} />
               {unreadCount > 0 && (
-                <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
                   {unreadCount > 99 ? "99+" : unreadCount}
                 </span>
               )}
@@ -143,16 +143,16 @@ export default function AdminTopBar({
             />
           </div>
 
-          <div className="flex items-center gap-2.5 border-l border-slate-200 pl-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-[#A6FF2E] to-[#7AE02E] text-xs font-black text-slate-900">
+          <div
+            className="flex max-w-[200px] items-center gap-2 border-l border-[#ECECEC] pl-2.5 md:max-w-[240px]"
+            title={adminEmail || undefined}
+          >
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#B6FF38] to-[#84D400] text-[11px] font-black text-[#102000]">
               {adminInitials(adminName)}
             </div>
-            <div className="hidden text-left sm:block">
-              <p className="text-sm font-bold leading-none text-slate-900">{adminName}</p>
-              <p className="mt-0.5 text-[11px] font-medium text-slate-500">{adminRole}</p>
-              {adminEmail && (
-                <p className="mt-0.5 hidden text-[10px] font-medium text-slate-400 lg:block">{adminEmail}</p>
-              )}
+            <div className="hidden min-w-0 text-left sm:block">
+              <p className="truncate text-[13px] font-bold leading-tight text-[#111827]">{adminName}</p>
+              <p className="truncate text-[11px] font-medium leading-tight text-[#6B7280]">{adminRole}</p>
             </div>
           </div>
         </div>

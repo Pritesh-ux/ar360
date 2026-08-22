@@ -2,7 +2,6 @@ import fs from "fs/promises";
 import path from "path";
 import { query } from "@/lib/db";
 import { resolvePlanLimits } from "@/lib/billing/resolve-plan-limits";
-import { mapLegacyPlanId } from "@/lib/billing/plan-enforcement";
 import { getCustomerEntitlements } from "@/lib/billing/customer-entitlements";
 import { getSummaryCounts } from "@/server/analytics/analytics.repository";
 import { buildDateRange } from "@/server/analytics/analytics.middleware";
@@ -160,29 +159,6 @@ function classifyStorageFile(fileName: string): "models" | "textures" | "posters
   return "other";
 }
 
-async function safeStorageMb(customerUid: string) {
-  try {
-    const rows = await query<{ total: string | number | null }>(
-      "SELECT COALESCE(SUM(size_bytes), 0) AS total FROM product_assets WHERE customer_uid = ?",
-      [customerUid],
-    );
-    const bytes = Number(rows[0]?.total || 0);
-    if (bytes > 0) return bytes / 1024 / 1024;
-  } catch {
-    // fall through
-  }
-
-  try {
-    const rows = await query<{ storage_used_mb: string | number | null }>(
-      "SELECT storage_used_mb FROM customers WHERE customer_uid = ? LIMIT 1",
-      [customerUid],
-    );
-    return Number(rows[0]?.storage_used_mb || 0);
-  } catch {
-    return 0;
-  }
-}
-
 async function getStorageBreakdown(customerUid: string) {
   const breakdown = { modelsMb: 0, texturesMb: 0, postersMb: 0, otherMb: 0 };
 
@@ -332,9 +308,9 @@ async function getTopProductsForRange(
        p.category,
        p.poster,
        p.thumbnail_url,
-       SUM(CASE WHEN e.event IN ('viewer_open','open_embed') THEN 1 ELSE 0 END) AS views,
-       SUM(CASE WHEN e.event IN ('ar_launch_success','ar_button_click') THEN 1 ELSE 0 END) AS ar_opens,
-       SUM(CASE WHEN e.event IN ('download_qr','qr_scan') THEN 1 ELSE 0 END) AS qr_scans
+       SUM(CASE WHEN e.event = 'viewer_open' THEN 1 ELSE 0 END) AS views,
+       SUM(CASE WHEN e.event = 'ar_launch_success' THEN 1 ELSE 0 END) AS ar_opens,
+       SUM(CASE WHEN e.event IN ('qr_scan','download_qr') THEN 1 ELSE 0 END) AS qr_scans
      FROM analytics_events e
      INNER JOIN products p ON p.id = e.product_uid AND p.customer_uid = e.customer_uid
      WHERE e.customer_uid = ?

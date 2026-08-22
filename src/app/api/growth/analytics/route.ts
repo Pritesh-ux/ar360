@@ -11,7 +11,7 @@ export async function GET(request: Request) {
   const user = await requireScopedApiUser();
   if (!user) return rejectScopedApiUser();
 
-  const permission = await enforcePermission(user.customerUid, "access_dashboard");
+  const permission = await enforcePermission(user.customerUid, "analytics");
   if (!permission.ok) return permission.response;
 
   const { searchParams } = new URL(request.url);

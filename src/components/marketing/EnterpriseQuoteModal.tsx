@@ -24,6 +24,11 @@ import {
   Cuboid,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import {
+  ENTERPRISE_COUNTRIES,
+  countryHasStateList,
+  statesForCountry,
+} from "@/lib/enterprise-sales/geo";
 
 type EnterpriseQuoteModalProps = {
   open: boolean;
@@ -68,12 +73,16 @@ export default function EnterpriseQuoteModal({ open, onClose, intent }: Enterpri
   const [error, setError] = useState("");
   const [requestId, setRequestId] = useState("");
   const [selectedFeatures, setSelectedFeatures] = useState<Record<string, boolean>>({});
+  const [country, setCountry] = useState("India");
+  const [stateValue, setStateValue] = useState("");
 
   const close = useCallback(() => {
     setError("");
     setRequestId("");
     setSubmitting(false);
     setSelectedFeatures({});
+    setCountry("India");
+    setStateValue("");
     formRef.current?.reset();
     onClose();
   }, [onClose]);
@@ -110,7 +119,9 @@ export default function EnterpriseQuoteModal({ open, onClose, intent }: Enterpri
       businessEmail: formData.get("businessEmail"),
       phone: formData.get("phone"),
       companyWebsite: formData.get("companyWebsite"),
+      address: formData.get("address"),
       country: formData.get("country"),
+      state: formData.get("state"),
       industry: formData.get("industry"),
       expectedProducts: optionalNumber("expectedProducts"),
       expectedStorageGb: optionalNumber("expectedStorageGb"),
@@ -134,6 +145,8 @@ export default function EnterpriseQuoteModal({ open, onClose, intent }: Enterpri
       }
       setRequestId(result.requestId || "");
       setSelectedFeatures({});
+      setCountry("India");
+      setStateValue("");
       formRef.current?.reset();
     } catch {
       setError("Unable to submit your request. Check your connection and try again.");
@@ -143,10 +156,12 @@ export default function EnterpriseQuoteModal({ open, onClose, intent }: Enterpri
   }
 
   const selectedCount = Object.values(selectedFeatures).filter(Boolean).length;
+  const stateOptions = statesForCountry(country);
+  const useStateSelect = countryHasStateList(country);
 
   return createPortal(
     <div
-      className="enterprise-request-modal fixed inset-0 z-[200] flex items-center justify-center p-3 sm:p-6"
+      className="enterprise-request-modal fixed inset-0 z-[100090] flex items-center justify-center p-3 sm:p-6"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !submitting) close();
       }}
@@ -296,8 +311,66 @@ export default function EnterpriseQuoteModal({ open, onClose, intent }: Enterpri
                       maxLength={500}
                       optional
                     />
-                    <Field label="Country" name="country" required autoComplete="country-name" />
-                    <Field label="Industry" name="industry" required className="sm:col-span-2" />
+                    <Field label="Industry" name="industry" required />
+                    <label className="block text-[13px] font-black text-slate-800 sm:col-span-2">
+                      <span className="inline-flex items-center gap-1.5">
+                        Address
+                        <span className="text-red-500">*</span>
+                      </span>
+                      <textarea
+                        name="address"
+                        required
+                        rows={2}
+                        maxLength={500}
+                        autoComplete="street-address"
+                        placeholder="Street, area, city, PIN / ZIP"
+                        className={`${fieldClass} h-auto resize-y py-3.5 font-medium leading-6`}
+                      />
+                    </label>
+                    <SelectField
+                      label="Country"
+                      name="country"
+                      required
+                      value={country}
+                      onChange={(value) => {
+                        setCountry(value);
+                        setStateValue("");
+                      }}
+                    >
+                      {ENTERPRISE_COUNTRIES.map((item) => (
+                        <option key={item} value={item}>
+                          {item}
+                        </option>
+                      ))}
+                    </SelectField>
+                    {useStateSelect ? (
+                      <SelectField
+                        label="State"
+                        name="state"
+                        required
+                        value={stateValue}
+                        onChange={setStateValue}
+                      >
+                        <option value="" disabled>
+                          Select state
+                        </option>
+                        {stateOptions.map((item) => (
+                          <option key={item} value={item}>
+                            {item}
+                          </option>
+                        ))}
+                      </SelectField>
+                    ) : (
+                      <Field
+                        label="State / Region"
+                        name="state"
+                        required
+                        value={stateValue}
+                        onChange={(event) => setStateValue(event.target.value)}
+                        autoComplete="address-level1"
+                        placeholder="State or region"
+                      />
+                    )}
                   </div>
                 </FormSection>
 
@@ -491,6 +564,46 @@ function Field({ label, name, required, optional, className = "", ...props }: Fi
         className={fieldClass}
         {...props}
       />
+    </label>
+  );
+}
+
+function SelectField({
+  label,
+  name,
+  required,
+  value,
+  onChange,
+  children,
+  className = "",
+}: {
+  label: string;
+  name: string;
+  required?: boolean;
+  value: string;
+  onChange: (value: string) => void;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <label className={`block text-[13px] font-black text-slate-800 ${className}`}>
+      <span className="inline-flex items-center gap-1.5">
+        {label}
+        {required ? <span className="text-red-500">*</span> : null}
+      </span>
+      <select
+        name={name}
+        required={required}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className={`${fieldClass} appearance-none bg-[length:1rem] bg-[right_0.9rem_center] bg-no-repeat pr-10`}
+        style={{
+          backgroundImage:
+            "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\")",
+        }}
+      >
+        {children}
+      </select>
     </label>
   );
 }

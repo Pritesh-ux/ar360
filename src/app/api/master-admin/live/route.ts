@@ -64,16 +64,81 @@ export async function GET(request: NextRequest) {
   }
 
   if (kind === "login") {
-    const rows = await safe(query<any>(`SELECT l.id, COALESCE(c.company_name,c.contact_name,l.email) customer, l.email,
-      CASE l.status WHEN 'success' THEN 'Success' WHEN 'blocked' THEN 'Blocked' ELSE 'Failed' END status,
-      l.reason, l.ip_hash ip, '' country, '' city, 'Unknown' device,
-      l.user_agent browser, '' os, 'Password' loginMethod,
-      CASE WHEN l.status='success' THEN 'Active' ELSE 'Expired' END sessionStatus,
-      '0m' sessionDuration, '-' logoutReason,
-      DATE_FORMAT(l.created_at,'%d %b %Y, %h:%i %p') time,
-      CASE WHEN l.status='success' THEN 'Low' WHEN l.status='blocked' THEN 'High' ELSE 'Medium' END risk
-      FROM auth_login_logs l LEFT JOIN customers c ON c.email=l.email ORDER BY l.created_at DESC LIMIT 500`));
-    return NextResponse.json({ rows });
+    const sp = request.nextUrl.searchParams;
+    const search = String(sp.get("search") || "").trim().slice(0, 120);
+    const status = String(sp.get("status") || "All").trim();
+    const risk = String(sp.get("risk") || "All").trim();
+    const page = Math.max(1, Number(sp.get("page") || 1) || 1);
+    const pageSize = Math.min(100, Math.max(10, Number(sp.get("pageSize") || 50) || 50));
+    const offset = (page - 1) * pageSize;
+
+    const where: string[] = ["1=1"];
+    const args: Array<string | number> = [];
+    if (search) {
+      where.push(`(l.email LIKE ? OR COALESCE(c.company_name,c.contact_name,'') LIKE ? OR l.ip_hash LIKE ? OR COALESCE(l.reason,'') LIKE ?)`);
+      const like = `%${search}%`;
+      args.push(like, like, like, like);
+    }
+    if (status && status !== "All") {
+      const map: Record<string, string> = {
+        Success: "success",
+        Failed: "failed",
+        Blocked: "blocked",
+        Locked: "blocked",
+        Suspicious: "failed",
+      };
+      const db = map[status];
+      if (db) {
+        where.push(`l.status = ?`);
+        args.push(db);
+      }
+    }
+    if (risk === "High") {
+      where.push(`l.status = 'blocked'`);
+    } else if (risk === "Medium") {
+      where.push(`l.status <> 'success' AND l.status <> 'blocked'`);
+    } else if (risk === "Low") {
+      where.push(`l.status = 'success'`);
+    }
+
+    const whereSql = where.join(" AND ");
+    const countRows = await safe(
+      query<{ c: number }>(
+        `SELECT COUNT(*) AS c
+           FROM auth_login_logs l
+           LEFT JOIN customers c ON c.email = l.email
+          WHERE ${whereSql}`,
+        args,
+      ),
+    );
+    const total = Number(countRows[0]?.c || 0);
+    const rows = await safe(
+      query<any>(
+        `SELECT l.id, COALESCE(c.company_name,c.contact_name,l.email) customer, l.email,
+          CASE l.status WHEN 'success' THEN 'Success' WHEN 'blocked' THEN 'Blocked' ELSE 'Failed' END status,
+          l.reason, l.ip_hash ip, '' country, '' city, 'Unknown' device,
+          l.user_agent browser, '' os, 'Password' loginMethod,
+          CASE WHEN l.status='success' THEN 'Active' ELSE 'Expired' END sessionStatus,
+          '0m' sessionDuration, '-' logoutReason,
+          DATE_FORMAT(l.created_at,'%d %b %Y, %h:%i %p') time,
+          CASE WHEN l.status='success' THEN 'Low' WHEN l.status='blocked' THEN 'High' ELSE 'Medium' END risk
+         FROM auth_login_logs l
+         LEFT JOIN customers c ON c.email=l.email
+         WHERE ${whereSql}
+         ORDER BY l.created_at DESC
+         LIMIT ? OFFSET ?`,
+        [...args, pageSize, offset],
+      ),
+    );
+    return NextResponse.json({
+      rows,
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / pageSize)),
+      },
+    });
   }
 
   if (kind === "activity") {

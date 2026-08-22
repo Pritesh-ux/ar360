@@ -10,7 +10,7 @@ type Props = {
 export default function AdminFilterBar({ children, onClear, className = "" }: Props) {
   return (
     <div
-      className={`flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row lg:flex-wrap lg:items-center ${className}`}
+      className={`flex flex-col gap-2 border-b border-[#ECECEC] p-4 lg:flex-row lg:flex-wrap lg:items-center ${className}`}
     >
       {children}
       {onClear && (

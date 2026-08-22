@@ -9,10 +9,13 @@ const PLAN_LABELS: Record<string, string> = {
   pro: "Professional",
   business: "Business",
   enterprise: "Enterprise",
+  organisation: "Enterprise",
+  organization: "Enterprise",
 };
 
 export function planLabel(planId: string) {
-  const key = String(planId || "free").toLowerCase();
+  const key = String(planId || "free").toLowerCase().trim();
+  if (key.startsWith("ecp_")) return "Enterprise";
   return PLAN_LABELS[key] || key.charAt(0).toUpperCase() + key.slice(1);
 }
 
@@ -26,14 +29,17 @@ export function statusBadgeClass(status: string) {
 
 export function fmtStorage(mb: number | string) {
   const val = Number(mb || 0);
+  if (!Number.isFinite(val) || val <= 0) return "0 MB";
   if (val >= 1024) return `${(val / 1024).toFixed(val >= 10240 ? 0 : 1)} GB`;
-  return `${Math.round(val)} MB`;
+  if (val >= 1) return `${val >= 10 ? Math.round(val) : val.toFixed(1)} MB`;
+  return `${Math.max(val, 0.1).toFixed(1)} MB`;
 }
 
 export function fmtBandwidth(mb: number | string) {
   const val = Number(mb || 0);
+  if (!Number.isFinite(val) || val <= 0) return "0 MB";
   if (val >= 1024) return `${(val / 1024).toFixed(val >= 10240 ? 0 : 1)} GB`;
-  return `${Math.round(val)} GB`;
+  return `${val >= 10 ? Math.round(val) : val.toFixed(1)} MB`;
 }
 
 export function fmtRevenue(amount: number | string) {

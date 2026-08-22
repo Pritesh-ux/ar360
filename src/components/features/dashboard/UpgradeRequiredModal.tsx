@@ -3,6 +3,7 @@
 import React from "react";
 import { AlertTriangle, ArrowRight, X } from "lucide-react";
 import { useRouter } from "next/navigation";
+import ViewportPortal from "@/components/shared/ViewportPortal";
 
 type Props = {
   isOpen: boolean;
@@ -16,6 +17,7 @@ export default function UpgradeRequiredModal({ isOpen, onClose, reason }: Props)
   if (!isOpen) return null;
 
   return (
+    <ViewportPortal>
     <div
       className="fixed inset-0 z-[99999] grid place-items-center p-4"
       style={{
@@ -136,5 +138,6 @@ export default function UpgradeRequiredModal({ isOpen, onClose, reason }: Props)
         </div>
       </div>
     </div>
+    </ViewportPortal>
   );
 }

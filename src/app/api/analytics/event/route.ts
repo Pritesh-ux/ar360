@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
-import { ensureAnalyticsSchema, query } from "@/lib/db";
+import { ensureAnalyticsSchema } from "@/lib/db";
 import { trackEvent } from "@/server/analytics/analytics.service";
-import type { AnalyticsEventPayload } from "@/server/analytics/analytics.types";
+import type { AnalyticsEventPayload, AnalyticsEventName } from "@/server/analytics/analytics.types";
+import { canonicalizeAnalyticsEvent } from "@/server/analytics/analytics.events";
 import { normalizeScopedId } from "@/lib/customerIsolation";
 import { enforceRateLimit } from "@/lib/rate-limit";
+import { resolveProduct } from "@/server/products/product-resolver";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,14 +18,6 @@ async function ensureSchema() {
   schemaReady = true;
 }
 
-async function resolveProductCustomerUid(productUid: string) {
-  const rows = await query<{ customer_uid: string }>(
-    "SELECT customer_uid FROM products WHERE id = ? OR public_id = ? OR viewer_slug = ? LIMIT 1",
-    [productUid, productUid, productUid],
-  ).catch(() => []);
-  return rows[0]?.customer_uid || "anonymous";
-}
-
 export async function POST(request: Request): Promise<NextResponse> {
   try {
     const limited = await enforceRateLimit(request, { scope: "analytics:event", limit: 120, windowSec: 60 });
@@ -33,22 +27,31 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     await ensureSchema();
 
-    const body = (await request.json()) as Partial<AnalyticsEventPayload>;
+    let body: Partial<AnalyticsEventPayload> = {};
+    try {
+      const text = await request.text();
+      body = JSON.parse(text) as Partial<AnalyticsEventPayload>;
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    }
 
-    const productUid = normalizeScopedId(body.productUid);
+    const rawProductUid = normalizeScopedId(body.productUid);
     const sessionId = String(body.sessionId || "").trim().slice(0, 191);
 
-    if (!body.event || !productUid || !sessionId) {
+    if (!body.event || !rawProductUid || !sessionId) {
       return NextResponse.json(
         { error: "event, productUid and sessionId are required" },
         { status: 400 },
       );
     }
 
+    const resolved = await resolveProduct(rawProductUid).catch(() => null);
+    const event = canonicalizeAnalyticsEvent(body.event as AnalyticsEventName);
+
     const payload: AnalyticsEventPayload = {
-      event: body.event,
-      productUid,
-      customerUid: await resolveProductCustomerUid(productUid),
+      event,
+      productUid: resolved?.productId ?? rawProductUid,
+      customerUid: resolved?.customerUid ?? "anonymous",
       sessionId,
       meta: body.meta,
       screenWidth: body.screenWidth,

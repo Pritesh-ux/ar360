@@ -5,14 +5,14 @@ import { DEFAULT_PLAN_LIMITS, mapLegacyPlanId } from "./plan-enforcement";
 import { BILLING_PLANS, getPlanById, type PlanId } from "./plans";
 
 describe("standard plan regression contract", () => {
-  it("keeps legacy aliases while separating Business and Enterprise", () => {
+  it("keeps legacy aliases while separating Business and Organisation", () => {
     assert.deepEqual(
-      ["trial", "basic", "professional", "business", "enterprise"].map(mapLegacyPlanId),
-      ["trial", "starter", "pro", "business", "enterprise"],
+      ["trial", "basic", "professional", "business", "enterprise", "organisation"].map(mapLegacyPlanId),
+      ["trial", "starter", "pro", "business", "enterprise", "enterprise"],
     );
     assert.deepEqual(
-      ["trial", "basic", "professional", "business", "enterprise"].map((id) => getPlanById(id).id),
-      ["trial", "starter", "pro", "business", "enterprise"],
+      ["trial", "basic", "professional", "business", "enterprise", "organisation"].map((id) => getPlanById(id).id),
+      ["trial", "starter", "pro", "business", "enterprise", "enterprise"],
     );
   });
 
@@ -23,7 +23,7 @@ describe("standard plan regression contract", () => {
       "Choose Plan",
       "Choose Plan",
       "Choose Plan",
-      "Contact Sales",
+      "Custom quote",
     ]);
     assert.deepEqual(mapped.map((id) => getPlanSignupPath(id, "monthly")), [
       "/signup",
@@ -48,7 +48,7 @@ describe("standard plan regression contract", () => {
           id: "trial",
           storageGb: 0.1,
           bandwidthGb: 1,
-          products: 1,
+          products: 10,
           limits: {
             customBranding: false,
             advancedAnalytics: false,
@@ -60,8 +60,8 @@ describe("standard plan regression contract", () => {
         {
           id: "starter",
           storageGb: 0.5,
-          bandwidthGb: 5,
-          products: 5,
+          bandwidthGb: 2,
+          products: 10,
           limits: {
             customBranding: false,
             advancedAnalytics: false,
@@ -71,30 +71,42 @@ describe("standard plan regression contract", () => {
           },
         },
         {
-          id: "pro",
-          storageGb: 5,
-          bandwidthGb: 50,
+          id: "intermediate",
+          storageGb: 2,
+          bandwidthGb: 100,
           products: 50,
           limits: {
-            customBranding: true,
-            advancedAnalytics: true,
+            customBranding: false,
+            advancedAnalytics: false,
             embedViewer: true,
-            priorityProcessing: true,
+            priorityProcessing: false,
             prioritySupport: false,
           },
         },
         {
-          id: "business",
-          storageGb: 25,
+          id: "pro",
+          storageGb: 5,
           bandwidthGb: 250,
-          products: 250,
+          products: 100,
+          limits: {
+            customBranding: true,
+            advancedAnalytics: true,
+            embedViewer: true,
+            priorityProcessing: false,
+            prioritySupport: true,
+          },
+        },
+        {
+          id: "business",
+          storageGb: 10,
+          bandwidthGb: 500,
+          products: 200,
           limits: {
             customBranding: true,
             advancedAnalytics: true,
             embedViewer: true,
             priorityProcessing: true,
             prioritySupport: true,
-            allowCustomDomain: true,
           },
         },
         {
@@ -118,7 +130,7 @@ describe("standard plan regression contract", () => {
   it("keeps enforcement defaults unchanged for every standard plan", () => {
     assert.deepEqual(
       Object.fromEntries(
-        ["trial", "starter", "pro", "business", "enterprise"].map((id) => {
+        ["trial", "starter", "intermediate", "pro", "business", "enterprise"].map((id) => {
           const plan = DEFAULT_PLAN_LIMITS[id];
           return [id, {
             products: plan.products,
@@ -133,7 +145,7 @@ describe("standard plan regression contract", () => {
       ),
       {
         trial: {
-          products: 1,
+          products: 10,
           storageMb: 100,
           bandwidthGb: 1,
           allowViewer: true,
@@ -142,27 +154,36 @@ describe("standard plan regression contract", () => {
           allowCustomBranding: false,
         },
         starter: {
-          products: 5,
+          products: 10,
           storageMb: 512,
-          bandwidthGb: 5,
+          bandwidthGb: 2,
+          allowViewer: true,
+          allowUpload: true,
+          allowAr: true,
+          allowCustomBranding: false,
+        },
+        intermediate: {
+          products: 50,
+          storageMb: 2048,
+          bandwidthGb: 100,
           allowViewer: true,
           allowUpload: true,
           allowAr: true,
           allowCustomBranding: false,
         },
         pro: {
-          products: 50,
+          products: 100,
           storageMb: 5120,
-          bandwidthGb: 50,
+          bandwidthGb: 250,
           allowViewer: true,
           allowUpload: true,
           allowAr: true,
           allowCustomBranding: true,
         },
         business: {
-          products: 250,
-          storageMb: 25600,
-          bandwidthGb: 250,
+          products: 200,
+          storageMb: 10240,
+          bandwidthGb: 500,
           allowViewer: true,
           allowUpload: true,
           allowAr: true,
@@ -179,5 +200,10 @@ describe("standard plan regression contract", () => {
         },
       },
     );
+  });
+
+  it("shows Enterprise as the public name for enterprise id", () => {
+    assert.equal(getPlanById("enterprise").name, "ENTERPRISE");
+    assert.equal(getPlanById("organisation").id, "enterprise");
   });
 });

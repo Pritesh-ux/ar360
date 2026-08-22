@@ -57,7 +57,6 @@ export async function POST(request: NextRequest) {
   try {
     const gate = await gateUser();
     if ("error" in gate && gate.error) return gate.error;
-    const user = gate.user!;
 
     const body = await request.json();
     const productId = String(body.productId || "");
@@ -95,6 +94,7 @@ export async function PUT(request: NextRequest) {
       customerUid: user.customerUid,
       userId: user.id,
       id,
+      origin: request.nextUrl.origin,
       patch: {
         foregroundColor: body.foregroundColor,
         backgroundColor: body.backgroundColor,

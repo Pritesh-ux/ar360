@@ -63,6 +63,7 @@ export async function PATCH(
         assignedTo: body.assignedTo,
         category: body.category,
         subject: body.subject,
+        processStatus: body.processStatus,
       },
       admin.id,
     );

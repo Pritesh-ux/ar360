@@ -20,6 +20,6 @@ export function getPlanSignupPath(planId: PlanId, cycle: BillingCycle = "monthly
 
 export function getPlanCtaLabel(planId: PlanId) {
   if (planId === "trial") return "Start Free Trial";
-  if (planId === "enterprise") return "Contact Sales";
+  if (planId === "enterprise") return "Custom quote";
   return "Choose Plan";
 }

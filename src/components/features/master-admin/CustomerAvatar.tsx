@@ -1,4 +1,5 @@
 import { avatarColor, customerInitials } from "./customers-utils";
+import AppImage from "@/components/shared/AppImage";
 
 type Props = {
   name: string;
@@ -19,7 +20,7 @@ export default function CustomerAvatar({ name, seed, size = "md", imageUrl }: Pr
 
   if (imageUrl) {
     return (
-      <img
+      <AppImage
         src={imageUrl}
         alt={name}
         className={`${cls} shrink-0 rounded-full object-cover ring-2 ring-white`}

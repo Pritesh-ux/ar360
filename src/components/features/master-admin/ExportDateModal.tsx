@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { X } from "lucide-react";
+import ViewportPortal from "@/components/shared/ViewportPortal";
 
 interface ExportDateModalProps {
   isOpen: boolean;
@@ -58,6 +59,7 @@ export default function ExportDateModal({ isOpen, onClose, onExport, title = "Ex
   if (!isOpen) return null;
 
   return (
+    <ViewportPortal>
     <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/40 p-4">
       <div className="w-full max-w-md rounded-[20px] border border-slate-200/60 bg-white p-6 shadow-2xl">
         <div className="mb-5 flex items-center justify-between">
@@ -112,5 +114,6 @@ export default function ExportDateModal({ isOpen, onClose, onExport, title = "Ex
         </div>
       </div>
     </div>
+    </ViewportPortal>
   );
 }

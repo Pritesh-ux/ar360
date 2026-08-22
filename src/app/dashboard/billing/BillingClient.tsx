@@ -1,28 +1,26 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { LucideIcon } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
+import { useDeferredEffect } from "@/lib/react/use-deferred-effect";
 import {
   ArrowDownToLine,
-  Box,
   Calendar,
-  CreditCard,
   Download,
-  HardDrive,
   Headphones,
   IndianRupee,
-  Plus,
-  QrCode,
   Settings,
-  Smartphone,
   Sparkles,
 } from "lucide-react";
 import UserPageHeader from "@/components/user-panel/UserPageHeader";
+import UserPanelPageShell from "@/components/user-panel/UserPanelPageShell";
+import UserWorkspaceLoading from "@/components/user-panel/UserWorkspaceLoading";
+import UserStatCard from "@/components/user-panel/UserStatCard";
 import StatusBadge from "@/components/user-panel/StatusBadge";
 import AvailableAddonsSection from "@/components/billing/AvailableAddonsSection";
+import { getPlanById, getPlanDisplayName } from "@/lib/billing/plans";
 
-type BillingTab = "overview" | "invoices" | "payment" | "details";
+type BillingTab = "overview" | "invoices";
 
 type Subscription = {
   plan_id: string;
@@ -68,17 +66,24 @@ type CustomerInvoice = {
 const TABS: { key: BillingTab; label: string }[] = [
   { key: "overview", label: "Overview" },
   { key: "invoices", label: "Invoices" },
-  { key: "payment", label: "Payment Methods" },
-  { key: "details", label: "Billing Details" },
 ];
 
 function formatInr(amount: number | null | undefined) {
-  if (amount == null) return "—";
+  if (amount == null) return "Custom";
   return `₹${amount.toLocaleString("en-IN")}`;
 }
 
 function formatMoneyPaise(paise: number) {
   return `₹${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+}
+
+function gstBreakdown(totalInclusive: number | null | undefined) {
+  if (totalInclusive == null || !Number.isFinite(totalInclusive) || totalInclusive <= 0) {
+    return { subtotal: null as number | null, tax: null as number | null, total: null as number | null };
+  }
+  const total = Math.round(totalInclusive);
+  const subtotal = Math.round(total / 1.18);
+  return { subtotal, tax: total - subtotal, total };
 }
 
 function fmtDate(value?: string | null) {
@@ -101,10 +106,17 @@ function pct(used: number, total: number) {
   return Math.min(100, Math.round((used / total) * 100));
 }
 
-function planDisplayName(planId?: string, name?: string) {
-  if (name) return name;
-  if (!planId) return "Trial";
-  return planId.charAt(0).toUpperCase() + planId.slice(1);
+function formatDataSize(mb: number) {
+  if (!Number.isFinite(mb) || mb <= 0) return "0 MB";
+  if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`;
+  if (mb >= 1) return `${mb.toFixed(1)} MB`;
+  return `${Math.max(mb, 0.1).toFixed(1)} MB`;
+}
+
+function formatLimitSize(mb: number | null | undefined, unlimited?: boolean) {
+  if (unlimited || mb == null || mb <= 0) return "Unlimited";
+  if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`;
+  return `${mb.toFixed(0)} MB`;
 }
 
 type SubscriptionContextPayload = {
@@ -156,18 +168,22 @@ export default function BillingClient() {
   const [entitlement, setEntitlement] = useState<EntitlementSnapshot | null>(null);
   const [engineContext, setEngineContext] = useState<SubscriptionContextPayload | null>(null);
   const [invoices, setInvoices] = useState<CustomerInvoice[]>([]);
-  const [qrTotal, setQrTotal] = useState(0);
   const [addons, setAddons] = useState<any[]>([]);
+  const [addonCheckoutSlug, setAddonCheckoutSlug] = useState<string | null>(null);
+  const [storageBreakdown, setStorageBreakdown] = useState({
+    modelsMb: 0,
+    texturesMb: 0,
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [subRes, entRes, invRes, qrRes, addonsRes] = await Promise.all([
+      const [subRes, entRes, invRes, addonsRes, overviewRes] = await Promise.all([
         fetch("/api/billing/subscription", { cache: "no-store" }),
         fetch("/api/billing/entitlement?action=upload", { cache: "no-store" }),
         fetch("/api/billing/invoices", { cache: "no-store" }),
-        fetch("/api/qr-codes?status=all&pageSize=1&page=1", { cache: "no-store" }).catch(() => null),
         fetch("/api/billing/addons", { cache: "no-store" }).catch(() => null),
+        fetch("/api/dashboard/overview?range=30d", { cache: "no-store" }).catch(() => null),
       ]);
 
       if (subRes.ok) {
@@ -182,39 +198,82 @@ export default function BillingClient() {
         const body = await invRes.json();
         setInvoices(Array.isArray(body.invoices) ? body.invoices : []);
       }
-      if (qrRes?.ok) {
-        const body = await qrRes.json();
-        setQrTotal(Number(body.stats?.total || body.context?.usage?.qrCodes?.used || 0));
-      }
       if (addonsRes?.ok) {
         const body = await addonsRes.json();
         setAddons(body.addons || []);
+      }
+      if (overviewRes?.ok) {
+        const body = await overviewRes.json();
+        setStorageBreakdown({
+          modelsMb: Number(body.storage?.breakdown?.modelsMb || 0),
+          texturesMb: Number(body.storage?.breakdown?.texturesMb || 0),
+        });
       }
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     void load();
   }, [load]);
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const requested = params.get("tab");
     if (requested === "invoices") setTab("invoices");
-    if (requested === "payment") setTab("payment");
-    if (requested === "details") setTab("details");
+    const addon = params.get("addon");
+    if (addon) setAddonCheckoutSlug(addon);
+
+    const invoiceId = String(params.get("invoice") || "").trim();
+    if (invoiceId) {
+      setTab("invoices");
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", "invoices");
+      url.searchParams.delete("invoice");
+      window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+      window.location.assign(
+        `/api/billing/invoices/${encodeURIComponent(invoiceId)}/download`,
+      );
+    }
   }, []);
+
+  function clearAddonCheckoutParam() {
+    setAddonCheckoutSlug(null);
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("addon");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+  }
 
   const plan = entitlement?.plan;
   const usage = entitlement?.usage;
-  const planName = planDisplayName(
+  const planName = getPlanDisplayName(
     engineContext?.planId || plan?.planId || subscription?.plan_id,
     engineContext?.planName || plan?.name,
   );
+  const catalogPlan = getPlanById(engineContext?.planId || plan?.planId || subscription?.plan_id);
   const isMonthly = (subscription?.period || engineContext?.billingPeriod || "monthly") === "monthly";
-  const amountInr = isMonthly ? plan?.priceMonthlyInr : plan?.priceYearlyInr;
+  const planPrice = isMonthly
+    ? (plan?.priceMonthlyInr ?? catalogPlan.priceMonthlyInr)
+    : (plan?.priceYearlyInr ?? catalogPlan.priceYearlyInr);
+  const invoiceFallbackInr = (() => {
+    const paid = invoices.find((inv) => {
+      const status = String(inv.status || "").toLowerCase();
+      return status === "paid" || status === "completed" || status === "success";
+    });
+    const source = paid || invoices[0];
+    if (!source || !Number.isFinite(source.total_paise) || source.total_paise <= 0) return null;
+    return Math.round(source.total_paise / 100);
+  })();
+  const amountInr =
+    planPrice != null && Number(planPrice) > 0
+      ? Number(planPrice)
+      : engineContext?.isEnterpriseCustom || catalogPlan.priceMonthlyInr == null
+        ? invoiceFallbackInr
+        : planPrice == null
+          ? invoiceFallbackInr
+          : Number(planPrice);
   const renewalDate =
     engineContext?.renewAt ||
     engineContext?.expiresAt ||
@@ -230,22 +289,28 @@ export default function BillingClient() {
       : plan?.storageMb
         ? plan.storageMb / 1024
         : 0;
-  const storageUsedGb =
+  const storageUsedMb =
     engineContext?.usage.storage.usedBytes != null
-      ? engineContext.usage.storage.usedBytes / 1024 / 1024 / 1024
-      : (usage?.storageUsedGb ?? 0);
-  const productsUsed = engineContext?.usage.products.used ?? usage?.productsUsed ?? 0;
-  const productsLimit = engineContext?.limits.products ?? plan?.products ?? 0;
-  const bandwidthUsed =
+      ? engineContext.usage.storage.usedBytes / 1024 / 1024
+      : (usage?.storageUsedMb ?? (usage?.storageUsedGb ?? 0) * 1024);
+  const storageLimitMb = engineContext?.limits.unlimitedStorage
+    ? null
+    : engineContext?.limits.storageMb ?? plan?.storageMb ?? (storageTotalGb > 0 ? storageTotalGb * 1024 : null);
+  const bandwidthUsedMb =
     engineContext?.usage.bandwidth.usedBytes != null
-      ? engineContext.usage.bandwidth.usedBytes / 1024 / 1024 / 1024
-      : (usage?.bandwidthUsedGb ?? 0);
-  const bandwidthLimit = engineContext?.limits.unlimitedBandwidth
-    ? 0
-    : (engineContext?.limits.bandwidthGb ?? plan?.bandwidthGb ?? 0);
-  const total = amountInr ?? 0;
-  const subtotal = Math.round(total / 1.18);
-  const tax = total - subtotal;
+      ? engineContext.usage.bandwidth.usedBytes / 1024 / 1024
+      : (usage?.bandwidthUsedGb ?? 0) * 1024;
+  const bandwidthLimitMb = engineContext?.limits.unlimitedBandwidth
+    ? null
+    : ((engineContext?.limits.bandwidthGb ?? plan?.bandwidthGb ?? 0) * 1024 || null);
+  const productsUsed =
+    engineContext?.usage.products.used ?? usage?.productsUsed ?? 0;
+  const productsLimit =
+    engineContext?.limits.products == null
+      ? plan?.products ?? null
+      : engineContext.limits.products;
+  const productsUnlimited = productsLimit == null || Number(productsLimit) < 0;
+  const { subtotal, tax, total } = gstBreakdown(amountInr);
   const latestInvoice = invoices[0];
   const recentInvoices = invoices.slice(0, 5);
   const statusActive =
@@ -254,52 +319,55 @@ export default function BillingClient() {
   const showExpiryBanner =
     Boolean(engineContext) &&
     (!engineContext!.active || (renewDays != null && renewDays <= 7));
-  const displayQrTotal = engineContext?.usage.qrCodes.used ?? qrTotal;
-  const qrLimit = engineContext?.limits.qrCodes ?? null;
 
-  const usageRows = useMemo(
-    () => [
-      {
-        label: "Storage",
-        icon: HardDrive,
-        usedLabel: `${storageUsedGb.toFixed(1)} GB`,
-        percent:
-          engineContext?.usage.storage.percentUsed ?? pct(storageUsedGb, storageTotalGb),
-      },
-      {
-        label: "3D Model Uploads",
-        icon: Box,
-        usedLabel: `${productsUsed} / ${productsLimit || "∞"}`,
-        percent: engineContext?.usage.products.percentUsed ?? pct(productsUsed, productsLimit),
-      },
-      {
-        label: "QR Codes",
-        icon: QrCode,
-        usedLabel: qrLimit != null ? `${displayQrTotal} / ${qrLimit}` : String(displayQrTotal),
-        percent:
-          engineContext?.usage.qrCodes.percentUsed ??
-          (qrLimit != null ? pct(displayQrTotal, qrLimit) : Math.min(displayQrTotal * 5, 100)),
-      },
-      {
-        label: "Monthly AR Views",
-        icon: Smartphone,
-        usedLabel: `${bandwidthUsed.toFixed(1)} GB`,
-        percent:
-          engineContext?.usage.bandwidth.percentUsed ?? pct(bandwidthUsed, bandwidthLimit),
-      },
-    ],
-    [
-      storageUsedGb,
-      storageTotalGb,
-      productsUsed,
-      productsLimit,
-      displayQrTotal,
-      qrLimit,
-      bandwidthUsed,
-      bandwidthLimit,
-      engineContext,
-    ],
-  );
+  const usageSummary = useMemo(() => {
+    const modelsMb = storageBreakdown.modelsMb;
+    const texturesMb = storageBreakdown.texturesMb;
+    const breakdownBase = Math.max(storageUsedMb, modelsMb + texturesMb, 0.001);
+    const remaining = productsUnlimited
+      ? null
+      : Math.max(0, Number(productsLimit) - Number(productsUsed));
+    return {
+      productsUsedLabel: String(Math.max(0, Math.round(Number(productsUsed) || 0))),
+      productsLimitLabel: productsUnlimited ? "Unlimited" : String(Math.round(Number(productsLimit))),
+      productsPercent: productsUnlimited ? 0 : pct(Number(productsUsed) || 0, Number(productsLimit) || 0),
+      productsRemaining: remaining,
+      productsAtCap: remaining === 0,
+      storageUsedLabel: formatDataSize(storageUsedMb),
+      storageLimitLabel: formatLimitSize(storageLimitMb, Boolean(engineContext?.limits.unlimitedStorage)),
+      storagePercent:
+        engineContext?.usage.storage.percentUsed ??
+        (storageLimitMb != null ? pct(storageUsedMb, storageLimitMb) : 0),
+      bandwidthUsedLabel: formatDataSize(bandwidthUsedMb),
+      bandwidthLimitLabel: formatLimitSize(
+        bandwidthLimitMb,
+        Boolean(engineContext?.limits.unlimitedBandwidth),
+      ),
+      bandwidthPercent:
+        engineContext?.usage.bandwidth.percentUsed ??
+        (bandwidthLimitMb != null ? pct(bandwidthUsedMb, bandwidthLimitMb) : 0),
+      modelsMb,
+      texturesMb,
+      modelsPercent:
+        storageLimitMb != null && storageLimitMb > 0
+          ? pct(modelsMb, storageLimitMb)
+          : Math.min(100, Math.round((modelsMb / breakdownBase) * 100)),
+      texturesPercent:
+        storageLimitMb != null && storageLimitMb > 0
+          ? pct(texturesMb, storageLimitMb)
+          : Math.min(100, Math.round((texturesMb / breakdownBase) * 100)),
+    };
+  }, [
+    storageUsedMb,
+    storageLimitMb,
+    bandwidthUsedMb,
+    bandwidthLimitMb,
+    storageBreakdown,
+    engineContext,
+    productsUsed,
+    productsLimit,
+    productsUnlimited,
+  ]);
 
   function downloadLatestInvoice() {
     if (!latestInvoice) return;
@@ -307,7 +375,7 @@ export default function BillingClient() {
   }
 
   return (
-    <>
+    <UserPanelPageShell>
       <UserPageHeader
         title="Billing"
         subtitle="Manage your payments, invoices and billing information."
@@ -377,7 +445,7 @@ export default function BillingClient() {
         </section>
       ) : null}
 
-      <section className="overflow-hidden rounded-[20px] border border-[#ECECEC] bg-white shadow-sm">
+      <section className="dash-premium-card overflow-hidden">
         <div className="flex flex-wrap border-b border-[#ECECEC] px-2 pt-1">
           {TABS.map((item) => {
             const active = tab === item.key;
@@ -399,9 +467,11 @@ export default function BillingClient() {
       </section>
 
       {loading ? (
-        <div className="rounded-[20px] border border-[#ECECEC] bg-white py-16 text-center text-sm font-medium text-[#737373] shadow-sm">
-          Loading billing…
-        </div>
+        <UserWorkspaceLoading
+          className="rounded-[16px] border border-[#ECECEC]"
+          label="Loading Billing"
+          hint="Please wait while we load billing details..."
+        />
       ) : tab === "overview" ? (
         <OverviewTab
           planName={planName}
@@ -410,28 +480,34 @@ export default function BillingClient() {
           renewDays={renewDays}
           amountInr={amountInr}
           isMonthly={isMonthly}
-          usageRows={usageRows}
+          isCustomPricing={
+            Boolean(engineContext?.isEnterpriseCustom) ||
+            catalogPlan.priceMonthlyInr == null ||
+            amountInr == null
+          }
+          showUpgrade={!engineContext?.isEnterpriseCustom && String(engineContext?.planId || plan?.planId || "") !== "enterprise"}
+          includedProducts={
+            usageSummary.productsLimitLabel === "Unlimited"
+              ? `${usageSummary.productsUsedLabel} / Unlimited`
+              : `${usageSummary.productsUsedLabel} / ${usageSummary.productsLimitLabel}`
+          }
+          usageSummary={usageSummary}
           subtotal={subtotal}
           tax={tax}
           total={total}
           recentInvoices={recentInvoices}
           onViewAllInvoices={() => setTab("invoices")}
           addons={addons}
+          addonCheckoutSlug={addonCheckoutSlug}
+          onAddonCheckoutClose={clearAddonCheckoutParam}
+          onAddonPurchaseSuccess={() => void load()}
         />
-      ) : tab === "invoices" ? (
-        <section className="rounded-[20px] border border-[#ECECEC] bg-white p-5 shadow-sm">
+      ) : (
+        <section className="dash-premium-card p-5">
           <InvoicesTable invoices={invoices} />
         </section>
-      ) : tab === "payment" ? (
-        <section className="rounded-[20px] border border-[#ECECEC] bg-white p-5 shadow-sm">
-          <PaymentMethodsTab />
-        </section>
-      ) : (
-        <section className="rounded-[20px] border border-[#ECECEC] bg-white p-5 shadow-sm">
-          <BillingDetailsTab />
-        </section>
       )}
-    </>
+    </UserPanelPageShell>
   );
 }
 
@@ -442,13 +518,19 @@ function OverviewTab({
   renewDays,
   amountInr,
   isMonthly,
-  usageRows,
+  isCustomPricing = false,
+  showUpgrade = true,
+  includedProducts,
+  usageSummary,
   subtotal,
   tax,
   total,
   recentInvoices,
   onViewAllInvoices,
   addons = [],
+  addonCheckoutSlug = null,
+  onAddonCheckoutClose,
+  onAddonPurchaseSuccess,
 }: {
   planName: string;
   statusActive: boolean;
@@ -456,80 +538,152 @@ function OverviewTab({
   renewDays: number | null;
   amountInr?: number | null;
   isMonthly: boolean;
-  usageRows: { label: string; icon: LucideIcon; usedLabel: string; percent: number }[];
-  subtotal: number;
-  tax: number;
-  total: number;
+  isCustomPricing?: boolean;
+  showUpgrade?: boolean;
+  includedProducts?: string;
+  usageSummary: {
+    productsUsedLabel: string;
+    productsLimitLabel: string;
+    productsPercent: number;
+    productsRemaining: number | null;
+    productsAtCap: boolean;
+    storageUsedLabel: string;
+    storageLimitLabel: string;
+    storagePercent: number;
+    bandwidthUsedLabel: string;
+    bandwidthLimitLabel: string;
+    bandwidthPercent: number;
+    modelsMb: number;
+    texturesMb: number;
+    modelsPercent: number;
+    texturesPercent: number;
+  };
+  subtotal: number | null;
+  tax: number | null;
+  total: number | null;
   recentInvoices: CustomerInvoice[];
   onViewAllInvoices: () => void;
   addons?: any[];
+  addonCheckoutSlug?: string | null;
+  onAddonCheckoutClose?: () => void;
+  onAddonPurchaseSuccess?: () => void;
 }) {
   return (
     <div className="space-y-3">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <UserStatCard
           icon={Sparkles}
-          iconClass="bg-[#EEF9E0] text-[#84D400]"
+          accent="lime"
           label="Current Plan"
           value={planName}
+          compactValue
           extra={statusActive ? <StatusBadge label="Active" tone="success" /> : <StatusBadge label="Inactive" tone="warning" />}
           sub={renewalDate ? `Renews ${fmtDate(renewalDate)}` : undefined}
         />
-        <SummaryCard
+        <UserStatCard
           icon={Calendar}
-          iconClass="bg-sky-50 text-sky-600"
+          accent="sky"
           label="Next Billing Date"
           value={fmtDate(renewalDate)}
+          compactValue
           sub={renewDays != null ? `In ${renewDays} day${renewDays === 1 ? "" : "s"}` : undefined}
         />
-        <SummaryCard
+        <UserStatCard
           icon={IndianRupee}
-          iconClass="bg-violet-50 text-violet-600"
+          accent="violet"
           label="Amount"
-          value={amountInr != null ? `${formatInr(amountInr)} / ${isMonthly ? "month" : "year"}` : "Free"}
+          value={
+            amountInr != null
+              ? `${formatInr(amountInr)} / ${isMonthly ? "month" : "year"}`
+              : isCustomPricing
+                ? "Custom"
+                : "Free"
+          }
+          compactValue
           sub={isMonthly ? "Billed monthly" : "Billed yearly"}
-        />
-        <SummaryCard
-          icon={CreditCard}
-          iconClass="bg-orange-50 text-orange-600"
-          label="Payment Method"
-          value="Razorpay"
-          sub="Managed at checkout"
         />
       </div>
 
       <div className="grid gap-3 xl:grid-cols-[1.4fr_0.9fr]">
-        <div className="rounded-[20px] border border-[#ECECEC] bg-white p-5 shadow-sm">
-          <h3 className="text-[15px] font-semibold text-[#111111]">Usage Summary</h3>
-          <p className="mt-0.5 text-xs font-medium text-[#737373]">Track limits across your plan</p>
-          <div className="mt-5 space-y-4">
-            {usageRows.map((row) => (
-              <UsageRow key={row.label} {...row} />
-            ))}
+        <div className="dash-premium-card p-5">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-[15px] font-semibold text-[#111111]">Plan usage</h3>
+            {showUpgrade ? (
+              <Link
+                href="/dashboard/subscription"
+                className="text-sm font-semibold text-[#84D400] hover:text-[#5FA800]"
+              >
+                Upgrade plan
+              </Link>
+            ) : null}
           </div>
-          <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-[#ECECEC] bg-[#FAFAFA] p-4">
-            <p className="text-sm font-medium text-[#525252]">Need more storage or uploads?</p>
-            <Link
-              href="/dashboard/subscription"
-              className="inline-flex h-10 items-center rounded-2xl bg-[#84D400] px-4 text-sm font-semibold text-[#102000] hover:bg-[#78C400]"
-            >
-              Upgrade Plan
-            </Link>
+
+          <div className="mt-5 space-y-4">
+            <UsageMetricRow
+              label="Products"
+              usedLabel={usageSummary.productsUsedLabel}
+              limitLabel={usageSummary.productsLimitLabel}
+              percent={usageSummary.productsPercent}
+            />
+            {usageSummary.productsRemaining != null ? (
+              <p className={`-mt-2 text-[12px] font-medium ${usageSummary.productsAtCap ? "text-amber-700" : "text-[#737373]"}`}>
+                {usageSummary.productsAtCap
+                  ? "Product limit reached. Upgrade the plan to upload more."
+                  : `${usageSummary.productsRemaining} more product${usageSummary.productsRemaining === 1 ? "" : "s"} can be uploaded on this plan.`}
+              </p>
+            ) : (
+              <p className="-mt-2 text-[12px] font-medium text-[#737373]">
+                Unlimited product uploads on this plan.
+              </p>
+            )}
+            <UsageMetricRow
+              label="Total storage"
+              usedLabel={usageSummary.storageUsedLabel}
+              limitLabel={usageSummary.storageLimitLabel}
+              percent={usageSummary.storagePercent}
+            />
+            <UsageMetricRow
+              label="Total bandwidth"
+              usedLabel={usageSummary.bandwidthUsedLabel}
+              limitLabel={usageSummary.bandwidthLimitLabel}
+              percent={usageSummary.bandwidthPercent}
+            />
+          </div>
+
+          <div className="mt-5 space-y-3 border-t border-[#ECECEC] pt-4">
+            <BreakdownRow
+              label="Models"
+              valueLabel={formatDataSize(usageSummary.modelsMb)}
+              percent={usageSummary.modelsPercent}
+              thick
+            />
+            <BreakdownRow
+              label="Textures"
+              valueLabel={formatDataSize(usageSummary.texturesMb)}
+              percent={usageSummary.texturesPercent}
+            />
           </div>
         </div>
 
-        <div className="rounded-[20px] border border-[#ECECEC] bg-white p-5 shadow-sm">
+        <div className="dash-premium-card p-5">
           <h3 className="text-[15px] font-semibold text-[#111111]">Billing Summary</h3>
           <div className="mt-5 space-y-3 text-sm">
             <SummaryLine label="Plan" value={planName} />
+            {includedProducts ? <SummaryLine label="Products" value={includedProducts} /> : null}
+            <SummaryLine label="Storage" value={usageSummary.storageLimitLabel} />
+            <SummaryLine label="Bandwidth" value={usageSummary.bandwidthLimitLabel} />
             <SummaryLine label="Billing Cycle" value={isMonthly ? "Monthly" : "Yearly"} />
             <SummaryLine label="Subtotal" value={formatInr(subtotal)} />
             <SummaryLine label="Included GST (18%)" value={formatInr(tax)} />
           </div>
           <div className="mt-4 border-t border-[#ECECEC] pt-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#737373]">Total</p>
-            <p className="mt-1 text-[28px] font-semibold text-[#84D400]">{formatInr(total)}</p>
-            <p className="text-xs text-[#737373]">GST inclusive</p>
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#737373]">Total</p>
+                <p className="text-xs text-[#737373]">GST inclusive</p>
+              </div>
+              <p className="text-[28px] font-semibold leading-none text-[#84D400]">{formatInr(total)}</p>
+            </div>
           </div>
           <Link
             href="/dashboard/subscription"
@@ -542,10 +696,15 @@ function OverviewTab({
       </div>
 
       {/* Available Add-ons — hidden for Starter/ineligible when API returns empty */}
-      <AvailableAddonsSection addons={addons} />
+      <AvailableAddonsSection
+        addons={addons}
+        initialCheckoutSlug={addonCheckoutSlug}
+        onCheckoutClose={onAddonCheckoutClose}
+        onPurchaseSuccess={onAddonPurchaseSuccess}
+      />
 
       <div className="grid gap-3 xl:grid-cols-[1.4fr_0.9fr]">
-        <div className="rounded-[20px] border border-[#ECECEC] bg-white p-5 shadow-sm">
+        <div className="dash-premium-card p-5">
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h3 className="text-[15px] font-semibold text-[#111111]">Recent Invoices</h3>
@@ -563,7 +722,7 @@ function OverviewTab({
         </div>
 
         <div className="space-y-3">
-          <div className="rounded-[20px] border border-[#ECECEC] bg-white p-5 shadow-sm">
+          <div className="dash-premium-card p-5">
             <h3 className="text-[15px] font-semibold text-[#111111]">Need Help?</h3>
             <p className="mt-1 text-sm font-medium text-[#737373]">
               Questions about billing, invoices or plan limits? Our support team can help.
@@ -576,93 +735,61 @@ function OverviewTab({
               Contact Support
             </Link>
           </div>
-
-          <div className="rounded-[20px] border border-[#ECECEC] bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <h3 className="text-[15px] font-semibold text-[#111111]">Payment Method</h3>
-              <StatusBadge label="Default" tone="neutral" />
-            </div>
-            <div className="mt-4 flex items-center gap-3 rounded-[14px] border border-[#ECECEC] bg-[#FAFAFA] p-3">
-              <div className="grid h-10 w-10 place-items-center rounded-xl bg-white text-[#525252]">
-                <CreditCard size={18} />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-[#111111]">Razorpay Checkout</p>
-                <p className="text-xs text-[#737373]">Card / UPI / Netbanking</p>
-              </div>
-            </div>
-            <Link
-              href="/dashboard/subscription"
-              className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-2xl border border-[#ECECEC] bg-white text-sm font-semibold text-[#111111] hover:bg-[#FAFAFA]"
-            >
-              <Plus size={16} />
-              Manage subscription &amp; payment
-            </Link>
-          </div>
         </div>
       </div>
     </div>
   );
 }
 
-function SummaryCard({
-  icon: Icon,
-  iconClass,
+function UsageMetricRow({
   label,
-  value,
-  sub,
-  extra,
-}: {
-  icon: LucideIcon;
-  iconClass: string;
-  label: string;
-  value: string;
-  sub?: string;
-  extra?: ReactNode;
-}) {
-  return (
-    <div className="rounded-[20px] border border-[#ECECEC] bg-white p-4 shadow-sm">
-      <div className="flex items-start gap-3">
-        <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${iconClass}`}>
-          <Icon size={20} />
-        </div>
-        <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-[#737373]">{label}</p>
-          <div className="mt-1 flex flex-wrap items-center gap-2">
-            <p className="text-[18px] font-semibold text-[#111111]">{value}</p>
-            {extra}
-          </div>
-          {sub ? <p className="mt-1 text-xs font-medium text-[#737373]">{sub}</p> : null}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function UsageRow({
-  label,
-  icon: Icon,
   usedLabel,
+  limitLabel,
   percent,
 }: {
   label: string;
-  icon: LucideIcon;
   usedLabel: string;
+  limitLabel: string;
   percent: number;
 }) {
   return (
     <div>
       <div className="mb-1.5 flex items-center justify-between gap-3">
-        <span className="inline-flex items-center gap-2 text-sm font-semibold text-[#111111]">
-          <Icon size={15} className="text-[#84D400]" />
-          {label}
-        </span>
-        <span className="text-xs font-medium text-[#737373]">
-          {usedLabel} · {percent}%
+        <span className="text-sm font-medium text-[#111111]">{label}</span>
+        <span className="text-sm font-semibold">
+          <span className="text-[#84D400]">{usedLabel}</span>
+          <span className="font-medium text-[#A3A3A3]"> / {limitLabel}</span>
         </span>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-[#F0F0F0]">
-        <div className="h-full rounded-full bg-[#84D400]" style={{ width: `${percent}%` }} />
+      <div className="h-1.5 overflow-hidden rounded-full bg-[#F0F0F0]">
+        <div className="h-full rounded-full bg-[#84D400]" style={{ width: `${Math.max(0, Math.min(100, percent))}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function BreakdownRow({
+  label,
+  valueLabel,
+  percent,
+  thick,
+}: {
+  label: string;
+  valueLabel: string;
+  percent: number;
+  thick?: boolean;
+}) {
+  return (
+    <div>
+      <div className="mb-1.5 flex items-center justify-between gap-3">
+        <span className="text-sm font-medium text-[#111111]">{label}</span>
+        <span className="text-sm font-medium text-[#737373]">{valueLabel}</span>
+      </div>
+      <div className={`overflow-hidden rounded-full bg-[#F0F0F0] ${thick ? "h-2.5" : "h-1.5"}`}>
+        <div
+          className={`h-full rounded-full ${thick ? "bg-[#84D400]" : "bg-[#B8B8B8]"}`}
+          style={{ width: `${Math.max(percent > 0 ? 2 : 0, Math.min(100, percent))}%` }}
+        />
       </div>
     </div>
   );
@@ -712,7 +839,56 @@ function InvoicesTable({ invoices, compact }: { invoices: CustomerInvoice[]; com
   }
 
   return (
-    <div className="overflow-x-auto rounded-[14px] border border-[#ECECEC]">
+    <>
+      <div className="space-y-2.5 md:hidden">
+        {invoices.map((invoice) => {
+          const isPaid = invoice.status === "paid";
+          return (
+            <div key={invoice.invoice_uid} className="rounded-[14px] border border-[#ECECEC] bg-white p-3.5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-[14px] font-semibold text-[#111111]">
+                    {invoice.invoice_number || invoice.invoice_uid}
+                  </p>
+                  <p className="mt-0.5 text-[12px] font-medium text-[#737373]">
+                    {fmtDate(invoice.created_at)} · {formatPlanLabel(invoice.plan_id)}
+                  </p>
+                </div>
+                <p className="shrink-0 text-[14px] font-semibold text-[#111111]">
+                  {formatMoneyPaise(invoice.total_paise)}
+                </p>
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-2">
+                {isPaid ? (
+                  <span className="inline-flex items-center rounded-full border border-[#C8E6A0] bg-[#EEF9E0] px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-[#3D6600]">
+                    Paid
+                  </span>
+                ) : (
+                  <StatusBadge label={invoice.status} tone="neutral" />
+                )}
+                <div className="inline-flex items-center gap-2">
+                  <a
+                    href={`/api/billing/invoices/${invoice.invoice_uid}/download`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex h-8 items-center rounded-full border border-[#ECECEC] bg-white px-3 text-[12px] font-bold text-[#111111]"
+                  >
+                    View
+                  </a>
+                  <a
+                    href={`/api/billing/invoices/${invoice.invoice_uid}/download?format=pdf`}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-full bg-[#0A0B14] px-3 text-[12px] font-bold text-white"
+                  >
+                    <ArrowDownToLine size={14} />
+                    PDF
+                  </a>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="hidden overflow-x-auto rounded-[14px] border border-[#ECECEC] md:block">
       <table className="w-full min-w-[640px] text-left text-sm">
         <thead className="bg-[#FAFAFA] text-[11px] font-semibold uppercase tracking-wide text-[#737373]">
           <tr>
@@ -774,50 +950,8 @@ function InvoicesTable({ invoices, compact }: { invoices: CustomerInvoice[]; com
           })}
         </tbody>
       </table>
-    </div>
-  );
-}
-
-function PaymentMethodsTab() {
-  return (
-    <div className="mx-auto max-w-lg space-y-4">
-      <div className="rounded-[20px] border border-[#ECECEC] bg-[#FAFAFA] p-5">
-        <div className="flex items-center gap-3">
-          <div className="grid h-12 w-12 place-items-center rounded-xl bg-white text-[#525252] shadow-sm">
-            <CreditCard size={22} />
-          </div>
-          <div>
-            <p className="font-semibold text-[#111111]">Razorpay</p>
-            <p className="text-sm text-[#737373]">Payments are processed securely via Razorpay at checkout.</p>
-          </div>
-        </div>
       </div>
-      <p className="text-sm font-medium text-[#737373]">
-        Saved cards are managed during checkout. Upgrade your plan to add or update a payment method.
-      </p>
-      <Link
-        href="/pricing"
-        className="inline-flex h-11 items-center rounded-2xl bg-[#84D400] px-5 text-sm font-semibold text-[#102000] hover:bg-[#78C400]"
-      >
-        Upgrade Plan
-      </Link>
-    </div>
+    </>
   );
 }
 
-function BillingDetailsTab() {
-  return (
-    <div className="mx-auto max-w-2xl space-y-4">
-      <p className="text-sm font-medium text-[#737373]">
-        Company name, GSTIN, and billing address are used on invoices and tax receipts.
-      </p>
-      <Link
-        href="/dashboard/settings?tab=company"
-        className="inline-flex h-11 items-center gap-2 rounded-2xl border border-[#ECECEC] bg-white px-5 text-sm font-semibold text-[#111111] hover:bg-[#FAFAFA]"
-      >
-        <Settings size={16} />
-        Edit Billing Details in Settings
-      </Link>
-    </div>
-  );
-}

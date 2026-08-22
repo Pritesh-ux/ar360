@@ -5,6 +5,7 @@ import { createReadStream } from "fs";
 import { Readable } from "stream";
 
 import { getCurrentUser } from "@/lib/auth";
+import { requireApiAdminPermission } from "@/lib/permissions/admin-rbac";
 import { query, ensureProductSchema } from "@/lib/db";
 import {
   getSecureProductPath,
@@ -25,6 +26,7 @@ import {
   getCustomerBandwidthUsedGb,
 } from "@/lib/billing/bandwidth";
 import { enforceRateLimit } from "@/lib/rate-limit";
+import { parseArScaleParam, scaleGlbBuffer } from "@/lib/glb-scale";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,7 +45,7 @@ type ProductAccessRow = {
 
 function isPublishedStatus(status?: string | null) {
   const value = String(status || "").toLowerCase();
-
+  // Draft/saved must never be publicly fetchable — only owner session or admin.
   return value === "published" || value === "active";
 }
 
@@ -66,6 +68,7 @@ async function canAccessAsset(input: {
       FROM products
       WHERE id = ?
         AND customer_uid = ?
+        AND deleted_at IS NULL
       LIMIT 1
     `,
     [input.productUid, input.customerUid],
@@ -127,7 +130,10 @@ async function canAccessAsset(input: {
       WHERE customer_uid = ?
     `,
     [input.customerUid],
-  ).catch(() => [{ total: 0 }]);
+  ).catch((err) => {
+    console.error("[assets] product count query failed", err);
+    return null;
+  });
 
   const storageRows = await query<{ total: string | number }>(
     `
@@ -136,7 +142,17 @@ async function canAccessAsset(input: {
       WHERE customer_uid = ?
     `,
     [input.customerUid],
-  ).catch(() => [{ total: 0 }]);
+  ).catch((err) => {
+    console.error("[assets] storage sum query failed", err);
+    return null;
+  });
+
+  if (countRows == null || storageRows == null) {
+    return {
+      allowed: false,
+      reason: "This AR experience is temporarily unavailable.",
+    };
+  }
 
   const usage: UsageSnapshot = {
     productsUsed: Number(countRows[0]?.total || 0),
@@ -183,15 +199,6 @@ export async function GET(
   req: NextRequest,
   context: RouteContext,
 ) {
-  const limited = await enforceRateLimit(req, {
-    scope: "assets:serve",
-    limit: 120,
-    windowSec: 60,
-  });
-
-  if (limited instanceof Response) {
-    return limited;
-  }
 
   const params = await context.params;
   const parsed = parseCustomerAssetPath(params.path || []);
@@ -226,23 +233,36 @@ export async function GET(
     );
   }
 
-  const user = await getCurrentUser();
+  const masterAdmin = await requireApiAdminPermission("products.read", { request: req });
+  const user = masterAdmin ? null : await getCurrentUser();
+  if (!masterAdmin) {
+    const access = await canAccessAsset({
+      customerUid,
+      productUid,
+      userCustomerUid: user?.customerUid,
+    });
 
-  const access = await canAccessAsset({
-    customerUid,
-    productUid,
-    userCustomerUid: user?.customerUid,
-  });
+    if (!access.allowed) {
+      return NextResponse.json(
+        {
+          error: access.reason || "Forbidden.",
+        },
+        {
+          status: 403,
+        },
+      );
+    }
+  }
 
-  if (!access.allowed) {
-    return NextResponse.json(
-      {
-        error: access.reason || "Forbidden.",
-      },
-      {
-        status: 403,
-      },
-    );
+  // Dashboard owner/admin loads the same GLB/maps many times (editor apply).
+  // Rate-limit anonymous public viewers only.
+  if (!masterAdmin && !user) {
+    const limited = await enforceRateLimit(req, {
+      scope: "assets:serve",
+      limit: 120,
+      windowSec: 60,
+    });
+    if (limited instanceof Response) return limited;
   }
 
   let diskPath: string;
@@ -323,17 +343,49 @@ export async function GET(
     );
   }
 
-  // Server-side bandwidth accounting: since all customer assets (models, textures, images)
-  // are delivered via this proxy route, we record the exact file size served in bytes on
-  // each successful delivery event. This avoids double-counting and represents the actual payload transfer.
-  void recordBandwidthUsage(
-    customerUid,
-    stat.size,
-  ).catch((error) => {
-    console.error("Bandwidth usage recording failed:", error);
-  });
+  // Scene Viewer / Quick Look ignore <model-viewer scale>; bake root scale into GLB bytes.
+  const arScale = parseArScaleParam(req.nextUrl.searchParams.get("arScale"));
+  if (arScale != null && extension === ".glb" && Math.abs(arScale - 1) >= 1e-9) {
+    try {
+      const raw = await fs.readFile(diskPath);
+      const scaled = scaleGlbBuffer(raw, arScale);
+
+      void recordBandwidthUsage(customerUid, scaled.byteLength).catch((error) => {
+        console.error("Bandwidth usage recording failed:", error);
+      });
+
+      return new NextResponse(new Uint8Array(scaled), {
+        status: 200,
+        headers: {
+          "Content-Type": "model/gltf-binary",
+          "Content-Length": String(scaled.byteLength),
+          "Cache-Control": "private, max-age=0, must-revalidate",
+          "X-Content-Type-Options": "nosniff",
+          "X-AR-Scale": String(arScale),
+        },
+      });
+    } catch (error) {
+      console.error("AR GLB scale failed:", error);
+      return NextResponse.json(
+        { error: "Scaled AR model could not be built." },
+        { status: 500 },
+      );
+    }
+  }
 
   const nodeStream = createReadStream(diskPath);
+
+  // Record after the client fully consumes the stream so aborted downloads
+  // are not billed against the customer's bandwidth quota.
+  let bandwidthRecorded = false;
+  const recordOnComplete = () => {
+    if (bandwidthRecorded) return;
+    bandwidthRecorded = true;
+    void recordBandwidthUsage(customerUid, stat.size).catch((error) => {
+      console.error("Bandwidth usage recording failed:", error);
+    });
+  };
+  nodeStream.once("end", recordOnComplete);
 
   const webStream = Readable.toWeb(
     nodeStream,
@@ -344,7 +396,14 @@ export async function GET(
     headers: {
       "Content-Type": contentTypeForFile(fileName),
       "Content-Length": String(stat.size),
-      "Cache-Control": "private, max-age=3600",
+      // GLBs are often replaced in place (sample refresh). Short cache + ETag avoids
+      // serving a stale placeholder for up to an hour after overwrite.
+      "Cache-Control":
+        extension === ".glb" || extension === ".gltf" || extension === ".usdz"
+          ? "private, max-age=0, must-revalidate"
+          : "private, max-age=3600",
+      ETag: `"${stat.size}-${Math.floor(stat.mtimeMs)}"`,
+      "Last-Modified": stat.mtime.toUTCString(),
       "X-Content-Type-Options": "nosniff",
     },
   });

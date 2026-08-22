@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { guardAdminPermission } from "@/lib/permissions/admin-rbac";
+import { guardAdminPermission, logAdminAudit } from "@/lib/permissions/admin-rbac";
 import { ensureCouponsSchema } from "@/lib/db";
 import {
   activateCoupon,
+  deleteCoupons,
   disableCoupon,
   duplicateCoupon,
   getCouponByUid,
@@ -47,6 +48,7 @@ export async function PATCH(
     } else if (action === "duplicate") {
       const newUid = await duplicateCoupon(id, admin.id);
       const coupon = await getCouponByUid(newUid);
+      await logAdminAudit(admin, "coupon.duplicate", "coupon", newUid, { duplicatedFrom: id });
       return NextResponse.json({ ok: true, coupon, duplicatedFrom: id });
     } else {
       await updateCoupon(
@@ -66,10 +68,37 @@ export async function PATCH(
 
     const coupon = await getCouponByUid(id);
     if (!coupon) return NextResponse.json({ error: "Coupon not found" }, { status: 404 });
+    await logAdminAudit(admin, `coupon.${action || "update"}`, "coupon", id);
     return NextResponse.json({ ok: true, coupon });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Update failed" },
+      { status: 400 },
+    );
+  }
+}
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const auth = await guardAdminPermission("coupons.manage");
+  if (auth instanceof NextResponse) return auth;
+  const { admin } = auth;
+
+  await ensureCouponsSchema();
+  const { id } = await params;
+
+  try {
+    const result = await deleteCoupons([id], admin.id);
+    if (result.deleted === 0) {
+      return NextResponse.json({ error: "Coupon not found" }, { status: 404 });
+    }
+    await logAdminAudit(admin, "coupon.delete", "coupon", id);
+    return NextResponse.json({ ok: true, deleted: result.deleted });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Delete failed" },
       { status: 400 },
     );
   }

@@ -68,61 +68,65 @@ async function main() {
   const { seedAdminRbac } = await import("../src/lib/seed/admin-rbac-seed");
   await seedAdminRbac(connection);
 
-  // 3. Seed Users & Customers
-  console.log("Seeding demo customer...");
-  const userUid = `USR-${randomBytes(10).toString("hex").toUpperCase()}`;
-  await connection.execute(
-    `INSERT INTO users (user_uid, name, email, password_hash, role, status, email_verified, two_factor_enabled)
-     VALUES (?, ?, ?, ?, 'user', 'Active', TRUE, FALSE)
-     ON DUPLICATE KEY UPDATE name = VALUES(name), password_hash = VALUES(password_hash), status = 'Active'`,
-    [userUid, customerName, customerEmail, hashPassword(customerPassword)]
-  );
-
-  const [users]: any = await connection.execute("SELECT id, name, email FROM users WHERE email = ? LIMIT 1", [customerEmail]);
-  const user = users[0];
-
-  if (user) {
-    const [customers]: any = await connection.execute("SELECT customer_uid FROM customers WHERE user_id = ? LIMIT 1", [user.id]);
-    let customerUid = customers[0]?.customer_uid;
-
-    if (!customerUid) {
-      customerUid = `CUS-${Math.floor(100000 + Math.random() * 899999)}`;
-      await connection.execute(
-        "INSERT INTO customers (user_id, customer_uid, contact_name, email, plan_id, status) VALUES (?, ?, ?, ?, 'professional', 'Active')",
-        [user.id, customerUid, user.name, user.email]
-      );
-    } else {
-      await connection.execute(
-        "UPDATE customers SET plan_id = 'professional', status = 'Active' WHERE customer_uid = ?",
-        [customerUid]
-      );
-    }
-
-    // Seed Active Customer Subscription
-    const start = new Date();
-    const end = new Date();
-    end.setDate(end.getDate() + 30); // 30 days trial/active subscription
-
+  // 3. Seed Users & Customers (conditional)
+  if (process.env.SEED_DEMO_DATA === "true") {
+    console.log("Seeding demo customer...");
+    const userUid = `USR-${randomBytes(10).toString("hex").toUpperCase()}`;
     await connection.execute(
-      `INSERT INTO customer_subscriptions (customer_uid, plan_id, status, current_period_start, current_period_end)
-       VALUES (?, 'professional', 'active', ?, ?)
-       ON DUPLICATE KEY UPDATE plan_id = 'professional', status = 'active', current_period_start = ?, current_period_end = ?`,
-      [customerUid, start, end, start, end]
+      `INSERT INTO users (user_uid, name, email, password_hash, role, status, email_verified, two_factor_enabled)
+       VALUES (?, ?, ?, ?, 'user', 'Active', TRUE, FALSE)
+       ON DUPLICATE KEY UPDATE name = VALUES(name), password_hash = VALUES(password_hash), status = 'Active'`,
+      [userUid, customerName, customerEmail, hashPassword(customerPassword)]
     );
 
-    await connection.execute(
-      `INSERT INTO user_preferences (user_id, customer_uid, theme, default_product_view, items_per_page, date_format, language, timezone)
-       VALUES (?, ?, 'light', 'grid', 12, 'dmy', 'en', 'Asia/Kolkata')
-       ON DUPLICATE KEY UPDATE customer_uid = VALUES(customer_uid)`,
-      [user.id, customerUid],
-    ).catch(() => {
-      console.warn("user_preferences not seeded — run `npm run db:migrate` first.");
-    });
+    const [users]: any = await connection.execute("SELECT id, name, email FROM users WHERE email = ? LIMIT 1", [customerEmail]);
+    const user = users[0];
 
-    console.log(`Demo customer ready: ${customerEmail}`);
+    if (user) {
+      const [customers]: any = await connection.execute("SELECT customer_uid FROM customers WHERE user_id = ? LIMIT 1", [user.id]);
+      let customerUid = customers[0]?.customer_uid;
+
+      if (!customerUid) {
+        customerUid = `CUS-${Math.floor(100000 + Math.random() * 899999)}`;
+        await connection.execute(
+          "INSERT INTO customers (user_id, customer_uid, contact_name, email, plan_id, status) VALUES (?, ?, ?, ?, 'professional', 'Active')",
+          [user.id, customerUid, user.name, user.email]
+        );
+      } else {
+        await connection.execute(
+          "UPDATE customers SET plan_id = 'professional', status = 'Active' WHERE customer_uid = ?",
+          [customerUid]
+        );
+      }
+
+      // Seed Active Customer Subscription
+      const start = new Date();
+      const end = new Date();
+      end.setDate(end.getDate() + 30); // 30 days trial/active subscription
+
+      await connection.execute(
+        `INSERT INTO customer_subscriptions (customer_uid, plan_id, status, current_period_start, current_period_end)
+         VALUES (?, 'professional', 'active', ?, ?)
+         ON DUPLICATE KEY UPDATE plan_id = 'professional', status = 'active', current_period_start = ?, current_period_end = ?`,
+        [customerUid, start, end, start, end]
+      );
+
+      await connection.execute(
+        `INSERT INTO user_preferences (user_id, customer_uid, theme, default_product_view, items_per_page, date_format, language, timezone)
+         VALUES (?, ?, 'light', 'grid', 12, 'dmy', 'en', 'Asia/Kolkata')
+         ON DUPLICATE KEY UPDATE customer_uid = VALUES(customer_uid)`,
+        [user.id, customerUid],
+      ).catch(() => {
+        console.warn("user_preferences not seeded — run `npm run db:migrate` first.");
+      });
+
+      console.log(`Demo customer ready: ${customerEmail}`);
+    }
+
+    await seedDemoAdminData(connection);
+  } else {
+    console.log("SEED_DEMO_DATA is not 'true'. Skipping demo customer, coupons, and support tickets seeding.");
   }
-
-  await seedDemoAdminData(connection);
 
   await connection.end();
   console.log("Seeding completed successfully.");

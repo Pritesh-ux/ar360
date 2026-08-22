@@ -8,6 +8,15 @@ import {
 import { mapLegacyPlanId } from "@/lib/billing/plan-enforcement";
 import { sendPlanChangedEmail } from "@/lib/email/customer-lifecycle.service";
 
+function shouldSkipRuntimeDdl(): boolean {
+  const flag = process.env.SKIP_RUNTIME_DDL?.trim().toLowerCase();
+  if (flag === "true" || flag === "1") return true;
+  if (flag === "false" || flag === "0") return false;
+  return process.env.NODE_ENV === "production";
+}
+
+let ensureBillingPlanSchemaPromise: Promise<void> | null = null;
+
 export type AdminBillingPlan = Omit<BillingPlan, "id"> & {
   /** Actual `billing_plans.id` row key — do not rewrite legacy aliases on save. */
   id: string;
@@ -265,6 +274,7 @@ function cleanPlan(plan: Partial<AdminBillingPlan>, index: number): AdminBilling
 }
 
 async function addColumnIfMissing(table: string, column: string, definition: string) {
+  if (shouldSkipRuntimeDdl()) return;
   const [{ total = 0 } = { total: 0 }] = await query<{ total: number }>(
     "SELECT COUNT(*) AS total FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?",
     [table, column],
@@ -273,6 +283,17 @@ async function addColumnIfMissing(table: string, column: string, definition: str
 }
 
 export async function ensureBillingPlanSchema() {
+  if (ensureBillingPlanSchemaPromise) return ensureBillingPlanSchemaPromise;
+  ensureBillingPlanSchemaPromise = ensureBillingPlanSchemaOnce().catch((error) => {
+    ensureBillingPlanSchemaPromise = null;
+    throw error;
+  });
+  return ensureBillingPlanSchemaPromise;
+}
+
+async function ensureBillingPlanSchemaOnce() {
+  if (shouldSkipRuntimeDdl()) return;
+
   await query(`
     CREATE TABLE IF NOT EXISTS billing_plans (
       id VARCHAR(40) PRIMARY KEY,
@@ -347,14 +368,17 @@ export async function ensureBillingPlanSchema() {
 
   try {
     await query("UPDATE billing_plans SET qr_limit = 3, share_link_limit = 5 WHERE id IN ('trial', 'free') AND qr_limit IS NULL");
-    await query("UPDATE billing_plans SET qr_limit = 20, share_link_limit = NULL WHERE id IN ('basic', 'starter') AND qr_limit IS NULL");
+    await query("UPDATE billing_plans SET qr_limit = 10, share_link_limit = NULL WHERE id IN ('basic', 'starter') AND qr_limit IS NULL");
+    await query("UPDATE billing_plans SET qr_limit = 50, share_link_limit = NULL WHERE id = 'intermediate' AND qr_limit IS NULL");
     await query("UPDATE billing_plans SET qr_limit = 100, share_link_limit = NULL WHERE id IN ('professional', 'pro') AND qr_limit IS NULL");
-    await query("UPDATE billing_plans SET qr_limit = NULL, share_link_limit = NULL WHERE id IN ('enterprise', 'business', 'agency') AND qr_limit IS NULL");
+    await query("UPDATE billing_plans SET qr_limit = 200, share_link_limit = NULL WHERE id = 'business' AND qr_limit IS NULL");
+    await query("UPDATE billing_plans SET qr_limit = NULL, share_link_limit = NULL WHERE id IN ('enterprise', 'agency') AND qr_limit IS NULL");
     await query("UPDATE billing_plans SET plan_level = 0 WHERE id IN ('trial', 'free')");
     await query("UPDATE billing_plans SET plan_level = 1 WHERE id IN ('basic', 'starter')");
-    await query("UPDATE billing_plans SET plan_level = 2 WHERE id IN ('professional', 'pro')");
-    await query("UPDATE billing_plans SET plan_level = 3 WHERE id = 'business'");
-    await query("UPDATE billing_plans SET plan_level = 4, sales_channel = 'manual' WHERE id IN ('enterprise', 'agency')");
+    await query("UPDATE billing_plans SET plan_level = 2 WHERE id = 'intermediate'");
+    await query("UPDATE billing_plans SET plan_level = 3 WHERE id IN ('professional', 'pro')");
+    await query("UPDATE billing_plans SET plan_level = 4 WHERE id = 'business'");
+    await query("UPDATE billing_plans SET plan_level = 5, sales_channel = 'manual' WHERE id IN ('enterprise', 'agency')");
   } catch {
     // optional backfill
   }
@@ -381,12 +405,24 @@ async function seedDefaultBillingPlans() {
   }
 }
 
+/** Insert any missing standard catalog rows (e.g. new Intermediate). */
+async function ensureMissingStandardBillingPlans() {
+  const rows = await query<{ id: string }>("SELECT id FROM billing_plans").catch(() => [] as { id: string }[]);
+  const existing = new Set(rows.map((row) => row.id));
+  for (const [index, plan] of BILLING_PLANS.entries()) {
+    if (existing.has(plan.id)) continue;
+    await upsertBillingPlan({ ...plan, isActive: true, sortOrder: index });
+  }
+}
+
 export async function getBillingPlans({ activeOnly = false }: { activeOnly?: boolean } = {}) {
   await ensureBillingPlanSchema();
 
   const rowsCount = await query<{ total: number }>("SELECT COUNT(*) AS total FROM billing_plans");
   if (Number(rowsCount[0]?.total || 0) === 0) {
     await seedDefaultBillingPlans();
+  } else {
+    await ensureMissingStandardBillingPlans();
   }
 
   const rows = await query<BillingPlanRow>(
@@ -524,6 +560,11 @@ export async function countActiveSubscriptionsForPlan(planId: string): Promise<n
   return Number(rows[0]?.total || 0);
 }
 
+export async function deleteBillingPlan(planId: string): Promise<void> {
+  await ensureBillingPlanSchema();
+  await query("DELETE FROM billing_plans WHERE id = ?", [planId]);
+}
+
 export async function replaceBillingPlans(plans: Partial<AdminBillingPlan>[]) {
   await ensureBillingPlanSchema();
 
@@ -537,7 +578,7 @@ export async function replaceBillingPlans(plans: Partial<AdminBillingPlan>[]) {
     const placeholders = ids.map(() => "?").join(", ");
     await query(
       `UPDATE billing_plans SET is_active = 0
-       WHERE id IN ('trial','starter','pro','business','enterprise')
+       WHERE id IN ('trial','starter','intermediate','pro','business','enterprise')
          AND id NOT IN (${placeholders})`,
       ids,
     );
@@ -598,8 +639,31 @@ export async function setCustomerPlan(input: {
   trialEndsAt?: string | Date | null;
   currentPeriodStart?: string | Date | null;
   currentPeriodEnd?: string | Date | null;
+  /** Master Admin id — used when converting catalog Enterprise → contract. */
+  adminId?: number | null;
 }) {
   await ensureBillingPlanSchema();
+
+  // Catalog "enterprise" must become a real custom plan + contract (not a naked plan_id).
+  const mappedPlanId = mapLegacyPlanId(String(input.planId || "").trim());
+  if (mappedPlanId === "enterprise" && !String(input.planId).toLowerCase().startsWith("ecp_")) {
+    const { convertCatalogEnterpriseToContract } = await import(
+      "@/lib/enterprise-sales/admin-enterprise-assign"
+    );
+    const billingCycle =
+      input.periodDays != null && Number(input.periodDays) >= 360 ? "yearly" : "monthly";
+    await convertCatalogEnterpriseToContract({
+      customerUid: input.customerUid,
+      adminId: input.adminId ?? null,
+      billingCycle,
+      currentPeriodStart: input.currentPeriodStart
+        ? new Date(input.currentPeriodStart)
+        : null,
+      currentPeriodEnd: input.currentPeriodEnd ? new Date(input.currentPeriodEnd) : null,
+      status: input.status || "active",
+    });
+    return getCustomerPlan(input.customerUid);
+  }
 
   // Enterprise custom plans live outside billing_plans — allow status/date overrides only.
   if (input.planId.startsWith("ecp_")) {

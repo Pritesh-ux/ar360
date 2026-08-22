@@ -1,11 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { AuthPrimaryButton, authInputClassName } from "@/components/auth/AuthFormPrimitives";
 
 export default function VerifyForm({ email }: { email: string }) {
-  const router = useRouter();
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -17,6 +15,7 @@ export default function VerifyForm({ email }: { email: string }) {
 
     const formData = new FormData();
     formData.append("code", code);
+    if (email) formData.append("email", email);
 
     try {
       const res = await fetch("/api/auth/verify-2fa", {
@@ -27,14 +26,16 @@ export default function VerifyForm({ email }: { email: string }) {
 
       if (!data.success) {
         setError(data.error || "Invalid code");
+        setLoading(false);
         return;
       }
 
       localStorage.setItem("ar360_current_user", JSON.stringify(data.user));
-      router.push(data.redirect || "/dashboard");
+      // Hard navigation after Set-Cookie (avoids stuck dashboard loading).
+      window.location.replace(data.redirect || "/dashboard");
+      return;
     } catch {
       setError("Verification failed. Please try again.");
-    } finally {
       setLoading(false);
     }
   }

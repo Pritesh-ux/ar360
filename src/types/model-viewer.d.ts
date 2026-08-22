@@ -23,10 +23,12 @@ declare module "react" {
         "auto-rotate"?: boolean;
         "camera-controls"?: boolean;
         "disable-zoom"?: boolean;
+        "disable-tap"?: boolean;
         autoplay?: boolean;
         "ios-src"?: string;
         "ar-scale"?: string;
         "ar-placement"?: "floor" | "wall";
+        scale?: string;
         "loading"?: string;
         "reveal"?: string;
         "touch-action"?: string;

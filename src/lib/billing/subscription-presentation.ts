@@ -26,10 +26,12 @@ export function resolveCustomerSubscriptionState(input: SubscriptionStateInput):
   if (status === "paused") return "paused";
   if (["past_due", "grace"].includes(status)) return "renewal_retry";
   if (input.mandateStatus === "failed") return "authorization_failed";
+  if (["trial", "trialing"].includes(status)) return "trial";
+  // Paid/active access wins over a stale pending mandate flag from checkout.
+  if (status === "active") return "active";
   if (["pending", "pending_payment", "authenticated"].includes(status) || input.mandateStatus === "pending") {
     return "authorization_pending";
   }
-  if (["trial", "trialing"].includes(status)) return "trial";
   return "active";
 }
 

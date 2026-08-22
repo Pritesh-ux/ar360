@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useParams } from "next/navigation";
+import UserWorkspaceLoading from "@/components/user-panel/UserWorkspaceLoading";
 
 export default function ARRedirectPage() {
   const params = useParams();
@@ -12,8 +13,11 @@ export default function ARRedirectPage() {
   }, [id]);
 
   return (
-    <main className="fixed inset-0 grid place-items-center bg-white font-black text-slate-900">
-      Opening AR Viewer...
-    </main>
+    <UserWorkspaceLoading
+      mode="screen"
+      label="Opening AR"
+      hint="Please wait while we open the AR viewer..."
+      withRecovery={false}
+    />
   );
 }

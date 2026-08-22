@@ -70,6 +70,7 @@ describe("onboarding route helpers", () => {
         sampleProductCreated: false,
         sampleProductId: null,
         checklistDismissedAt: null,
+        welcomePopupDismissedAt: null,
       }),
       false,
     );

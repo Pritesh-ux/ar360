@@ -8,9 +8,9 @@ import {
   saveProductVersion,
 } from "@/lib/enterprise/versions.service";
 import { writeAuditLog } from "@/lib/enterprise/audit.service";
-import { ensureDefaultWorkspace } from "@/lib/enterprise/workspace.service";
 import fs from "fs/promises";
 import path from "path";
+import { requireActiveSubscriptionApi } from "@/lib/subscription/api-subscription-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,6 +18,9 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Login required." }, { status: 401 });
+
+  const gate = await requireActiveSubscriptionApi(user.customerUid ?? "");
+  if (!gate.ok) return gate.response;
 
   const p = req.nextUrl.searchParams;
   const productUid = p.get("productUid") ?? "";
@@ -44,6 +47,9 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Login required." }, { status: 401 });
+
+  const gate = await requireActiveSubscriptionApi(user.customerUid ?? "");
+  if (!gate.ok) return gate.response;
 
   const body = await req.json().catch(() => ({})) as {
     workspaceUid?: string;
@@ -79,6 +85,9 @@ export async function PUT(req: NextRequest) {
   // Restore a version
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Login required." }, { status: 401 });
+
+  const gate = await requireActiveSubscriptionApi(user.customerUid ?? "");
+  if (!gate.ok) return gate.response;
 
   const body = await req.json().catch(() => ({})) as {
     workspaceUid?: string;

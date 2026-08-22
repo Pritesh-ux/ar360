@@ -1,5 +1,14 @@
 import { query } from "@/lib/db";
 
+function shouldSkipRuntimeDdl(): boolean {
+  const flag = process.env.SKIP_RUNTIME_DDL?.trim().toLowerCase();
+  if (flag === "true" || flag === "1") return true;
+  if (flag === "false" || flag === "0") return false;
+  return process.env.NODE_ENV === "production";
+}
+
+let ensureEmailLogsSchemaPromise: Promise<void> | null = null;
+
 export type EmailLogStatus = "sent" | "failed" | "console" | "skipped";
 
 export type EmailLogInput = {
@@ -13,7 +22,10 @@ export type EmailLogInput = {
 };
 
 export async function ensureEmailLogsSchema() {
-  await query(`
+  if (shouldSkipRuntimeDdl()) return;
+  if (ensureEmailLogsSchemaPromise) return ensureEmailLogsSchemaPromise;
+  ensureEmailLogsSchemaPromise = (async () => {
+    await query(`
     CREATE TABLE IF NOT EXISTS email_logs (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
       recipient VARCHAR(191) NOT NULL,
@@ -32,6 +44,11 @@ export async function ensureEmailLogsSchema() {
       INDEX idx_email_logs_template (template)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+  })().catch((error) => {
+    ensureEmailLogsSchemaPromise = null;
+    throw error;
+  });
+  return ensureEmailLogsSchemaPromise;
 }
 
 export async function writeEmailLog(input: EmailLogInput) {

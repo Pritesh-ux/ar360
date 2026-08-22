@@ -11,6 +11,7 @@ describe("customer subscription presentation", () => {
   it("covers provider authorization and renewal recovery states", () => {
     assert.equal(resolveCustomerSubscriptionState({ status: "pending", mandateStatus: "pending" }), "authorization_pending");
     assert.equal(resolveCustomerSubscriptionState({ status: "active", mandateStatus: "failed" }), "authorization_failed");
+    assert.equal(resolveCustomerSubscriptionState({ status: "active", mandateStatus: "pending" }), "active");
     assert.equal(resolveCustomerSubscriptionState({ status: "past_due" }), "renewal_retry");
     assert.equal(resolveCustomerSubscriptionState({ status: "halted" }), "halted");
   });

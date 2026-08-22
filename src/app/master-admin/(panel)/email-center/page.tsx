@@ -2,20 +2,32 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useDeferredEffect } from "@/lib/react/use-deferred-effect";
 import {
   AlertCircle,
   CheckCircle2,
-  ChevronDown,
   Download,
   Mail,
   Plus,
   RefreshCw,
+  Eye,
+  Search,
   Send,
+  X,
 } from "lucide-react";
 import AdminPageHeader from "@/components/features/master-admin/AdminPageHeader";
 import SendEmailModal from "@/components/features/master-admin/SendEmailModal";
-import { AdminActionMessage, AdminPagination } from "@/components/ui/admin";
-import { paginationRange, type PaginationMeta } from "@/lib/master-admin/pagination";
+import EmailLogDetailModal, {
+  type EmailLogDetail,
+} from "@/components/features/master-admin/EmailLogDetailModal";
+import { AdminEmptyState, AdminLoadingState, AdminPagination } from "@/components/ui/admin";
+import UserMetricCard from "@/components/user-panel/UserMetricCard";
+import UserFilterDropdown from "@/components/user-panel/UserFilterDropdown";
+import UserDateRangePicker, {
+  defaultDateRange,
+  type DateRangeValue,
+} from "@/components/user-panel/UserDateRangePicker";
+import type { PaginationMeta } from "@/lib/master-admin/pagination";
 import { fmtDateTime } from "@/components/features/master-admin/support-tickets-utils";
 
 type EmailLog = {
@@ -46,12 +58,7 @@ type TemplateBreakdown = {
 };
 
 const PAGE_SIZE = 15;
-const statusOptions = [
-  { label: "All Status", value: "all" },
-  { label: "Sent", value: "sent" },
-  { label: "Failed", value: "failed" },
-  { label: "Console", value: "console" },
-];
+const STATUS_OPTIONS = ["all", "sent", "failed", "console"];
 
 function statusClass(status: string) {
   if (status === "sent") return "bg-emerald-50 text-emerald-700 ring-emerald-200";
@@ -59,18 +66,7 @@ function statusClass(status: string) {
   return "bg-amber-50 text-amber-700 ring-amber-200";
 }
 
-function defaultDateRange() {
-  const end = new Date();
-  const start = new Date();
-  start.setDate(start.getDate() - 30);
-  return {
-    from: start.toISOString().slice(0, 10),
-    to: end.toISOString().slice(0, 10),
-  };
-}
-
 export default function EmailCenterPage() {
-  const initialRange = defaultDateRange();
   const [logs, setLogs] = useState<EmailLog[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [templateBreakdown, setTemplateBreakdown] = useState<TemplateBreakdown[]>([]);
@@ -80,12 +76,20 @@ export default function EmailCenterPage() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [template, setTemplate] = useState("all");
-  const [dateFrom, setDateFrom] = useState(initialRange.from);
-  const [dateTo, setDateTo] = useState(initialRange.to);
+  const [dateRange, setDateRange] = useState<DateRangeValue>(() => defaultDateRange("30d"));
   const [page, setPage] = useState(1);
-  const [pagination, setPagination] = useState<PaginationMeta>({ page: 1, pageSize: PAGE_SIZE, total: 0, totalPages: 1 });
+  const [pagination, setPagination] = useState<PaginationMeta>({
+    page: 1,
+    pageSize: PAGE_SIZE,
+    total: 0,
+    totalPages: 1,
+  });
   const [sendOpen, setSendOpen] = useState(false);
   const [retryingId, setRetryingId] = useState<number | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState("");
+  const [detailLog, setDetailLog] = useState<EmailLogDetail | null>(null);
 
   async function load(nextPage = page) {
     setLoading(true);
@@ -96,8 +100,8 @@ export default function EmailCenterPage() {
     if (search) params.set("search", search);
     if (status !== "all") params.set("status", status);
     if (template !== "all") params.set("template", template);
-    if (dateFrom) params.set("dateFrom", dateFrom);
-    if (dateTo) params.set("dateTo", dateTo);
+    if (dateRange.from) params.set("dateFrom", dateRange.from);
+    if (dateRange.to) params.set("dateTo", dateRange.to);
 
     try {
       const response = await fetch(`/api/master-admin/email-center?${params}`, { cache: "no-store" });
@@ -118,16 +122,14 @@ export default function EmailCenterPage() {
     }
   }
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     setPage(1);
-  }, [search, status, template, dateFrom, dateTo]);
+  }, [search, status, template, dateRange.from, dateRange.to, dateRange.preset]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void load(page), 250);
     return () => window.clearTimeout(timer);
-  }, [search, status, template, dateFrom, dateTo, page]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const range = paginationRange(pagination);
+  }, [search, status, template, dateRange.from, dateRange.to, dateRange.preset, page]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function exportCsv() {
     const params = new URLSearchParams();
@@ -135,8 +137,8 @@ export default function EmailCenterPage() {
     if (search) params.set("search", search);
     if (status !== "all") params.set("status", status);
     if (template !== "all") params.set("template", template);
-    if (dateFrom) params.set("dateFrom", dateFrom);
-    if (dateTo) params.set("dateTo", dateTo);
+    if (dateRange.from) params.set("dateFrom", dateRange.from);
+    if (dateRange.to) params.set("dateTo", dateRange.to);
     window.open(`/api/master-admin/email-center?${params}`, "_blank");
   }
 
@@ -160,65 +162,83 @@ export default function EmailCenterPage() {
     }
   }
 
+  async function openDetail(logId: number) {
+    setDetailOpen(true);
+    setDetailLoading(true);
+    setDetailError("");
+    setDetailLog(null);
+    try {
+      const res = await fetch(`/api/master-admin/email-center/${logId}`, { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Unable to load email detail");
+      setDetailLog(data.log || null);
+    } catch (error) {
+      setDetailError(error instanceof Error ? error.message : "Unable to load email detail");
+    } finally {
+      setDetailLoading(false);
+    }
+  }
+
+  const templateOptions = ["all", ...templates.map((t) => t.id)];
+  const hasFilters = Boolean(
+    search || status !== "all" || template !== "all" || dateRange.preset !== "30d",
+  );
+
+  function clearFilters() {
+    setSearch("");
+    setStatus("all");
+    setTemplate("all");
+    setDateRange(defaultDateRange("30d"));
+    setPage(1);
+  }
+
   const statCards = [
     {
       title: "Sent",
       value: summary?.sent ?? 0,
-      subtitle: `${summary?.today ?? 0} today`,
+      note: `${summary?.today ?? 0} today`,
       icon: CheckCircle2,
-      iconBg: "bg-emerald-50 text-emerald-600",
+      accent: "emerald" as const,
     },
     {
       title: "Failed",
       value: summary?.failed ?? 0,
-      subtitle: "Delivery errors",
+      note: "Delivery errors",
       icon: AlertCircle,
-      iconBg: "bg-red-50 text-red-600",
+      accent: "rose" as const,
     },
     {
       title: "Console Logged",
       value: summary?.console ?? 0,
-      subtitle: "No live provider configured",
+      note: "No live provider configured",
       icon: Mail,
-      iconBg: "bg-amber-50 text-amber-600",
+      accent: "amber" as const,
     },
     {
       title: "Total Logs",
       value: summary?.total ?? 0,
-      subtitle: "Filtered results",
+      note: "Filtered results",
       icon: Send,
-      iconBg: "bg-sky-50 text-sky-600",
+      accent: "sky" as const,
     },
   ];
 
   return (
-    <div className="master-admin-panel space-y-5">
+    <div className="master-admin-panel dash-premium animate-dash-fade-in flex min-h-0 flex-1 flex-col gap-3">
       <AdminPageHeader
         title="Email Center"
         subtitle="Search delivery logs, send customer emails, and review provider status."
         actions={
           <>
-            <Link
-              href="/master-admin/settings"
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-[13px] font-bold text-slate-700"
-            >
+            <Link href="/master-admin/settings" className="dash-premium-btn-secondary h-10 px-3 text-[12px]">
               Email Settings
             </Link>
-            <button
-              type="button"
-              onClick={exportCsv}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-[13px] font-bold text-slate-700"
-            >
-              <Download size={16} />
+            <button type="button" onClick={exportCsv} className="dash-premium-btn-secondary h-10 px-3 text-[12px]">
+              <Download size={15} />
               Export
-              <ChevronDown size={14} className="text-slate-400" />
             </button>
-            <button
-              type="button"
-              onClick={() => setSendOpen(true)}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#A6FF2E] px-4 py-2.5 text-[13px] font-black text-slate-900"
-            >
-              <Plus size={16} />
+            <button type="button" onClick={() => setSendOpen(true)} className="dash-premium-btn-primary h-10 px-4 text-[12px]">
+              <Plus size={15} strokeWidth={2.2} />
               Send Email
             </button>
           </>
@@ -226,158 +246,205 @@ export default function EmailCenterPage() {
       />
 
       {message ? (
-        <AdminActionMessage
-          message={message}
-          variant={message.toLowerCase().includes("fail") || message.toLowerCase().includes("unable") ? "error" : "success"}
-        />
+        <div
+          className={`dash-premium-card flex items-center justify-between gap-3 px-4 py-3 ${
+            message.toLowerCase().includes("fail") || message.toLowerCase().includes("unable")
+              ? "border-[#FEE2E2] bg-[#FEF2F2]"
+              : "border-[#DCFCE7] bg-[#F0FDF4]"
+          }`}
+        >
+          <p
+            className={`text-[13px] font-semibold ${
+              message.toLowerCase().includes("fail") || message.toLowerCase().includes("unable")
+                ? "text-[#991B1B]"
+                : "text-[#166534]"
+            }`}
+          >
+            {message}
+          </p>
+          <button
+            type="button"
+            onClick={() => setMessage("")}
+            className="grid h-8 w-8 place-items-center rounded-[10px] hover:bg-white/70"
+            aria-label="Dismiss"
+          >
+            <X size={15} />
+          </button>
+        </div>
       ) : null}
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {statCards.map((card) => {
-          const Icon = card.icon;
-          return (
-            <div key={card.title} className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_2px_10px_rgba(15,23,42,0.04)]">
-              <div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-full ${card.iconBg}`}>
-                <Icon size={16} />
-              </div>
-              <p className="text-[11px] font-semibold text-slate-500">{card.title}</p>
-              <p className="mt-0.5 text-[24px] font-black leading-none text-slate-950">
-                {Number(card.value).toLocaleString("en-IN")}
-              </p>
-              <p className="mt-1 text-[10px] font-semibold text-slate-400">{card.subtitle}</p>
-            </div>
-          );
-        })}
+        {statCards.map((card) => (
+          <UserMetricCard
+            key={card.title}
+            title={card.title}
+            value={Number(card.value).toLocaleString("en-IN")}
+            note={card.note}
+            icon={card.icon}
+            accent={card.accent}
+            compact
+          />
+        ))}
       </section>
 
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-4">
-        <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm xl:col-span-3">
-          <div className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row lg:flex-wrap lg:items-center">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search recipient, subject, template..."
-              className="h-10 min-w-[220px] flex-1 rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-[13px] font-medium outline-none focus:border-[#A6FF2E] focus:bg-white"
-            />
-            <select
+      <section className="grid grid-cols-1 gap-3 xl:grid-cols-4">
+        <div className="dash-premium-card overflow-hidden xl:col-span-3">
+          <div className="flex flex-wrap items-center gap-2 border-b border-[#ECECEC] px-4 py-3">
+            <div className="relative min-w-[200px] flex-1 basis-[220px] max-w-sm">
+              <Search
+                size={15}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]"
+              />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search recipient, subject, template..."
+                className="h-10 w-full rounded-[14px] border border-[#ECECEC] bg-white pl-9 pr-3 text-[13px] font-medium text-[#111827] outline-none transition focus:border-[#84D400] focus:shadow-[0_0_0_3px_rgba(182,255,56,0.18)]"
+              />
+            </div>
+
+            <UserFilterDropdown
+              hideLabel
+              compact
+              className="w-[138px] shrink-0"
+              label="Status"
+              menuTitle="Status"
               value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-700"
-            >
-              {statusOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            <select
+              options={STATUS_OPTIONS}
+              onChange={setStatus}
+              renderOption={(v) =>
+                ({ all: "All Status", sent: "Sent", failed: "Failed", console: "Console" } as Record<string, string>)[
+                  v
+                ] || v
+              }
+              renderValue={(v) =>
+                ({ all: "All Status", sent: "Sent", failed: "Failed", console: "Console" } as Record<string, string>)[
+                  v
+                ] || v
+              }
+            />
+
+            <UserFilterDropdown
+              hideLabel
+              compact
+              className="w-[160px] shrink-0"
+              label="Template"
+              menuTitle="Template"
               value={template}
-              onChange={(e) => setTemplate(e.target.value)}
-              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-700"
-            >
-              <option value="all">All Templates</option>
-              {templates.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-700"
+              options={templateOptions}
+              onChange={setTemplate}
+              renderOption={(v) =>
+                v === "all" ? "All Templates" : templates.find((t) => t.id === v)?.label || v
+              }
+              renderValue={(v) =>
+                v === "all" ? "All Templates" : templates.find((t) => t.id === v)?.label || v
+              }
             />
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-700"
-            />
+
+            <UserDateRangePicker value={dateRange} onChange={setDateRange} />
+
+            {hasFilters ? (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="ml-auto inline-flex h-10 shrink-0 items-center rounded-[14px] px-3 text-[12px] font-semibold text-[#6B7280] transition hover:bg-[#F3F4F6] hover:text-[#111827]"
+              >
+                Clear
+              </button>
+            ) : null}
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] text-left text-[13px]">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50/60 text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                  <th className="px-4 py-3">Recipient</th>
-                  <th className="px-4 py-3">Subject</th>
-                  <th className="px-4 py-3">Template</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Sent</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center font-semibold text-slate-400">
-                      Loading email logs...
-                    </td>
+          {loading ? (
+            <AdminLoadingState label="Loading email logs..." />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[980px] text-left">
+                <thead>
+                  <tr className="border-b border-[#ECECEC] bg-[#FAFAFB] text-[10px] font-bold uppercase tracking-wide text-[#9CA3AF]">
+                    <th className="px-3 py-3">Recipient</th>
+                    <th className="px-3 py-3">Subject</th>
+                    <th className="px-3 py-3">Template</th>
+                    <th className="px-3 py-3">Status</th>
+                    <th className="px-3 py-3">Sent</th>
+                    <th className="w-16 px-3 py-3 text-right">Actions</th>
                   </tr>
-                ) : logs.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center font-semibold text-slate-400">
-                      No email logs yet.
-                    </td>
-                  </tr>
-                ) : (
-                  logs.map((row) => (
-                    <tr key={row.id} className="border-b border-slate-50 transition hover:bg-slate-50/60">
-                      <td className="px-4 py-3 font-bold text-slate-900">{row.recipient}</td>
-                      <td className="max-w-[240px] px-4 py-3">
-                        <p className="truncate font-semibold text-slate-800">{row.subject}</p>
-                        {row.errorMessage ? (
-                          <p className="mt-0.5 truncate text-[11px] font-medium text-red-500">{row.errorMessage}</p>
-                        ) : null}
-                      </td>
-                      <td className="px-4 py-3 font-semibold text-slate-600">{row.templateLabel}</td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ring-inset ${statusClass(row.status)}`}>
-                          {row.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 font-semibold text-slate-600">{fmtDateTime(row.sentAt)}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-end">
-                          {row.status === "failed" && row.template !== "custom" ? (
-                            <button
-                              type="button"
-                              disabled={retryingId === row.id}
-                              onClick={() => void retryLog(row.id)}
-                              title="Retry"
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-sky-50 hover:text-sky-600 disabled:opacity-50"
-                            >
-                              <RefreshCw size={15} />
-                            </button>
-                          ) : null}
-                        </div>
+                </thead>
+                <tbody>
+                  {logs.length === 0 ? (
+                    <tr>
+                      <td colSpan={6}>
+                        <AdminEmptyState title="No email logs yet." />
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                  ) : (
+                    logs.map((row) => (
+                      <tr
+                        key={row.id}
+                        className="cursor-pointer border-b border-[#F3F4F6] transition hover:bg-[#FAFAFB]"
+                        onClick={() => void openDetail(row.id)}
+                      >
+                        <td className="px-3 py-3 text-[12px] font-bold text-[#111827]">{row.recipient}</td>
+                        <td className="max-w-[240px] px-3 py-3">
+                          <p className="truncate text-[12px] font-semibold text-[#374151]">{row.subject}</p>
+                          {row.errorMessage ? (
+                            <p className="mt-0.5 truncate text-[11px] font-medium text-red-500">{row.errorMessage}</p>
+                          ) : null}
+                        </td>
+                        <td className="px-3 py-3 text-[12px] font-semibold text-[#374151]">{row.templateLabel}</td>
+                        <td className="px-3 py-3">
+                          <span
+                            className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ring-inset ${statusClass(row.status)}`}
+                          >
+                            {row.status}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 text-[12px] font-semibold text-[#374151]">{fmtDateTime(row.sentAt)}</td>
+                        <td className="px-3 py-3 text-right" onClick={(event) => event.stopPropagation()}>
+                          <div className="inline-flex items-center justify-end gap-1">
+                            <button
+                              type="button"
+                              onClick={() => void openDetail(row.id)}
+                              title="View details"
+                              className="grid h-8 w-8 place-items-center rounded-[10px] text-[#6B7280] transition hover:bg-[#F7FCE8] hover:text-[#3D6600]"
+                            >
+                              <Eye size={15} />
+                            </button>
+                            {row.status === "failed" && row.template !== "custom" ? (
+                              <button
+                                type="button"
+                                disabled={retryingId === row.id}
+                                onClick={() => void retryLog(row.id)}
+                                title="Retry"
+                                className="grid h-8 w-8 place-items-center rounded-[10px] text-[#6B7280] transition hover:bg-sky-50 hover:text-sky-600 disabled:opacity-50"
+                              >
+                                <RefreshCw size={15} className={retryingId === row.id ? "animate-spin" : ""} />
+                              </button>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
 
-          <AdminPagination
-            page={page}
-            totalPages={pagination.totalPages}
-            meta={pagination}
-            onPageChange={setPage}
-          />
+          <div className="border-t border-[#ECECEC] px-2">
+            <AdminPagination page={page} totalPages={pagination.totalPages} meta={pagination} onPageChange={setPage} />
+          </div>
         </div>
 
-        <aside className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
-          <h3 className="text-[13px] font-black text-slate-900">By Template</h3>
+        <aside className="dash-premium-card p-4">
+          <h3 className="text-[13px] font-bold text-[#111827]">By Template</h3>
           <div className="mt-4 space-y-3">
             {templateBreakdown.length === 0 ? (
-              <p className="text-[12px] font-semibold text-slate-400">No template data</p>
+              <p className="text-[12px] font-medium text-[#9CA3AF]">No template data</p>
             ) : (
               templateBreakdown.map((item) => (
                 <div key={item.template} className="flex items-center justify-between gap-2 text-[12px]">
-                  <span className="font-semibold text-slate-600">{item.label}</span>
-                  <span className="font-bold text-slate-800">{item.count}</span>
+                  <span className="font-semibold text-[#6B7280]">{item.label}</span>
+                  <span className="font-bold text-[#111827]">{item.count}</span>
                 </div>
               ))
             )}
@@ -392,6 +459,18 @@ export default function EmailCenterPage() {
         onSent={(msg) => {
           setMessage(msg);
           void load(page);
+        }}
+      />
+
+      <EmailLogDetailModal
+        open={detailOpen}
+        loading={detailLoading}
+        log={detailLog}
+        error={detailError}
+        onClose={() => {
+          setDetailOpen(false);
+          setDetailLog(null);
+          setDetailError("");
         }}
       />
     </div>

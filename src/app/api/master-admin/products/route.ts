@@ -4,6 +4,7 @@ import { ensureAppSchema, query } from "@/lib/db";
 import { getProductFileMeta } from "@/lib/storage";
 import { syncAllProductsFromDiskToMysql } from "@/lib/products/disk-sync";
 import { paginationMeta, parsePagination } from "@/lib/master-admin/pagination";
+import { getPlatformSettings } from "@/lib/master-admin-settings";
 import {
   countJsonItems,
   fmtDateShort,
@@ -32,7 +33,9 @@ export async function GET(req: NextRequest) {
     if (auth instanceof NextResponse) return auth;
 
     await ensureAppSchema();
-    const syncedFromDisk = await syncAllProductsFromDiskToMysql();
+    // Disk→MySQL sync is opt-in only. Auto-sync on every list load resurrected hard-deleted products.
+    const syncRequested = new URL(req.url).searchParams.get("syncDisk") === "1";
+    const syncedFromDisk = syncRequested ? await syncAllProductsFromDiskToMysql() : 0;
 
     const { searchParams } = new URL(req.url);
     const search = searchParams.get("search") || "";
@@ -229,7 +232,11 @@ export async function GET(req: NextRequest) {
       }),
     );
 
-    const storageCapacityMB = 10 * 1024 * 1024;
+    const settings = await getPlatformSettings().catch(() => null);
+    const storageCapacityMB = Math.max(
+      1,
+      Number(settings?.platformStorageLimitGb || 50) * 1024,
+    );
     const summaryRow = summaryRows[0] || {};
     const totalStorageMB = Number(summaryRow.totalStorageMB || 0);
     const summary = {
@@ -277,9 +284,36 @@ export async function GET(req: NextRequest) {
       value: Number(row.value || 0),
     }));
 
-    const storageDaily = uploadsDaily.map((row, index) => ({
-      label: row.label,
-      value: Math.round(summary.totalStorageMB * ((index + 1) / Math.max(uploadsDaily.length, 1)) * 0.08),
+    const recentUploadsSum = uploadsDaily.slice(-7).reduce((sum, row) => sum + row.value, 0);
+    const priorUploadsSum = uploadsDaily.slice(-14, -7).reduce((sum, row) => sum + row.value, 0);
+    const productGrowthPct =
+      priorUploadsSum > 0
+        ? Math.round(((recentUploadsSum - priorUploadsSum) / priorUploadsSum) * 1000) / 10
+        : recentUploadsSum > 0
+          ? 100
+          : 0;
+
+    const assetRows = await query<{ file_path: string | null; size_bytes: number }>(`
+      SELECT file_path, size_bytes FROM product_assets
+    `).catch(() => [] as { file_path: string | null; size_bytes: number }[]);
+
+    const buckets = { Models: 0, Textures: 0, Thumbnails: 0, Others: 0 };
+    for (const row of assetRows) {
+      const mb = Number(row.size_bytes || 0) / 1024 / 1024;
+      const name = String(row.file_path || "").toLowerCase();
+      if (/poster\.(png|jpe?g|webp)$/.test(name) || /\/(poster|thumb|thumbnail)/.test(name)) {
+        buckets.Thumbnails += mb;
+      } else if (/\.(glb|gltf|usdz)$/.test(name)) {
+        buckets.Models += mb;
+      } else if (/\.(png|jpe?g|webp|ktx2)$/.test(name)) {
+        buckets.Textures += mb;
+      } else {
+        buckets.Others += mb;
+      }
+    }
+    const storageBreakdown = Object.entries(buckets).map(([label, mb]) => ({
+      label,
+      mb: Math.round(mb * 10) / 10,
     }));
 
     const topViewed = topViewedRows.map((p: any) => ({
@@ -303,13 +337,6 @@ export async function GET(req: NextRequest) {
       count: Number(row.count || 0),
     }));
 
-    const storageBreakdown = [
-      { label: "Models", mb: summary.totalStorageMB * 0.62 },
-      { label: "Textures", mb: summary.totalStorageMB * 0.22 },
-      { label: "Thumbnails", mb: summary.totalStorageMB * 0.1 },
-      { label: "Others", mb: summary.totalStorageMB * 0.06 },
-    ];
-
     const categories = await query<{ category: string }>(`
       SELECT DISTINCT p.category AS category
       FROM products p
@@ -326,9 +353,10 @@ export async function GET(req: NextRequest) {
       analytics: {
         growthDaily: uploadsDaily,
         uploadsDaily,
-        storageDaily,
+        storageDaily: [] as { label: string; value: number }[],
         categoryBreakdown,
         uploadsThisMonth: summary.uploadsThisMonth,
+        productGrowthPct,
       },
       sidebar: {
         topViewed,

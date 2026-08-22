@@ -23,6 +23,7 @@ export type WorkspaceRow = {
   favicon_url?: string | null;
   show_product_title?: boolean | number | null;
   hide_interaction_hint?: boolean | number | null;
+  powered_by_label?: string | null;
   owner_user_id: number;
   customer_uid: string;
   plan: string;

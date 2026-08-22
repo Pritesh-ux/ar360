@@ -14,6 +14,8 @@ export type CustomerUser = {
   role: "user";
   customerUid?: string;
   status?: "Active" | "Suspended" | "Deleted";
+  /** Mirrored from customers.status for layout/API gates. */
+  customerStatus?: "Active" | "Suspended" | "Deleted";
   sessionUid?: string;
   sessionVersion?: number;
 };
@@ -32,7 +34,7 @@ export type MasterAdminUser = {
 export type AuthUser = CustomerUser | MasterAdminUser;
 
 type CustomerUserRow = CustomerUser & {
-  password_hash: string;
+  password_hash: string | null;
   status: "Active" | "Suspended" | "Deleted";
   two_factor_enabled: 0 | 1 | boolean;
 };
@@ -43,10 +45,10 @@ type MasterAdminRow = MasterAdminUser & {
   two_factor_enabled: 0 | 1 | boolean;
 };
 
-const CUSTOMER_SESSION_COOKIE = "ar360_customer_session";
+export const CUSTOMER_SESSION_COOKIE = "ar360_customer_session";
 export const ADMIN_SESSION_COOKIE = "ar360_master_admin_session";
 const IMPERSONATION_COOKIE = "ar360_impersonation";
-const PENDING_2FA_COOKIE = "ar360_pending_2fa";
+export const PENDING_2FA_COOKIE = "ar360_pending_2fa";
 /** Set by middleware from the httpOnly cookie. Never trust client-supplied values. */
 export const ADMIN_TOKEN_HEADER = "x-ar360-admin-token";
 /** Legacy id header — still accepted if present after verified decode elsewhere. */
@@ -78,13 +80,34 @@ function shouldUseSecureCookie() {
     return false;
   }
 
+  // Production defaults to Secure cookies (HTTPS VPS / Hostinger / any host).
+  // Vercel and AUTH_HTTPS remain explicit boosts for edge cases.
   cachedSecureCookie =
-    process.env["NODE_ENV"] === "production" &&
-    (process.env["VERCEL"] === "1" || process.env["AUTH_HTTPS"] === "true");
+    process.env["NODE_ENV"] === "production" ||
+    process.env["VERCEL"] === "1" ||
+    process.env["AUTH_HTTPS"] === "true";
   return cachedSecureCookie;
 }
 
+/** Share session across apex + www (e.g. ar360studio.com / www.ar360studio.com). */
+function sessionCookieDomain(): string | undefined {
+  const explicit = process.env["AUTH_COOKIE_DOMAIN"]?.trim();
+  if (explicit) return explicit;
+
+  try {
+    const host = new URL(process.env["NEXT_PUBLIC_APP_URL"] || "").hostname.toLowerCase();
+    if (!host || host === "localhost" || host.endsWith(".localhost")) return undefined;
+    // leading dot = host + subdomains (www)
+    if (host.startsWith("www.")) return `.${host.slice(4)}`;
+    if (host.includes(".")) return `.${host}`;
+  } catch {
+    // ignore invalid APP_URL
+  }
+  return undefined;
+}
+
 export function sessionCookieOptions(maxAge: number) {
+  const domain = sessionCookieDomain();
   return {
     httpOnly: true,
     sameSite: "lax" as const,
@@ -92,6 +115,7 @@ export function sessionCookieOptions(maxAge: number) {
     maxAge,
     expires: new Date(Date.now() + maxAge * 1000),
     path: "/",
+    ...(domain ? { domain } : {}),
   };
 }
 
@@ -151,7 +175,8 @@ export function hashPassword(password: string) {
   return `scrypt:${salt}:${hash}`;
 }
 
-export function verifyPassword(password: string, stored: string) {
+export function verifyPassword(password: string, stored: string | null | undefined) {
+  if (!stored) return false;
   const [, salt, hash] = stored.split(":");
   if (!salt || !hash) return false;
   const actual = scryptSync(password, salt, 64);
@@ -304,52 +329,91 @@ export async function setTwoFactorChallenge(userOrId: AuthUser | string, code: s
   const userId = typeof userOrId === "string" ? userOrId : userOrId.id;
   const role = typeof userOrId === "string" ? "user" : userOrId.role;
   const table = role === "admin" ? "master_admins" : "users";
+  const codeHash = hashCode(code);
 
   await query(
     `UPDATE ${table} SET two_factor_code_hash = ?, two_factor_expires_at = DATE_ADD(NOW(), INTERVAL 10 MINUTE), two_factor_attempts = 0 WHERE id = ?`,
-    [hashCode(code), userId],
+    [codeHash, userId],
   );
 
-  const cookieStore = await cookies();
-  cookieStore.set(PENDING_2FA_COOKIE, encodeSigned({ userId, role, codeHash: hashCode(code) }), sessionCookieOptions(TWO_FACTOR_MAX_AGE));
+  const token = encodeSigned({ userId, role, codeHash });
+  const cookieOptions = sessionCookieOptions(TWO_FACTOR_MAX_AGE);
+
+  // Best-effort cookies() write (works in Server Actions). Route handlers must also
+  // attach this on NextResponse — cookies().set alone is flaky there.
+  try {
+    const cookieStore = await cookies();
+    cookieStore.set(PENDING_2FA_COOKIE, token, cookieOptions);
+  } catch {
+    // ignore — caller will set on the response
+  }
+
+  return { token, cookieOptions };
 }
 
-export async function verifyTwoFactorCode(code: string) {
+export async function verifyTwoFactorCode(code: string, _emailHint?: string) {
   await ensureAuthSchema();
   const cookieStore = await cookies();
-  const pending = decodeSigned<{ userId: number; role: "user" | "admin"; codeHash?: string }>(cookieStore.get(PENDING_2FA_COOKIE)?.value);
+  const pending = decodeSigned<{ userId: number; role: "user" | "admin"; codeHash?: string }>(
+    cookieStore.get(PENDING_2FA_COOKIE)?.value,
+  );
+
+  // Pending cookie is required — email-only verification is an auth bypass.
   if (!pending?.userId) return null;
 
   const table = pending.role === "admin" ? "master_admins" : "users";
+  const userId = pending.userId;
+  const role = pending.role === "admin" ? "admin" : "user";
+
   const rows = await query<{
     id: number;
     name: string;
     email: string;
     status: "Active" | "Suspended" | "Deleted" | "Disabled";
     two_factor_code_hash: string | null;
-    expired: 0 | 1;
+    expired: 0 | 1 | boolean;
     two_factor_attempts: number;
   }>(
     `SELECT id, name, email, status, two_factor_code_hash, two_factor_attempts, two_factor_expires_at < NOW() AS expired FROM ${table} WHERE id = ? LIMIT 1`,
-    [pending.userId],
+    [userId],
   );
 
   const user = rows[0];
-  if (!user || !user.two_factor_code_hash || user.expired || user.two_factor_attempts >= 5) return null;
-  if (pending.role === "admin" && user.status !== "Active") return null;
-  if (pending.role === "user" && user.status !== "Active") return null;
-  if (user.two_factor_code_hash !== hashCode(code)) {
-    await query(`UPDATE ${table} SET two_factor_attempts = two_factor_attempts + 1 WHERE id = ?`, [pending.userId]);
+  if (!user || !user.two_factor_code_hash || Boolean(user.expired) || Number(user.two_factor_attempts) >= 5) {
+    return null;
+  }
+  if (role === "admin" && user.status !== "Active") return null;
+  if (role === "user" && user.status !== "Active" && user.status !== "Suspended") return null;
+
+  const expected = Buffer.from(String(user.two_factor_code_hash), "utf8");
+  const actual = Buffer.from(hashCode(code), "utf8");
+  if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
+    await query(`UPDATE ${table} SET two_factor_attempts = two_factor_attempts + 1 WHERE id = ?`, [userId]);
     return null;
   }
 
-  await query(`UPDATE ${table} SET two_factor_code_hash = NULL, two_factor_expires_at = NULL, two_factor_attempts = 0 WHERE id = ?`, [pending.userId]);
-  cookieStore.delete(PENDING_2FA_COOKIE);
+  await query(
+    `UPDATE ${table} SET two_factor_code_hash = NULL, two_factor_expires_at = NULL, two_factor_attempts = 0 WHERE id = ?`,
+    [userId],
+  );
+  try {
+    cookieStore.delete(PENDING_2FA_COOKIE);
+  } catch {
+    // Route handler clears via response cookies.
+  }
 
-  if (pending.role === "admin") return { id: user.id, name: user.name, email: user.email, role: "admin" } satisfies MasterAdminUser;
+  if (role === "admin") {
+    return { id: user.id, name: user.name, email: user.email, role: "admin" } satisfies MasterAdminUser;
+  }
 
   const customer = await ensureCustomerForUser({ id: user.id, name: user.name, email: user.email });
-  return { id: user.id, name: user.name, email: user.email, role: "user", customerUid: customer.customer_uid } satisfies CustomerUser;
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: "user",
+    customerUid: customer.customer_uid,
+  } satisfies CustomerUser;
 }
 
 export async function createSession(user: AuthUser) {
@@ -359,7 +423,8 @@ export async function createSession(user: AuthUser) {
 
 export async function createCustomerSession(user: CustomerUser, request?: Request) {
   const customer = await ensureCustomerForUser(user);
-  if (customer.status !== "Active") {
+  // Suspended customers may sign in, but product APIs stay locked until activate.
+  if (customer.status === "Deleted") {
     throw new Error("Customer account is not active.");
   }
 
@@ -370,7 +435,8 @@ export async function createCustomerSession(user: CustomerUser, request?: Reques
   let sessionRequest = request;
   if (!sessionRequest) {
     const h = await headers();
-    sessionRequest = new Request("http://localhost", {
+    const { getAppUrl } = await import("@/lib/url");
+    sessionRequest = new Request(getAppUrl(), {
       headers: {
         "user-agent": h.get("user-agent") || "",
         "x-forwarded-for": h.get("x-forwarded-for") || "",
@@ -387,18 +453,17 @@ export async function createCustomerSession(user: CustomerUser, request?: Reques
   });
   const sessionVersion = await getUserSessionVersion(user.id);
 
+  const token = encodeSigned({
+    ...user,
+    role: "user",
+    customerUid: customer.customer_uid,
+    sessionUid,
+    sessionVersion,
+  });
+  const cookieOptions = sessionCookieOptions(SESSION_MAX_AGE);
+
   const cookieStore = await cookies();
-  cookieStore.set(
-    CUSTOMER_SESSION_COOKIE,
-    encodeSigned({
-      ...user,
-      role: "user",
-      customerUid: customer.customer_uid,
-      sessionUid,
-      sessionVersion,
-    }),
-    sessionCookieOptions(SESSION_MAX_AGE),
-  );
+  cookieStore.set(CUSTOMER_SESSION_COOKIE, token, cookieOptions);
   await query("UPDATE users SET last_login_at = NOW() WHERE id = ?", [user.id]);
 
   const { writeCustomerActivity } = await import("@/lib/account/activity.service");
@@ -419,6 +484,9 @@ export async function createCustomerSession(user: CustomerUser, request?: Reques
     href: "/dashboard/settings?tab=security",
     dedupeKey: `login:${sessionUid}`,
   }).catch(() => {});
+
+  // Route handlers should also set this on NextResponse (see /api/auth/login).
+  return { token, cookieOptions };
 }
 
 export async function createMasterAdminSession(user: MasterAdminUser) {
@@ -426,21 +494,39 @@ export async function createMasterAdminSession(user: MasterAdminUser) {
   if (rows[0]?.status !== "Active") {
     throw new Error("Master admin account is disabled.");
   }
-  const cookieStore = await cookies();
-  // Keep the signed payload small and stable — only identity fields.
+  const nowSec = Math.floor(Date.now() / 1000);
+  // Keep the signed payload small — identity + hard expiry (H11).
   const token = encodeSigned({
     id: user.id,
     name: user.name,
     email: user.email,
     role: "admin" as const,
+    iat: nowSec,
+    exp: nowSec + SESSION_MAX_AGE,
   });
-  cookieStore.set(ADMIN_SESSION_COOKIE, token, sessionCookieOptions(SESSION_MAX_AGE));
+  const cookieOptions = sessionCookieOptions(SESSION_MAX_AGE);
+  const cookieStore = await cookies();
+  cookieStore.set(ADMIN_SESSION_COOKIE, token, cookieOptions);
   await query("UPDATE master_admins SET last_login_at = NOW() WHERE id = ?", [user.id]);
+  return { token, cookieOptions };
+}
+
+function clearedSessionCookieOptions() {
+  const domain = sessionCookieDomain();
+  return {
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure: shouldUseSecureCookie(),
+    path: "/",
+    maxAge: 0,
+    expires: new Date(0),
+    ...(domain ? { domain } : {}),
+  };
 }
 
 export async function clearCustomerSession() {
   const cookieStore = await cookies();
-  const cleared = { path: "/", maxAge: 0 };
+  const cleared = clearedSessionCookieOptions();
   cookieStore.set(CUSTOMER_SESSION_COOKIE, "", cleared);
   cookieStore.set(IMPERSONATION_COOKIE, "", cleared);
   cookieStore.set(PENDING_2FA_COOKIE, "", cleared);
@@ -448,7 +534,7 @@ export async function clearCustomerSession() {
 
 export async function clearAdminSession() {
   const cookieStore = await cookies();
-  const cleared = { path: "/", maxAge: 0 };
+  const cleared = clearedSessionCookieOptions();
   cookieStore.set(ADMIN_SESSION_COOKIE, "", cleared);
   cookieStore.set(PENDING_2FA_COOKIE, "", cleared);
 }
@@ -583,12 +669,13 @@ export async function getCurrentUser() {
       (impersonation.customerUid === user?.customerUid || impersonation.customerUid === session.customerUid),
   );
 
-  // Normal logins block suspended accounts; admin impersonation may open them for support.
+  // Deleted accounts lose the session. Suspended may stay signed in (features gated elsewhere).
+  // Admin impersonation may open Deleted=false suspended accounts for support.
   if (
     !user
     || user.status === "Deleted"
     || user.customerStatus === "Deleted"
-    || ((!isAdminImpersonating) && (user.status !== "Active" || user.customerStatus === "Suspended"))
+    || ((!isAdminImpersonating) && user.status !== "Active" && user.status !== "Suspended")
   ) {
     try {
       cookieStore.delete(CUSTOMER_SESSION_COOKIE);
@@ -625,49 +712,55 @@ export async function getCurrentUser() {
     role: "user" as const,
     customerUid: user.customerUid ?? session.customerUid,
     status: user.status,
+    customerStatus: user.customerStatus ?? undefined,
     sessionUid: session.sessionUid,
     sessionVersion: session.sessionVersion ?? user.session_version,
   } satisfies CustomerUser;
 }
 
 export async function getCurrentMasterAdmin(options?: { token?: string }) {
-  let sessionId: number | null = null;
+  type AdminSessionPayload = MasterAdminUser & { exp?: number; iat?: number };
+  let session: AdminSessionPayload | null = null;
 
   // 1) Explicit token from route handler request.cookies
   const preferred = options?.token?.trim();
   if (preferred) {
-    const session = decodeSigned<MasterAdminUser>(preferred);
-    if (session?.id) sessionId = session.id;
+    session = decodeSigned<AdminSessionPayload>(preferred);
   }
 
-  // 2) Middleware-forwarded httpOnly cookie token (and legacy admin id header)
-  if (sessionId == null) {
+  // 2) Middleware-forwarded httpOnly cookie token
+  if (!session?.id) {
     try {
       const headerList = await headers();
       const forwarded = headerList.get(ADMIN_TOKEN_HEADER);
       if (forwarded) {
-        const session = decodeSigned<MasterAdminUser>(forwarded);
-        if (session?.id) sessionId = session.id;
+        session = decodeSigned<AdminSessionPayload>(forwarded);
       }
-      if (sessionId == null) {
-        const fromProxyId = headerList.get(ADMIN_ID_HEADER);
-        if (fromProxyId) {
-          const parsed = Number(fromProxyId);
-          if (Number.isFinite(parsed) && parsed > 0) sessionId = parsed;
-        }
-      }
+      // Never trust x-ar360-admin-id — unsigned numeric IDs are forgeable.
     } catch {
       // ignore
     }
   }
 
   // 3) Fallback: cookies() / raw Cookie header
-  if (sessionId == null) {
+  if (!session?.id) {
     const token = await readSignedAuthToken(ADMIN_SESSION_COOKIE);
-    const session = decodeSigned<MasterAdminUser>(token);
-    if (!session?.id) return null;
-    sessionId = session.id;
+    session = decodeSigned<AdminSessionPayload>(token);
   }
+
+  if (!session?.id) return null;
+
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (typeof session.exp === "number") {
+    if (session.exp < nowSec) return null;
+  } else {
+    // Legacy tokens without exp: accept briefly so live admins are not mass-logged-out.
+    // Set ALLOW_LEGACY_ADMIN_SESSIONS=false after one SESSION_MAX_AGE window post-deploy.
+    const allowLegacy = process.env["ALLOW_LEGACY_ADMIN_SESSIONS"] !== "false";
+    if (!allowLegacy) return null;
+  }
+
+  const sessionId = session.id;
 
   const rows = await query<{
     id: number;
@@ -704,9 +797,16 @@ export async function getAnyCurrentUser() {
   return (await getCurrentMasterAdmin()) || (await getCurrentUser());
 }
 
-export async function requireApiUser() {
+export async function requireApiUser(options?: { allowSuspended?: boolean }) {
   const user = await getCurrentUser();
   if (!user?.customerUid) return null;
+  // Product/feature APIs stay locked while suspended (support may opt in).
+  if (
+    !options?.allowSuspended &&
+    (user.status === "Suspended" || user.customerStatus === "Suspended")
+  ) {
+    return null;
+  }
   return user;
 }
 

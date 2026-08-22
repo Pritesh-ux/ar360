@@ -3,15 +3,24 @@ export function productHubLinks(input: {
   productId: string;
   productTitle?: string;
   qrRecordId?: number | null;
+  /** When set, viewer/AR URLs include ?client= so the catalog sidebar can load. */
+  clientUid?: string | null;
 }) {
-  const { productId, qrRecordId } = input;
+  const { productId, qrRecordId, clientUid } = input;
   const enc = encodeURIComponent(productId);
+  const client = String(clientUid || "").trim();
+  const clientQuery = client ? `client=${encodeURIComponent(client)}` : "";
+
+  const viewer = clientQuery ? `/viewer/${enc}?${clientQuery}` : `/viewer/${enc}`;
+  const ar = clientQuery
+    ? `/viewer/${enc}?${clientQuery}&openAR=1`
+    : `/viewer/${enc}?openAR=1`;
 
   return {
     editor: `/dashboard/products/${enc}`,
     preview: `/dashboard/products/${enc}/preview`,
-    viewer: `/viewer/${enc}`,
-    ar: `/viewer/${enc}?openAR=1`,
+    viewer,
+    ar,
     qrCenter: `/dashboard/qr-center?productId=${enc}`,
     qrEdit:
       qrRecordId != null && Number.isFinite(qrRecordId)

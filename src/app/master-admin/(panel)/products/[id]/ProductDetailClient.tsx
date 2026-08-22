@@ -1,9 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { ArrowLeft } from "lucide-react";
+import Link from "next/link";
+import { useDeferredEffect } from "@/lib/react/use-deferred-effect";
 import ProductDetailView, { type ProductDetailPayload } from "@/components/features/master-admin/ProductDetailView";
-import AdminPageHeader from "@/components/features/master-admin/AdminPageHeader";
 import { AdminActionMessage } from "@/components/ui/admin";
+import "@/components/dashboard/dashboard-premium.css";
 
 export default function ProductDetailClient({ productId }: { productId: string }) {
   const [data, setData] = useState<ProductDetailPayload | null>(null);
@@ -28,7 +31,7 @@ export default function ProductDetailClient({ productId }: { productId: string }
     }
   }
 
-  async function mutate(action: "publish" | "disable") {
+  async function mutate(action: "publish" | "disable" | "delete") {
     setPending(true);
     setMessage("");
     try {
@@ -39,6 +42,13 @@ export default function ProductDetailClient({ productId }: { productId: string }
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || "Action failed");
+      if (action === "delete") {
+        setMessage("Product deleted. Redirecting...");
+        setTimeout(() => {
+          window.location.href = "/master-admin/products";
+        }, 1500);
+        return;
+      }
       setMessage(action === "publish" ? "Product published." : "Product archived.");
       await load();
     } catch (err) {
@@ -48,24 +58,36 @@ export default function ProductDetailClient({ productId }: { productId: string }
     }
   }
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     void load();
-  }, [productId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [productId]);
 
   if (loading) {
     return (
-      <div className="master-admin-panel space-y-4">
-        <AdminPageHeader title="Product" backHref="/master-admin/products" backLabel="Back to Products" />
-        <p className="p-8 text-center text-[13px] font-semibold text-slate-400">Loading product details...</p>
+      <div className="master-admin-panel dash-premium animate-dash-fade-in flex min-h-0 flex-1 flex-col gap-3 pb-10">
+        <Link
+          href="/master-admin/products"
+          className="inline-flex h-9 w-fit items-center gap-1.5 rounded-[12px] border border-[#ECECEC] bg-white px-3 text-[12px] font-semibold text-[#374151]"
+        >
+          <ArrowLeft size={14} />
+          Back to Products
+        </Link>
+        <p className="p-8 text-center text-[13px] font-semibold text-[#9CA3AF]">Loading product details...</p>
       </div>
     );
   }
 
   if (error || !data) {
     return (
-      <div className="master-admin-panel space-y-4">
-        <AdminPageHeader title="Product" backHref="/master-admin/products" backLabel="Back to Products" />
-        <div className="rounded-2xl border border-red-100 bg-red-50 p-6 text-[13px] font-bold text-red-700">
+      <div className="master-admin-panel dash-premium animate-dash-fade-in flex min-h-0 flex-1 flex-col gap-3 pb-10">
+        <Link
+          href="/master-admin/products"
+          className="inline-flex h-9 w-fit items-center gap-1.5 rounded-[12px] border border-[#ECECEC] bg-white px-3 text-[12px] font-semibold text-[#374151]"
+        >
+          <ArrowLeft size={14} />
+          Back to Products
+        </Link>
+        <div className="dash-premium-card border-red-100 bg-red-50 p-6 text-[13px] font-bold text-red-700">
           {error || "Product not found."}
         </div>
       </div>
@@ -73,32 +95,28 @@ export default function ProductDetailClient({ productId }: { productId: string }
   }
 
   return (
-    <div className="master-admin-panel space-y-4">
-      <AdminPageHeader
-        title={data.product.name}
-        subtitle={`${data.product.code} · ${data.product.status}${
-          data.clientDelivery ? ` · Client: ${data.clientDelivery.clientName}` : ""
-        }`}
-        backHref="/master-admin/products"
-        backLabel="Back to Products"
-        breadcrumbs={[
-          { label: "Products", href: "/master-admin/products" },
-          { label: data.product.name },
-        ]}
-      />
+    <>
       {message ? (
-        <AdminActionMessage
-          message={message}
-          variant={message.toLowerCase().includes("fail") ? "error" : "success"}
-        />
+        <div className="master-admin-panel dash-premium px-0 pb-0 pt-3">
+          <AdminActionMessage
+            message={message}
+            variant={message.toLowerCase().includes("fail") ? "error" : "success"}
+          />
+        </div>
       ) : null}
       <ProductDetailView
         data={data}
         onPublish={() => void mutate("publish")}
         onDisable={() => void mutate("disable")}
-        onDelete={() => setMessage("Delete is disabled for now.")}
+        onDelete={() => {
+          if (window.confirm("Delete this product permanently? This cannot be undone.")) void mutate("delete");
+        }}
       />
-      {pending ? <p className="text-[12px] font-semibold text-slate-400">Saving…</p> : null}
-    </div>
+      {pending ? (
+        <p className="master-admin-panel dash-premium px-0 pb-3 pt-0 text-[12px] font-semibold text-[#9CA3AF]">
+          Saving…
+        </p>
+      ) : null}
+    </>
   );
 }

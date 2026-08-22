@@ -3,7 +3,6 @@ import { ensureAppSchema, query } from "@/lib/db";
 import { ensureEmailLogsSchema } from "@/lib/email/email-log";
 import { getPlatformSettings } from "@/lib/master-admin-settings";
 import { getEmailDeliveryStatus } from "@/lib/email/delivery-config";
-import { PLATFORM_STORAGE_TB } from "@/components/features/master-admin/storage-utils";
 import { resolveStorageRoot } from "@/lib/storage/paths";
 import type { DashboardSystemHealthItem } from "@/lib/master-admin/dashboard.service";
 
@@ -109,6 +108,7 @@ function buildChecks(input: {
   dbConnected: boolean;
   dbLatencyMs: number | null;
   storageUsedPct: number;
+  storageLimitLabel: string;
   storageWritable: boolean;
   failedPayments7d: number;
   openHighTickets: number;
@@ -141,7 +141,7 @@ function buildChecks(input: {
             : "healthy"
         : "error",
       note: input.storageWritable
-        ? `${input.storageUsedPct}% of ${PLATFORM_STORAGE_TB} TB used`
+        ? `${input.storageUsedPct}% of ${input.storageLimitLabel} used`
         : "Storage path not writable",
     },
     {
@@ -266,14 +266,21 @@ export async function getSystemHealthSnapshot(): Promise<SystemHealthSnapshot> {
   ]);
 
   const storageUsedMB = Number(customerRows[0]?.storageUsedMB || 0);
-  const storageCapacityMB = PLATFORM_STORAGE_TB * 1024 * 1024;
+  const storageLimitGb = settings?.platformStorageLimitGb || 50;
+  const storageCapacityMB = storageLimitGb * 1024;
   const storageUsedPct = Math.min(100, Math.round((storageUsedMB / storageCapacityMB) * 1000) / 10) || 0;
   const failedEmails24h = Number(failedEmailRows[0]?.total || 0);
+
+  const storageLimitLabel =
+    storageLimitGb >= 1024
+      ? `${(storageLimitGb / 1024).toFixed(1)} TB`
+      : `${storageLimitGb} GB`;
 
   const checks = buildChecks({
     dbConnected: dbPing.connected,
     dbLatencyMs: dbPing.latencyMs,
     storageUsedPct,
+    storageLimitLabel,
     storageWritable,
     failedPayments7d: Number(failedPaymentsRows[0]?.total || 0),
     openHighTickets: Number(openHighTicketsRows[0]?.total || 0),

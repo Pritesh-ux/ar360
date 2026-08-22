@@ -1,6 +1,24 @@
 # AR360 Studio — Production Deploy Guide
 
-## Quick start (Docker)
+> See also: [README.md](../README.md) · [ENVIRONMENT.md](ENVIRONMENT.md) · [SERVER_SETUP.md](SERVER_SETUP.md) · [PRODUCTION_CHECKLIST.md](PRODUCTION_CHECKLIST.md)
+
+## One-command deploy (VPS / build machine)
+
+```bash
+npm run deploy
+```
+
+Pipeline: `npm ci` → typecheck → lint → unit tests → security audit → build → pack → **deploy.zip**
+
+Pack only (after build):
+
+```bash
+npm run deploy:pack
+```
+
+Upload `deploy.zip` to your server — see [SERVER_SETUP.md](SERVER_SETUP.md).
+
+---
 
 1. Copy environment template:
    ```bash

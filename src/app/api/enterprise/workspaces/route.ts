@@ -5,6 +5,7 @@ import {
   getWorkspacesForUser,
   ensureDefaultWorkspace,
 } from "@/lib/enterprise/workspace.service";
+import { requireActiveSubscriptionApi } from "@/lib/subscription/api-subscription-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +13,9 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Login required." }, { status: 401 });
+
+  const gate = await requireActiveSubscriptionApi(user.customerUid ?? "");
+  if (!gate.ok) return gate.response;
 
   await ensureAppSchema();
   const ws = await ensureDefaultWorkspace({
@@ -27,6 +31,9 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Login required." }, { status: 401 });
+
+  const gate = await requireActiveSubscriptionApi(user.customerUid ?? "");
+  if (!gate.ok) return gate.response;
 
   const body = await req.json().catch(() => ({})) as { name?: string };
   const name = String(body.name ?? "").trim();

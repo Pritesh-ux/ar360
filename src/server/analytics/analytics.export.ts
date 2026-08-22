@@ -1,6 +1,6 @@
 import { query, type QueryValue } from "@/lib/db";
 
-export type AnalyticsExportFormat = "csv" | "json";
+export type AnalyticsExportFormat = "excel";
 
 export type AnalyticsExportInput = {
   customerUid: string;

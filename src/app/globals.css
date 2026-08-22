@@ -121,6 +121,16 @@ footer {
   pointer-events: none;
 }
 
+[data-catalog-rail] {
+  position: fixed !important;
+  z-index: 85 !important;
+}
+
+[data-viewer-section] model-viewer {
+  position: relative;
+  z-index: 0;
+}
+
 [data-viewer-header] button,
 [data-viewer-header] a,
 [data-viewer-header] [class*="pointer-events-auto"] {
@@ -134,7 +144,18 @@ model-viewer {
   --poster-color: var(--surface);
 }
 
+/* Keep a solid light poster while GLB loads — transparent poster reveals black WebGL canvas. */
 [data-viewer-page] model-viewer {
+  background: #f0f2f5 !important;
+  --poster-color: #f0f2f5 !important;
+}
+
+[data-viewer-page][data-viewer-theme="dark"] model-viewer {
+  background: #111318 !important;
+  --poster-color: #111318 !important;
+}
+
+[data-viewer-page][data-transparent-viewer="true"] model-viewer {
   background: transparent !important;
   --poster-color: transparent !important;
 }
@@ -468,6 +489,18 @@ section {
   isolation: isolate;
 }
 
+/* Impersonation banner sits in the editor's top padding band (not shifted off-screen). */
+html[data-impersonating] .product-editor-shell {
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+  padding-top: var(--ar360-impersonation-offset, 0px) !important;
+  box-sizing: border-box !important;
+}
+
 html[data-portal-theme="light"] .product-editor-shell {
   --editor-accent: var(--primary);
   --editor-accent-hover: var(--primary-hover);
@@ -523,7 +556,7 @@ html[data-portal-theme="light"] .product-editor-shell model-viewer {
 
 .product-editor-shell .portal-model-canvas,
 .product-editor-shell .portal-viewer-layer {
-  background: var(--surface) !important;
+  background-color: var(--editor-viewer-bg, var(--surface, #F0F2F5)) !important;
 }
 
 .product-editor-shell .portal-model-canvas {
@@ -534,8 +567,19 @@ html[data-portal-theme="light"] .product-editor-shell model-viewer {
 }
 
 .product-editor-shell model-viewer {
-  background: var(--editor-viewer-bg, #030405) !important;
-  --poster-color: var(--editor-viewer-bg, #030405) !important;
+  background: transparent !important;
+  --poster-color: transparent !important;
+}
+
+@media (max-width: 767px) {
+  .product-editor-shell model-viewer button[slot="ar-button"],
+  .product-editor-shell model-viewer [slot="ar-button"] {
+    display: none !important;
+  }
+
+  .product-editor-shell .portal-model-toolbar {
+    display: none !important;
+  }
 }
 
 .product-editor-shell .editor-control-card {
@@ -544,8 +588,8 @@ html[data-portal-theme="light"] .product-editor-shell model-viewer {
 }
 
 .product-editor-shell .editor-accent-card {
-  background: color-mix(in srgb, var(--editor-accent) 13%, transparent) !important;
-  border-color: var(--editor-accent) !important;
+  background: color-mix(in srgb, #b8ff3c 16%, white) !important;
+  border-color: color-mix(in srgb, #b8ff3c 55%, #e5e7eb) !important;
 }
 
 .product-editor-shell .editor-value-pill {
@@ -639,13 +683,22 @@ html[data-portal-theme="light"] .product-editor-shell .editor-toggle > div {
 }
 
 /* Keep color/texture swatches visible on white panels (avoid white-on-white).
-   Final override also lives at end of file — later no-border / lime remaps fight these. */
+   Final override also lives at end of file â€” later no-border / lime remaps fight these. */
 .product-editor-shell .studio-color-swatch,
 .product-editor-shell .studio-texture-swatch {
   border: 2px solid #6b7280 !important;
   border-color: #6b7280 !important;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7) !important;
   background-clip: padding-box !important;
+}
+
+.product-editor-shell .studio-texture-swatch {
+  flex-shrink: 0 !important;
+  width: 3.5rem !important;
+  height: 3.5rem !important;
+  min-width: 3.5rem !important;
+  min-height: 3.5rem !important;
+  aspect-ratio: 1 / 1 !important;
 }
 
 .product-editor-shell .studio-color-hex {
@@ -1463,7 +1516,7 @@ html[data-portal-theme="lime"] .product-editor-shell textarea:focus {
 }
 
 /* Secondary Button standard style */
-html[data-portal-theme="lime"] .customer-portal button:not([class*="bg-[var(--portal-accent)]"]):not([class*="bg-[#C9FF57]"]):not([class*="bg-cyan"]):not([type="submit"]):not([class*="bg-[#00B2CA]"]):not([class*="bg-[#0097ac]"]):not([class*="bg-red"]):not([class*="text-red"]):not(.sidebar-nav-item):not(.up-product-card-action):not(.up-product-menu-item):not(.up-select-check) {
+html[data-portal-theme="lime"] .customer-portal button:not([class*="bg-[var(--portal-accent)]"]):not([class*="bg-[#C9FF57]"]):not([class*="bg-cyan"]):not([type="submit"]):not([class*="bg-[#00B2CA]"]):not([class*="bg-[#0097ac]"]):not([class*="bg-red"]):not([class*="text-red"]):not(.sidebar-nav-item):not(.up-product-card-action):not(.up-product-menu-item):not(.up-select-check):not(.up-icon-btn):not(.share-copy-btn) {
   background-color: var(--color-page) !important;
   border: 1px solid var(--color-border) !important;
   color: var(--color-text) !important;
@@ -1473,8 +1526,80 @@ html[data-portal-theme="lime"] .customer-portal button:not([class*="bg-[var(--po
   transition: all 0.2s ease-in-out !important;
 }
 
-html[data-portal-theme="lime"] .customer-portal button:not([class*="bg-[var(--portal-accent)]"]):not([class*="bg-[#C9FF57]"]):not([class*="bg-cyan"]):not([type="submit"]):not([class*="bg-[#00B2CA]"]):not([class*="bg-[#0097ac]"]):not([class*="bg-red"]):not([class*="text-red"]):not(.sidebar-nav-item):not(.up-product-card-action):not(.up-product-menu-item):not(.up-select-check):hover {
+html[data-portal-theme="lime"] .customer-portal button:not([class*="bg-[var(--portal-accent)]"]):not([class*="bg-[#C9FF57]"]):not([class*="bg-cyan"]):not([type="submit"]):not([class*="bg-[#00B2CA]"]):not([class*="bg-[#0097ac]"]):not([class*="bg-red"]):not([class*="text-red"]):not(.sidebar-nav-item):not(.up-product-card-action):not(.up-product-menu-item):not(.up-select-check):not(.up-icon-btn):not(.share-copy-btn):hover {
   background-color: var(--color-surface-soft) !important;
+}
+
+/* White icon / tool buttons (share options, compact actions) â€” single border, clear hover. */
+.up-icon-btn {
+  background-color: #ffffff !important;
+  border: 1px solid #e5e7eb !important;
+  color: #525252 !important;
+  box-shadow: none !important;
+  cursor: pointer !important;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease !important;
+}
+.up-icon-btn:hover,
+.up-icon-btn:focus-visible {
+  background-color: #eef9e0 !important;
+  border-color: #84d400 !important;
+  color: #111111 !important;
+}
+.up-icon-btn:active {
+  background-color: #e4f5cc !important;
+}
+
+.share-copy-btn {
+  background: rgba(16, 32, 0, 0.06) !important;
+  border: none !important;
+  color: #3f3f46 !important;
+  box-shadow: none !important;
+  cursor: pointer !important;
+}
+.share-copy-btn:hover,
+.share-copy-btn:focus-visible {
+  background: rgba(16, 32, 0, 0.1) !important;
+  color: #111111 !important;
+}
+
+/* Rows-per-page shell â€” select inside uses .borderless-select (end of file). */
+.up-page-size-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 2rem;
+  padding: 0 1.6rem 0 0.65rem;
+  border-radius: 0.5rem;
+  border: 1px solid #e5e7eb;
+  background-color: #ffffff;
+  color: #525252;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.up-page-size-wrap:hover {
+  background-color: #f4f4f5;
+  border-color: #d4d4d8;
+}
+.up-page-size-wrap > svg {
+  position: absolute;
+  right: 0.45rem;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: #a3a3a3;
+}
+.up-page-size-wrap select.borderless-select {
+  min-width: 1.75rem;
+  width: auto;
+  padding: 0 !important;
+  margin: 0 !important;
+  font-size: 0.875rem !important;
+  font-weight: 600 !important;
+  color: #525252 !important;
+  cursor: pointer;
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
 }
 
 /* Danger Button standard style */
@@ -1604,24 +1729,25 @@ html[data-portal-theme="lime"] .product-editor-shell .editor-topbar button {
 }
 
 html[data-portal-theme="lime"] .product-editor-shell .portal-model-canvas {
-  /* Layout handled by flex rules below — keep flush (no floating card radius) */
+  /* Layout handled by flex rules below â€” keep flush (no floating card radius) */
   border-radius: 0 !important;
   box-shadow: none !important;
   border: 0 !important;
   overflow: hidden !important;
-  background: #F0F2F5 !important;
+  background: var(--editor-viewer-bg, #F0F2F5) !important;
 }
 
 html[data-portal-theme="lime"] .product-editor-shell .portal-viewer-layer {
-  background:
-    linear-gradient(rgba(12, 14, 16, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(12, 14, 16, 0.04) 1px, transparent 1px),
-    linear-gradient(180deg, #f5f6f8 0%, #eef0f3 100%) !important;
-  background-size: 38px 38px, 38px 38px, auto !important;
+  background-color: var(--editor-viewer-bg, #F0F2F5) !important;
+  background-image:
+    linear-gradient(rgba(12, 14, 16, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(12, 14, 16, 0.05) 1px, transparent 1px) !important;
+  background-size: 38px 38px, 38px 38px !important;
 }
 
 html[data-portal-theme="lime"] .product-editor-shell .portal-viewer-layer.hide-grid {
-  background: radial-gradient(ellipse at 50% 42%, #f8f9fb 0%, #eef0f3 70%, #e8eaee 100%) !important;
+  background-color: var(--editor-viewer-bg, #F0F2F5) !important;
+  background-image: none !important;
   background-size: auto !important;
 }
 
@@ -1668,7 +1794,12 @@ html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel > div:fi
 }
 
 html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel > div:first-child button {
-  color: var(--portal-muted) !important;
+  color: #374151 !important;
+}
+
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel > div:first-child button[aria-pressed="true"] {
+  color: #102000 !important;
+  background: #eef9e0 !important;
 }
 
 html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel > div:first-child button[class*="border-[#00B2CA]"],
@@ -1705,15 +1836,15 @@ html[data-portal-theme="lime"] .product-editor-shell .editor-toggle {
 html[data-portal-theme="lime"] .product-editor-shell .editor-toggle.is-on,
 html[data-portal-theme="lime"] .product-editor-shell .editor-range::-webkit-slider-thumb,
 html[data-portal-theme="lime"] .product-editor-shell .editor-range::-moz-range-thumb {
-  background: var(--portal-accent) !important;
+  background: #b8ff3c !important;
 }
 
 html[data-portal-theme="lime"] .product-editor-shell .editor-range {
   background:
     linear-gradient(
       90deg,
-      var(--portal-accent) 0%,
-      var(--portal-accent) var(--range-progress, 0%),
+      #b8ff3c 0%,
+      #b8ff3c var(--range-progress, 0%),
       rgba(8, 10, 13, 0.12) var(--range-progress, 0%),
       rgba(8, 10, 13, 0.12) 100%
     ) !important;
@@ -2361,12 +2492,15 @@ html[data-portal-theme="lime"] .product-editor-shell img,
   }
 
   html[data-portal-theme="lime"] .product-editor-shell .editor-topbar {
-    height: 76px !important;
-    left: 12px !important;
-    padding-left: 14px !important;
-    padding-right: 14px !important;
-    right: 12px !important;
-    top: 12px !important;
+    height: auto !important;
+    min-height: calc(56px + env(safe-area-inset-top, 0px)) !important;
+    left: 0 !important;
+    padding-top: env(safe-area-inset-top, 0px) !important;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+    padding-bottom: 8px !important;
+    right: 0 !important;
+    top: 0 !important;
   }
 
   html[data-portal-theme="lime"] .product-editor-shell .editor-topbar h1 {
@@ -2378,9 +2512,11 @@ html[data-portal-theme="lime"] .product-editor-shell img,
     gap: 6px !important;
   }
 
+  /* Icon-only actions stay square; text actions (View AR) keep auto width */
   html[data-portal-theme="lime"] .product-editor-shell .editor-topbar > div:last-child button {
-    height: 38px !important;
-    width: 38px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+    width: auto !important;
   }
 
   html[data-portal-theme="lime"] .product-editor-shell .portal-model-canvas {
@@ -2483,14 +2619,10 @@ html[data-portal-theme="lime"] .product-editor-shell img,
     padding-bottom: calc(84px + env(safe-area-inset-bottom)) !important;
   }
 
-  .master-admin-shell [class*="fixed"][class*="inset-0"] {
+  /* Only bottom-sheet style for full-screen overlays that opt in â€” do not rewrite all widths */
+  .master-admin-shell [data-ma-sheet="true"].fixed.inset-0 {
     align-items: end !important;
     padding: 10px !important;
-  }
-
-  .master-admin-shell [class*="max-w-"],
-  .master-admin-shell [class*="w-["] {
-    max-width: calc(100vw - 20px) !important;
   }
 
   .master-admin-shell table {
@@ -2938,93 +3070,87 @@ html[data-portal-theme="lime"] .product-editor-shell .portal-model-canvas {
   }
 }
 
-/* Patch: cleaner upload modal, dropdowns, editor action buttons, and mobile viewer sizing */
-html[data-portal-theme="lime"] .customer-portal .upload-product-modal,
-.customer-portal .upload-product-modal {
-  background: rgba(15, 23, 42, .42) !important;
-  backdrop-filter: blur(14px) !important;
+/* Patch: upload modal only (portaled — no .customer-portal / no full-panel restyle) */
+html[data-portal-theme="lime"] .upload-product-modal,
+.upload-product-modal {
+  background: rgba(0, 0, 0, 0.55) !important;
+  backdrop-filter: blur(12px) saturate(120%) !important;
+  -webkit-backdrop-filter: blur(12px) saturate(120%) !important;
 }
 
-html[data-portal-theme="lime"] .customer-portal .upload-product-modal-card,
-.customer-portal .upload-product-modal-card {
-  max-width: 920px !important;
+html[data-portal-theme="lime"] .upload-product-modal-card,
+.upload-product-modal-card {
+  max-width: 860px !important;
   border-radius: 20px !important;
+  border: 1px solid #ececec !important;
   box-shadow: 0 18px 55px rgba(15, 23, 42, .14) !important;
-}
-
-html[data-portal-theme="lime"] .customer-portal .upload-product-modal-card > div:first-child,
-.customer-portal .upload-product-modal-card > div:first-child {
-  min-height: 70px !important;
-  height: auto !important;
-  padding: 14px 22px !important;
-}
-
-html[data-portal-theme="lime"] .customer-portal .upload-product-modal-grid,
-.customer-portal .upload-product-modal-grid {
-  gap: 20px !important;
-  padding: 20px !important;
-}
-
-@media (min-width: 1024px) {
-  html[data-portal-theme="lime"] .customer-portal .upload-product-modal-grid,
-  .customer-portal .upload-product-modal-grid {
-    grid-template-columns: minmax(0, 1fr) 360px !important;
-  }
-}
-
-.customer-portal .upload-product-modal-grid section > div,
-.customer-portal .upload-product-modal-grid [class*="rounded-[24px]"] {
-  border-radius: 20px !important;
-}
-
-.customer-portal .upload-product-modal-grid label[class*="border-dashed"] {
-  min-height: 180px !important;
-  height: auto !important;
-  border-radius: 20px !important;
-}
-
-.customer-portal .upload-preview-stage,
-.customer-portal .upload-product-modal-grid .upload-preview-stage {
-  aspect-ratio: 1 / 1 !important;
-  width: 100% !important;
-  max-width: 360px !important;
-  height: auto !important;
-  border: 1px solid #E5E7EB !important;
-  border-radius: 16px !important;
   background: #ffffff !important;
 }
 
-.customer-portal .upload-preview-stage model-viewer,
-.customer-portal .upload-preview-stage > div {
+.upload-product-modal .dash-upload-header {
+  min-height: 70px !important;
+  padding: 14px 20px !important;
+  border-bottom: 1px solid #ececec !important;
+}
+
+.upload-product-modal .dash-upload-body,
+.upload-product-modal-grid {
+  gap: 18px !important;
+  padding: 18px 20px !important;
+}
+
+@media (min-width: 1024px) {
+  .upload-product-modal .dash-upload-body,
+  .upload-product-modal-grid {
+    grid-template-columns: minmax(0, 1fr) 300px !important;
+  }
+}
+
+.upload-product-modal .dash-upload-dropzone {
+  min-height: 180px !important;
+  border-radius: 16px !important;
+  border: 1.5px dashed #e5e7eb !important;
+  background: #fafafa !important;
+}
+
+.upload-product-modal .dash-upload-preview-panel {
+  border: 1px solid #ececec !important;
+  border-radius: 16px !important;
+  background: #fafafb !important;
+}
+
+.upload-product-modal .dash-upload-preview-stage {
+  aspect-ratio: 1 / 1 !important;
+  width: 100% !important;
+  min-height: 220px !important;
+  height: auto !important;
+  border-bottom: 1px solid #ececec !important;
+  background: #ffffff !important;
+}
+
+.upload-product-modal .dash-upload-preview-stage model-viewer,
+.upload-product-modal .dash-upload-preview-stage > div {
   width: 100% !important;
   height: 100% !important;
   min-height: 100% !important;
 }
 
-.customer-portal .upload-product-modal button,
-.customer-portal .upload-product-modal input,
-.customer-portal .upload-product-modal select,
-.customer-portal .upload-product-modal [role="button"] {
-  border-radius: 16px !important;
+.upload-product-modal .dash-upload-meta-row {
+  border: 1px solid #ececec !important;
+  background: #ffffff !important;
 }
 
-/* Dropdown polish: remove heavy stacked lines and keep popup aligned below trigger. */
-.customer-portal .upload-product-modal [class*="absolute"][class*="top-[56px]"],
-.customer-portal [class*="absolute"][class*="top-[56px]"] {
-  top: calc(100% + 8px) !important;
-  border-radius: 18px !important;
-  padding: 6px !important;
-  border: 1px solid rgba(15, 23, 42, .10) !important;
-  box-shadow: 0 18px 44px rgba(15, 23, 42, .12) !important;
+.upload-product-modal .dash-upload-footer {
+  border-top: 1px solid #ececec !important;
+  padding: 12px 20px !important;
 }
 
-.customer-portal .upload-product-modal [class*="absolute"][class*="top-[56px]"] button,
-.customer-portal [class*="absolute"][class*="top-[56px]"] button {
-  height: 38px !important;
-  border: 0 !important;
-  border-radius: 13px !important;
-  margin: 1px 0 !important;
-  box-shadow: none !important;
+.upload-product-modal .dash-upload-header button,
+.upload-product-modal .dash-upload-footer button,
+.upload-product-modal input,
+.upload-product-modal select,
+.upload-product-modal [role="button"] {
+  border-radius: 14px !important;
 }
 
 /* Editor right-panel actions: consistent SaaS pill style. */
@@ -3067,15 +3193,21 @@ html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel .editor-
   background: var(--portal-accent-wash, #efffd6) !important;
 }
 
-/* Public mobile viewer: give the model more breathing room above the bottom toolbar. */
+/* Public mobile viewer + upload modal stack */
+@media (max-width: 1023px) {
+  .dash-upload-preview-panel,
+  .upload-product-modal .dash-upload-preview-panel {
+    display: none !important;
+  }
+}
+
 @media (max-width: 639px) {
-  .customer-portal .upload-product-modal-grid,
-  html[data-portal-theme="lime"] .customer-portal .upload-product-modal-grid {
+  .upload-product-modal-grid,
+  .upload-product-modal .dash-upload-body {
     grid-template-columns: 1fr !important;
   }
 
-  .customer-portal .upload-product-modal-grid [class*="h-[390px]"],
-  .customer-portal .upload-preview-stage {
+  .upload-product-modal .dash-upload-preview-stage {
     aspect-ratio: 1 / 1 !important;
     height: auto !important;
     max-width: min(360px, 100%) !important;
@@ -3088,7 +3220,7 @@ html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel .editor-
 }
 
 /* Final no-border UI pass: remove panel/card borders across user and master-admin panels while keeping layout, radius and shadows.
-   Keep a dedicated input border token — form fields must stay editable/visible. */
+   Keep a dedicated input border token â€” form fields must stay editable/visible. */
 :root,
 html[data-portal-theme="lime"],
 html[data-portal-theme="cyan"] {
@@ -3403,6 +3535,82 @@ html[data-portal-theme="cyan"] .product-editor-shell .portal-model-toolbar butto
   background-color: #f4f4f5 !important;
 }
 
+/* White data tables — intentional override of muted surface remaps above */
+.user-panel-shell .up-panel-table-shell {
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid #ececec;
+  background: #ffffff !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+
+.user-panel-shell .up-panel-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #ffffff !important;
+}
+
+.user-panel-shell .up-panel-table thead tr.up-panel-table__head,
+.user-panel-shell .up-panel-table tr.up-panel-table__head {
+  border-bottom: 1px solid #ececec;
+  background: #fafafa !important;
+  color: #737373;
+}
+
+.user-panel-shell .up-panel-table tbody > tr.up-panel-table__row {
+  border-bottom: 1px solid #ececec;
+  background: #ffffff !important;
+  transition: background-color 150ms ease;
+}
+
+.user-panel-shell .up-panel-table tbody > tr.up-panel-table__row > td {
+  background: #ffffff !important;
+  transition: background-color 150ms ease;
+}
+
+.user-panel-shell .up-panel-table tbody > tr.up-panel-table__row:hover,
+.user-panel-shell .up-panel-table tbody > tr.up-panel-table__row:hover > td {
+  background: #f7f8f9 !important;
+}
+
+.user-panel-shell .up-panel-table tbody > tr.up-panel-table__row--active,
+.user-panel-shell .up-panel-table tbody > tr.up-panel-table__row--active > td {
+  background: #f7fce8 !important;
+}
+
+.user-panel-shell .up-panel-table tbody > tr.up-panel-table__row--active:hover,
+.user-panel-shell .up-panel-table tbody > tr.up-panel-table__row--active:hover > td {
+  background: #f3f9e0 !important;
+}
+
+.user-panel-shell .up-panel-table__row--clickable {
+  cursor: pointer;
+}
+
+.user-panel-shell .up-panel-pill-neutral {
+  background: #f0f0f0 !important;
+}
+
+.user-panel-shell .up-panel-icon-btn {
+  border-color: #d4d4d4;
+  background: #ffffff !important;
+  color: #525252;
+}
+
+.user-panel-shell .up-panel-icon-btn:hover {
+  background: #f7f8f9 !important;
+}
+
+.user-panel-shell .up-panel-icon-btn--accent {
+  border-color: #c8e899;
+  background: #eef9e0 !important;
+  color: #5fa800;
+}
+
+.user-panel-shell .up-panel-icon-btn--accent:hover {
+  background: #e5f5d4 !important;
+}
+
 /* Product editor - user panel light theme (overrides legacy dark editor rules) */
 
 .product-editor-shell {
@@ -3458,19 +3666,19 @@ html[data-portal-theme="cyan"] .product-editor-shell .portal-model-toolbar butto
 
 .product-editor-shell .portal-model-canvas,
 .product-editor-shell .portal-viewer-layer {
-  background: #ffffff !important;
+  background-color: var(--editor-viewer-bg, #ffffff) !important;
 }
 
 .product-editor-shell .portal-viewer-layer {
-  background:
-    linear-gradient(rgba(12, 14, 16, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(12, 14, 16, 0.04) 1px, transparent 1px),
-    #fafafa !important;
-  background-size: 38px 38px, 38px 38px, auto !important;
+  background-image:
+    linear-gradient(rgba(12, 14, 16, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(12, 14, 16, 0.05) 1px, transparent 1px) !important;
+  background-size: 38px 38px, 38px 38px !important;
 }
 
 .product-editor-shell .portal-viewer-layer.hide-grid {
-  background: #fafafa !important;
+  background-color: var(--editor-viewer-bg, #fafafa) !important;
+  background-image: none !important;
   background-size: auto !important;
 }
 
@@ -3522,6 +3730,25 @@ html[data-portal-theme="cyan"] .product-editor-shell .portal-model-toolbar butto
 .product-editor-shell .editor-side-panel select,
 .product-editor-shell .editor-side-panel option {
   color: #525252 !important;
+}
+
+.product-editor-shell .editor-side-panel .editor-fit-chip {
+  height: 2rem;
+  flex: 1 1 0;
+  border-radius: 0.375rem;
+  border: 1px solid #e5e7eb !important;
+  background: #ffffff !important;
+  padding: 0 0.5rem;
+  font-size: 11px;
+  font-weight: 700;
+  color: #111111 !important;
+}
+.product-editor-shell .editor-side-panel .editor-fit-chip.is-active,
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel .editor-fit-chip.is-active,
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel .editor-fit-chip.is-active {
+  background: #111111 !important;
+  border-color: #111111 !important;
+  color: #ffffff !important;
 }
 
 .product-editor-shell .editor-side-panel section > button,
@@ -3661,34 +3888,34 @@ html[data-portal-theme="lime"] .customer-portal .up-product-card-actions [role="
   --ar-primary-hover: #d7ff76;
   --ar-primary-soft: #f3ffd7;
   --ar-primary-border: #bce83c;
-  --ar-background: #FAFAFA;
+  --ar-background: #F8F9FA;
   --ar-surface: #ffffff;
-  --ar-surface-soft: #f6f7f2;
-  --ar-border: #e2e4dc;
+  --ar-surface-soft: #f4f5f1;
+  --ar-border: #e5e7e0;
   --ar-text: #171717;
   --ar-text-muted: #6c7068;
-  --ar-rail: #1c1d22;
-  --ar-shadow-sm: 0 5px 18px rgba(22, 24, 20, 0.045);
-  --ar-shadow-md: 0 16px 45px rgba(22, 24, 20, 0.075);
+  --ar-rail: #141517;
+  --ar-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04);
+  --ar-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.06);
 }
 
 .user-panel-shell .user-panel-content > * {
-  animation: arPanelIn 240ms ease-out both;
+  animation: arPanelIn 200ms ease-out both;
 }
 
 .user-panel-shell main {
-  background: #FAFAFA !important;
+  background: #F8F9FA !important;
   background-image: none !important;
 }
 
 .user-panel-shell .user-panel-content [class*="rounded-"][class*="border"] {
-  border-color: #e2e4dc;
+  border-color: #e5e7e0;
 }
 
 .user-panel-shell .user-panel-content [class*="bg-[#F9FAFB]"],
 .user-panel-shell .user-panel-content [class*="bg-slate-50"],
 .user-panel-shell .user-panel-content [class*="bg-gray-50"] {
-  background-color: #f6f7f2 !important;
+  background-color: #f4f5f1 !important;
 }
 
 .user-panel-shell .user-panel-content input,
@@ -3705,7 +3932,7 @@ html[data-portal-theme="lime"] .customer-portal .up-product-card-actions [role="
 .user-panel-shell .user-panel-content textarea:focus {
   border-color: #a9d52f !important;
   outline: 0 !important;
-  box-shadow: 0 0 0 4px rgba(200, 255, 70, 0.20) !important;
+  box-shadow: 0 0 0 3px rgba(200, 255, 70, 0.15) !important;
 }
 
 .user-panel-shell .user-panel-content button[class*="bg-[#84D400]"],
@@ -3746,7 +3973,7 @@ html[data-portal-theme="lime"] .customer-portal .up-product-card-actions [role="
   overflow: visible !important;
 }
 
-/* Product select checkboxes — compact circle */
+/* Product select checkboxes â€” compact circle */
 .user-panel-shell .up-select-check,
 html[data-portal-theme="lime"] .customer-portal .up-select-check {
   width: 18px !important;
@@ -3767,13 +3994,13 @@ html[data-portal-theme="lime"] .customer-portal .up-select-check {
   border-radius: 12px !important;
 }
 
-/* Notifications popover — consistent 16px corners on all sides */
+/* Notifications popover â€” consistent 16px corners on all sides */
 .up-notification-panel {
   border-radius: 16px !important;
   overflow: hidden !important;
 }
 
-/* Product card overflow menu — solid white + clear hover */
+/* Product card overflow menu â€” solid white + clear hover */
 .user-panel-shell .up-product-menu,
 html[data-portal-theme="lime"] .customer-portal .up-product-menu {
   background: #ffffff !important;
@@ -3809,6 +4036,11 @@ html[data-portal-theme="lime"] .customer-portal .up-product-menu .up-product-men
   color: #dc2626 !important;
 }
 
+@keyframes pricing-badge-pulse {
+  0%, 100% { transform: translateX(-50%) translateY(0); box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22); }
+  50% { transform: translateX(-50%) translateY(-2px); box-shadow: 0 12px 28px rgba(185, 255, 44, 0.35); }
+}
+
 @keyframes arPanelIn {
   from { opacity: 0; transform: translateY(5px); }
   to { opacity: 1; transform: translateY(0); }
@@ -3832,10 +4064,24 @@ html[data-portal-theme="lime"] .customer-portal .up-product-menu .up-product-men
   --ar-border: #e6e8df;
 }
 
-/* Global compact rhythm */
+/* Global compact rhythm â€” keep mobile bottom clear of fixed black nav */
 .user-panel-shell .user-panel-content {
   gap: 8px !important;
-  padding: 8px !important;
+  padding-top: 8px !important;
+  padding-left: 14px !important;
+  padding-right: 16px !important;
+  /* Base pad; mobile hard spacer in shell also adds clearance */
+  padding-bottom: 8px !important;
+  box-sizing: border-box !important;
+  max-width: 100% !important;
+  overflow-x: clip !important;
+}
+
+@media (min-width: 768px) {
+  .user-panel-shell .user-panel-content {
+    gap: 12px !important;
+    padding: 16px !important;
+  }
 }
 
 .user-panel-shell .user-panel-content > * + * {
@@ -4043,9 +4289,54 @@ html[data-portal-theme="lime"] .customer-portal .up-product-menu .up-product-men
 }
 
 @media (max-width: 768px) {
+  .user-panel-shell {
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+  }
+
+  .user-panel-shell .user-panel-main {
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    min-height: 0 !important;
+    flex: 1 1 auto !important;
+  }
+
   .user-panel-shell .user-panel-content {
     gap: 8px !important;
-    padding: 8px !important;
+    flex: 0 0 auto !important;
+    min-height: auto !important;
+    height: auto !important;
+    max-height: none !important;
+    padding-top: 8px !important;
+    padding-left: 14px !important;
+    padding-right: 16px !important;
+    padding-bottom: 8px !important;
+    box-sizing: border-box !important;
+    max-width: 100% !important;
+    overflow-x: clip !important;
+  }
+
+  /* Let page bodies grow so main can scroll; avoid flex lock clipping */
+  .user-panel-shell .user-panel-content > * {
+    flex-shrink: 0 !important;
+    max-height: none !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow: visible !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Fill leftover viewport (Recent products / Products empty) */
+  .user-panel-shell .user-panel-content .up-fill-panel {
+    flex: 1 1 auto !important;
+    min-height: min(52dvh, 28rem) !important;
+  }
+
+  .user-panel-shell .user-panel-content .up-empty-dash {
+    border-style: dashed !important;
+    border-width: 2px !important;
+    border-color: #d1d5db !important;
   }
 }
 
@@ -4073,17 +4364,17 @@ html[data-portal-theme="lime"] .customer-portal .up-product-menu .up-product-men
   border-left: 1px solid #eef0f1 !important;
 }
 .product-editor-shell .portal-viewer-layer {
-  background-color: #f4f5f6 !important;
+  background-color: var(--editor-viewer-bg, #f4f5f6) !important;
 }
 .product-editor-shell .portal-model-toolbar {
   border: 1px solid #e7e9eb !important;
 }
 .product-editor-shell .editor-primary-action {
-  background: #c8ff46 !important;
-  color: #111416 !important;
+  background: #b8ff3c !important;
+  color: #050505 !important;
 }
 .product-editor-shell .editor-primary-action:hover {
-  background: #b9f337 !important;
+  background: #a7f22f !important;
 }
 
 /* =========================================================
@@ -4142,10 +4433,10 @@ html[data-portal-theme="lime"] .customer-portal .up-product-menu .up-product-men
   border-bottom: 1px solid #e4e7e9 !important;
 }
 
-/* Right properties panel: clear 2px separators between every section */
+/* Right properties panel: crisp separators between sections */
 .product-editor-shell .editor-side-panel section,
 .product-editor-shell .editor-material-section {
-  border-bottom: 2px solid #e4e7e9 !important;
+  border-bottom: 1px solid #e5e7eb !important;
   box-shadow: none !important;
 }
 .product-editor-shell .editor-side-panel section:last-child,
@@ -4164,29 +4455,23 @@ html[data-portal-theme="lime"] .customer-portal .up-product-menu .up-product-men
   background: #fafafa !important;
 }
 
-/* Top property icons: neutral by default, lime underline only for active */
+/* Top property tabs: labeled, high-contrast, lime active */
 .product-editor-shell .editor-panel-tabs {
-  gap: 0 !important;
+  gap: 4px !important;
   padding-left: 8px !important;
   padding-right: 8px !important;
+  min-height: 64px !important;
 }
 
 .product-editor-shell .editor-panel-tab-sep {
-  display: block !important;
-  width: 2px !important;
-  min-width: 2px !important;
-  height: 22px !important;
-  margin: 0 4px !important;
-  border-radius: 1px !important;
-  background: #C8CDD4 !important;
-  flex-shrink: 0 !important;
+  display: none !important;
 }
 
 .product-editor-shell .editor-panel-tabs > button,
 .product-editor-shell .editor-panel-tabs > .editor-panel-tab {
   background: transparent !important;
-  color: #687074 !important;
-  border: 0 !important;
+  color: #374151 !important;
+  border: 1px solid transparent !important;
   border-radius: 10px !important;
   box-shadow: none !important;
   outline: none !important;
@@ -4194,24 +4479,29 @@ html[data-portal-theme="lime"] .customer-portal .up-product-menu .up-product-men
 
 .product-editor-shell .editor-panel-tabs > button:hover,
 .product-editor-shell .editor-panel-tabs > .editor-panel-tab:hover {
-  background: #f2f4f4 !important;
+  background: #f1f3f4 !important;
   color: #111416 !important;
 }
 
 .product-editor-shell .editor-panel-tabs > button[aria-pressed="true"],
-.product-editor-shell .editor-panel-tabs > button[class*="bg-[#F4F5F5]"],
-.product-editor-shell .editor-panel-tabs > button[class*="bg-[#C8FF46]"] {
-  background: #f4f5f5 !important;
-  color: #111416 !important;
-  border: 0 !important;
-  box-shadow: none !important;
+.product-editor-shell .editor-panel-tabs > button[class*="bg-[#EAF8C8]"],
+.product-editor-shell .editor-panel-tabs > button[class*="bg-[#C8FF46]"],
+.product-editor-shell .editor-panel-tabs > button[class*="bg-[#F4F5F5]"] {
+  background: #eef9e0 !important;
+  color: #050505 !important;
+  border-color: transparent !important;
+  box-shadow: inset 0 -2px 0 #b8ff3c !important;
 }
 
 .product-editor-shell .editor-panel-tabs > button span[class*="absolute"] {
-  background: #c8ff46 !important;
+  display: none !important;
 }
 
-/* Canvas flush against side panel — no floating radius cut */
+.product-editor-shell .editor-panel-context {
+  line-height: 1.35;
+}
+
+/* Canvas flush against side panel â€” no floating radius cut */
 html[data-portal-theme="lime"] .product-editor-shell .portal-model-canvas,
 .product-editor-shell .portal-model-canvas {
   border-radius: 0 !important;
@@ -4272,7 +4562,8 @@ html[data-portal-theme="lime"] .product-editor-shell .portal-viewer-layer,
 /* Restore visible border separators for accordion sections on canvas page */
 .product-editor-shell .editor-material-section,
 .product-editor-shell .editor-panel-section {
-  border-bottom: 2px solid #ECECEC !important;
+  border-bottom: 1px solid #E5E7EB !important;
+  box-shadow: none !important;
 }
 
 /* =========================================================
@@ -4347,7 +4638,7 @@ html[data-portal-theme="lime"] .product-editor-shell .portal-model-canvas,
   border-radius: 0 !important;
   box-shadow: none !important;
   overflow: hidden !important;
-  background: #ffffff !important;
+  background: var(--editor-viewer-bg, #F0F2F5) !important;
 }
 
 html[data-portal-theme="lime"] .product-editor-shell .portal-viewer-layer,
@@ -4356,6 +4647,7 @@ html[data-portal-theme="lime"] .product-editor-shell .portal-viewer-layer,
   inset: 0 !important;
   width: 100% !important;
   height: 100% !important;
+  background-color: var(--editor-viewer-bg, #F0F2F5) !important;
 }
 
 html[data-portal-theme="lime"] .product-editor-shell .portal-viewer-layer model-viewer,
@@ -4455,7 +4747,7 @@ html[data-portal-theme="lime"] .product-editor-shell .user-panel-sidebar,
 }
 
 /* =========================================================
-   FORM FIELDS — visible borders everywhere in user panel + editor
+   FORM FIELDS â€” visible borders everywhere in user panel + editor
    Panel chrome stays borderless; text inputs must always look editable.
    ========================================================= */
 html[data-portal-theme="lime"] .user-panel-shell :is(
@@ -4511,7 +4803,7 @@ html[data-portal-theme="lime"] .product-editor-shell :is(input, select, textarea
   box-shadow: none !important;
 }
 
-/* Variant modal name field — visible border (theme sets --color-border: transparent) */
+/* Variant modal name field â€” visible border (theme sets --color-border: transparent) */
 html[data-portal-theme="lime"] .product-editor-shell input.editor-variant-input:not([type="range"]):not([type="checkbox"]):not([type="color"]),
 .product-editor-shell input.editor-variant-input {
   border: 1px solid #C8CDD4 !important;
@@ -4535,8 +4827,8 @@ html[data-portal-theme="lime"] .product-editor-shell input.editor-variant-input:
 }
 
 /* =========================================================
-   EDITOR SECTION SEPARATORS - 2px light gray (reference)
-   Uses box-shadow so legacy border-color:transparent cannot hide them.
+   EDITOR SECTION SEPARATORS — crisp 1px hairlines (no inset
+   box-shadow; subpixel shadow aliases look “pixelated”).
    ========================================================= */
 html[data-portal-theme="lime"] .product-editor-shell .editor-section-block,
 html[data-portal-theme="lime"] .product-editor-shell .editor-material-section,
@@ -4547,11 +4839,8 @@ html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel section,
 .product-editor-shell .editor-panel-section,
 .product-editor-shell .editor-side-panel section {
   border: 0 !important;
-  border-top: 0 !important;
-  border-right: 0 !important;
-  border-left: 0 !important;
-  border-bottom: 0 !important;
-  box-shadow: inset 0 -2px 0 #E5E7EB !important;
+  border-bottom: 1px solid #E5E7EB !important;
+  box-shadow: none !important;
 }
 
 html[data-portal-theme="lime"] .product-editor-shell .editor-section-block:last-child,
@@ -4562,13 +4851,14 @@ html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel section:
 .product-editor-shell .editor-material-section:last-child,
 .product-editor-shell .editor-panel-section:last-child,
 .product-editor-shell .editor-side-panel section:last-child {
+  border-bottom: 0 !important;
   box-shadow: none !important;
 }
 
 html[data-portal-theme="lime"] .product-editor-shell .editor-material-body,
 .product-editor-shell .editor-material-body {
-  box-shadow: inset 0 1px 0 #F3F4F6 !important;
-  border-top: 0 !important;
+  box-shadow: none !important;
+  border-top: 1px solid #F3F4F6 !important;
 }
 
 html[data-portal-theme="lime"] .product-editor-shell .editor-material-title,
@@ -4754,16 +5044,16 @@ html[data-portal-theme="lime"] .product-editor-shell .studio-texture-swatch,
 .product-editor-shell label.studio-texture-swatch,
 .product-editor-shell .studio-color-swatch,
 .product-editor-shell .studio-texture-swatch {
-  border: 2px solid #6b7280 !important;
-  border-color: #6b7280 !important;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.65) !important;
+  border: 1px solid #d1d5db !important;
+  border-color: #d1d5db !important;
+  box-shadow: none !important;
 }
 
-/* Hex field lives in a body portal — do not require .product-editor-shell. */
+/* Hex field lives in a body portal â€” do not require .product-editor-shell. */
 html[data-portal-theme="lime"] input.studio-color-hex,
 input.studio-color-hex {
-  border: 2px solid #6b7280 !important;
-  border-color: #6b7280 !important;
+  border: 1px solid #d1d5db !important;
+  border-color: #d1d5db !important;
   background: #f9fafb !important;
   color: #111111 !important;
   font-weight: 600 !important;
@@ -4776,3 +5066,145 @@ input.studio-color-hex::placeholder {
   opacity: 1 !important;
 }
 
+/* Custom utility for borderless select dropdowns inside customer portal */
+select.borderless-select,
+.customer-portal select.borderless-select,
+.user-panel-shell .user-panel-content select.borderless-select,
+html[data-portal-theme] .user-panel-shell select.borderless-select,
+html[data-portal-theme="lime"] .user-panel-shell .user-panel-content select.borderless-select {
+  border: none !important;
+  border-width: 0 !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+select.borderless-select:hover,
+select.borderless-select:focus,
+select.borderless-select:focus-visible,
+.customer-portal select.borderless-select:hover,
+.customer-portal select.borderless-select:focus,
+.user-panel-shell .user-panel-content select.borderless-select:hover,
+.user-panel-shell .user-panel-content select.borderless-select:focus,
+.user-panel-shell .user-panel-content select.borderless-select:focus-visible,
+html[data-portal-theme] .user-panel-shell select.borderless-select:hover,
+html[data-portal-theme] .user-panel-shell select.borderless-select:focus,
+html[data-portal-theme] .user-panel-shell select.borderless-select:focus-visible,
+html[data-portal-theme="lime"] .user-panel-shell .user-panel-content select.borderless-select:hover,
+html[data-portal-theme="lime"] .user-panel-shell .user-panel-content select.borderless-select:focus,
+html[data-portal-theme="lime"] .user-panel-shell .user-panel-content select.borderless-select:focus-visible {
+  border: none !important;
+  border-width: 0 !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+/* Page-size: one shell border only - never style the inner select as a second chip. */
+.up-page-size-wrap select.borderless-select,
+.up-page-size-wrap select.borderless-select:hover,
+.up-page-size-wrap select.borderless-select:focus,
+.up-page-size-wrap select.borderless-select:focus-visible {
+  border: 0 !important;
+  border-width: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+}
+
+/* Hotspots: primary buttons match PUBLISH; white readable tooltip cards */
+.product-editor-shell .editor-side-panel section > button.editor-primary-action,
+.product-editor-shell .editor-side-panel button.editor-primary-action,
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel section > button.editor-primary-action,
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel section > button.editor-primary-action,
+html[data-portal-theme="light"] .product-editor-shell .editor-side-panel section > button.editor-primary-action {
+  background: #b8ff3c !important;
+  background-color: #b8ff3c !important;
+  background-image: none !important;
+  border: 0 !important;
+  color: #050505 !important;
+  box-shadow: none !important;
+}
+
+.product-editor-shell .editor-side-panel section > button.editor-primary-action:hover,
+.product-editor-shell .editor-side-panel section > button.editor-primary-action:focus-visible,
+.product-editor-shell .editor-side-panel button.editor-primary-action:hover,
+.product-editor-shell .editor-side-panel button.editor-primary-action:focus-visible,
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel section > button.editor-primary-action:hover,
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel section > button.editor-primary-action:focus-visible,
+html[data-portal-theme="cyan"] .product-editor-shell .editor-side-panel section > button.editor-primary-action:hover,
+html[data-portal-theme="light"] .product-editor-shell .editor-side-panel section > button.editor-primary-action:hover {
+  background: #a7f22f !important;
+  background-color: #a7f22f !important;
+  color: #050505 !important;
+}
+
+.product-editor-shell .editor-side-panel section > button.editor-primary-action:active,
+html[data-portal-theme="lime"] .product-editor-shell .editor-side-panel section > button.editor-primary-action:active {
+  background: #96e01f !important;
+  background-color: #96e01f !important;
+}
+
+.ar360-hotspot-card,
+.product-editor-shell .ar360-hotspot-card,
+.customer-portal .ar360-hotspot-card,
+html[data-portal-theme="lime"] .ar360-hotspot-card,
+html[data-portal-theme="cyan"] .ar360-hotspot-card,
+html[data-portal-theme="light"] .ar360-hotspot-card {
+  background: #ffffff !important;
+  background-image: none !important;
+  border: 1px solid #e5e5e5 !important;
+  color: #111111 !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18) !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  transition: opacity 150ms ease, visibility 150ms ease !important;
+}
+
+.ar360-hotspot-pin:hover .ar360-hotspot-card,
+.ar360-hotspot-pin:focus .ar360-hotspot-card,
+.ar360-hotspot-pin:focus-visible .ar360-hotspot-card,
+.ar360-hotspot-pin:focus-within .ar360-hotspot-card,
+.product-editor-shell .ar360-hotspot-pin:hover .ar360-hotspot-card,
+.customer-portal .ar360-hotspot-pin:hover .ar360-hotspot-card,
+html[data-portal-theme="lime"] .ar360-hotspot-pin:hover .ar360-hotspot-card {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.ar360-hotspot-card-title,
+.ar360-hotspot-card strong,
+.product-editor-shell .ar360-hotspot-card strong,
+.product-editor-shell .ar360-hotspot-card-title,
+.customer-portal .ar360-hotspot-card strong,
+html[data-portal-theme="lime"] .ar360-hotspot-card strong,
+html[data-portal-theme="lime"] .ar360-hotspot-card-title {
+  color: #111111 !important;
+}
+
+.ar360-hotspot-card-body,
+.ar360-hotspot-card span,
+.product-editor-shell .ar360-hotspot-card span,
+.product-editor-shell .ar360-hotspot-card-body,
+.customer-portal .ar360-hotspot-card span,
+html[data-portal-theme="lime"] .ar360-hotspot-card span,
+html[data-portal-theme="lime"] .ar360-hotspot-card-body {
+  color: #525252 !important;
+}
+
+.ar360-hotspot-pin,
+.product-editor-shell .ar360-hotspot-pin,
+.customer-portal .ar360-hotspot-pin {
+  background: #b9ff2c !important;
+  color: #0a0b14 !important;
+  border-color: #ffffff !important;
+}

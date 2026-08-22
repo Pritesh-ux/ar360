@@ -1,3 +1,4 @@
+import { isCustomerStoragePath, toProtectedAssetUrl } from "@/lib/billing/asset-url";
 import { toCurrentOriginUrl } from "@/lib/modelSource";
 import type { MaterialSetting, ViewerProduct } from "./types";
 
@@ -24,7 +25,17 @@ export function getLogo(product: ViewerProduct | null) {
 
 export function normalizeViewerAssetUrl(value?: string) {
   if (!value) return value;
-  return toCurrentOriginUrl(value) || value;
+  const raw = String(value).trim();
+  // Cleared texture sentinel must stay a sentinel (not a fetchable URL, and
+  // not dropped — dropping it would restore the baked GLB map).
+  if (raw === "__clear__" || raw === "/__clear__") return "__clear__";
+  const withOrigin = toCurrentOriginUrl(value) || value;
+  if (isCustomerStoragePath(withOrigin)) {
+    const origin =
+      typeof window !== "undefined" ? window.location.origin : "";
+    return toProtectedAssetUrl(withOrigin, origin) || withOrigin;
+  }
+  return withOrigin;
 }
 
 function normalizeMaterialSettingAssets(setting: MaterialSetting): MaterialSetting {
@@ -35,6 +46,7 @@ function normalizeMaterialSettingAssets(setting: MaterialSetting): MaterialSetti
     normalTexture: normalizeViewerAssetUrl(setting.normalTexture),
     emissiveTexture: normalizeViewerAssetUrl(setting.emissiveTexture),
     occlusionTexture: normalizeViewerAssetUrl(setting.occlusionTexture),
+    bumpTexture: normalizeViewerAssetUrl(setting.bumpTexture),
     logoLayer: setting.logoLayer
       ? { ...setting.logoLayer, image: normalizeViewerAssetUrl(setting.logoLayer.image) || setting.logoLayer.image }
       : setting.logoLayer,
@@ -75,8 +87,12 @@ export function normalizeProductForViewer(product: ViewerProduct): ViewerProduct
   };
 }
 
-export function getActiveVariant(product: ViewerProduct | null) {
+export function getActiveVariant(product: ViewerProduct | null, variantId?: string | null) {
   if (!product) return null;
+  if (variantId) {
+    const selected = product.variants?.find((variant) => variant.id === variantId);
+    if (selected) return selected;
+  }
   return (
     product.variants?.find((variant) => variant.id === product.activeVariantId) ||
     product.variants?.[0] ||
@@ -84,41 +100,86 @@ export function getActiveVariant(product: ViewerProduct | null) {
   );
 }
 
-export function getViewerSettings(product: ViewerProduct | null) {
-  const variant = getActiveVariant(product);
+/** Swatch color for a variant chip (first material baseColor, else neutral). */
+export function getVariantSwatchColor(variant: { materialSettings?: Record<number, MaterialSetting> } | null | undefined) {
+  const materials = variant?.materialSettings;
+  if (!materials) return "#D1D5DB";
+  const first = Object.values(materials)[0];
+  return first?.baseColor || "#D1D5DB";
+}
+
+export function getViewerSettings(product: ViewerProduct | null, variantId?: string | null) {
+  const variant = getActiveVariant(product, variantId);
   const savedSettings = product?.settings || {};
   const variantMaterials = variant?.materialSettings || {};
-  const productMaterials = product?.materialSettings || (savedSettings?.materialSettings as Record<number, MaterialSetting>) || {};
+  const productMaterials =
+    product?.materialSettings ||
+    (savedSettings?.materialSettings as Record<number, MaterialSetting>) ||
+    {};
+
+  // When a variant row exists, never fall back to product-level materials.
+  // Product.materialSettings mirrors the *last edited* variant and would bleed
+  // across Default / Lock 02 / etc. Empty variant materials = native GLB look.
+  const materialSettings = variant ? variantMaterials : productMaterials;
+  const primaryMaterial = Object.values(materialSettings)[0];
+
+  // Lighting tab is product-level UI; variants may hold a stale default white bg.
+  // Prefer an explicit custom product/settings color over a default-looking variant bg.
+  const variantBg = variant?.backgroundColor;
+  const productBg =
+    product?.backgroundColor || (savedSettings?.backgroundColor as string) || undefined;
+  const isDefaultBg = (c?: string | null) => {
+    if (!c) return true;
+    const n = c.trim().toLowerCase();
+    return n === "#ffffff" || n === "#fff" || n === "#f0f2f5" || n === "#fbfcfb" || n === "#f8fafc";
+  };
+  const backgroundColor = !isDefaultBg(productBg)
+    ? productBg!
+    : !isDefaultBg(variantBg)
+      ? variantBg!
+      : productBg || variantBg || "#ffffff";
 
   return {
-    materialSettings:
-      Object.keys(variantMaterials).length > 0 ? variantMaterials : productMaterials,
+    materialSettings,
     environmentImage: variant?.environmentImage || product?.environmentImage || (savedSettings?.environmentImage as string) || "neutral",
     exposure: variant?.exposure ?? product?.exposure ?? (savedSettings?.exposure as number) ?? 1,
-    backgroundColor: variant?.backgroundColor || product?.backgroundColor || (savedSettings?.backgroundColor as string) || "#ffffff",
-    transparent: variant?.transparent ?? product?.transparent ?? (savedSettings?.transparent as boolean) ?? false,
+    environmentTint: "#ffffff",
+    environmentSaturation:
+      Number.isFinite(Number(variant?.environmentSaturation))
+        ? Number(variant?.environmentSaturation)
+        : (product as { environmentSaturation?: number })?.environmentSaturation ??
+          (savedSettings?.environmentSaturation as number) ??
+          1,
+    backgroundColor,
+    transparent: product?.transparent ?? variant?.transparent ?? (savedSettings?.transparent as boolean) ?? false,
     shadowIntensity: variant?.shadowIntensity ?? product?.shadowIntensity ?? (savedSettings?.shadowIntensity as number) ?? 1,
     shadowSoftness: variant?.shadowSoftness ?? product?.shadowSoftness ?? (savedSettings?.shadowSoftness as number) ?? 1,
     autoRotate: variant?.autoRotate ?? product?.autoRotate ?? (savedSettings?.autoRotate as boolean) ?? true,
     cameraControls: variant?.cameraControls ?? product?.cameraControls ?? (savedSettings?.cameraControls as boolean) ?? true,
     interactionPrompt: variant?.interactionPrompt ?? product?.interactionPrompt ?? (savedSettings?.interactionPrompt as boolean) ?? true,
     autoPlay: variant?.autoPlay ?? product?.autoPlay ?? (savedSettings?.autoPlay as boolean) ?? true,
+    showArButton:
+      (variant as { showArButton?: boolean } | null)?.showArButton ??
+      product?.showArButton ??
+      (savedSettings?.showArButton as boolean) ??
+      true,
     fov: variant?.fov ?? product?.fov ?? (savedSettings?.fov as number) ?? 38,
     poster: normalizeViewerAssetUrl(variant?.poster || product?.poster || (savedSettings?.poster as string)),
-    baseColor: product?.baseColor || (savedSettings?.baseColor as string) || "#ffffff",
-    metalness: product?.metalness ?? (savedSettings?.metalness as number) ?? 0,
-    roughness: product?.roughness ?? (savedSettings?.roughness as number) ?? 0.5,
-    emissiveColor: product?.emissiveColor || (savedSettings?.emissiveColor as string) || "#000000",
-    baseColorTexture: normalizeViewerAssetUrl(product?.baseColorTexture || (savedSettings?.baseColorTexture as string)),
-    initialZoom: variant?.initialZoom ?? product?.initialZoom ?? (savedSettings?.initialZoom as number) ?? 100,
+    // Prefer the active variant's first material; do not use product-level last-save.
+    baseColor: primaryMaterial?.baseColor || "#ffffff",
+    metalness: primaryMaterial?.metalness ?? 0,
+    roughness: primaryMaterial?.roughness ?? 0.5,
+    emissiveColor: primaryMaterial?.emissiveColor || "#000000",
+    baseColorTexture: normalizeViewerAssetUrl(primaryMaterial?.baseColorTexture),
+    initialZoom: product?.initialZoom ?? variant?.initialZoom ?? (savedSettings?.initialZoom as number) ?? 50,
     cameraOrbit:
-      (variant as { cameraOrbit?: string })?.cameraOrbit ||
       product?.cameraOrbit ||
+      (variant as { cameraOrbit?: string })?.cameraOrbit ||
       (savedSettings?.cameraOrbit as string) ||
       undefined,
     cameraTarget:
-      (variant as { cameraTarget?: string })?.cameraTarget ||
       product?.cameraTarget ||
+      (variant as { cameraTarget?: string })?.cameraTarget ||
       (savedSettings?.cameraTarget as string) ||
       undefined,
     backgroundType:
@@ -127,6 +188,12 @@ export function getViewerSettings(product: ViewerProduct | null) {
       product?.backgroundGradientEnd || (savedSettings?.backgroundGradientEnd as string) || "#e5e7eb",
     environmentRotation:
       product?.environmentRotation ?? (savedSettings?.environmentRotation as number) ?? 0,
+    useSkybox:
+      Boolean(
+        (product as { useSkybox?: boolean })?.useSkybox ??
+          (savedSettings?.useSkybox as boolean | undefined) ??
+          false,
+      ),
     ctaEnabled: product?.ctaEnabled ?? (savedSettings?.ctaEnabled as boolean) ?? false,
     ctaType: product?.ctaType || (savedSettings?.ctaType as ViewerProduct["ctaType"]) || "visit_website",
     ctaLabel: product?.ctaLabel || (savedSettings?.ctaLabel as string) || "",

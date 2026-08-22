@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useDeferredEffect } from "@/lib/react/use-deferred-effect";
 import { X } from "lucide-react";
 import { AdminButton } from "@/components/ui/admin";
+import UserFilterDropdown from "@/components/user-panel/UserFilterDropdown";
+import ViewportPortal from "@/components/shared/ViewportPortal";
 
 type TemplateOption = { id: string; label: string };
 
@@ -21,7 +24,7 @@ export default function SendEmailModal({ open, saving, templates = [], onClose, 
   const [template, setTemplate] = useState("custom");
   const [error, setError] = useState("");
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     if (!open) return;
     setTo("");
     setSubject("");
@@ -50,7 +53,8 @@ export default function SendEmailModal({ open, saving, templates = [], onClose, 
   }
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/40 p-6">
+    <ViewportPortal>
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/40 p-6">
       <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
         <div className="mb-5 flex items-start justify-between gap-4">
           <h2 className="text-xl font-black text-slate-950">Send Email</h2>
@@ -72,20 +76,28 @@ export default function SendEmailModal({ open, saving, templates = [], onClose, 
               className="h-10 w-full rounded-xl border border-slate-200 px-3 text-[13px] font-semibold"
             />
           </label>
-          <label className="block space-y-1">
-            <span className="text-[12px] font-bold uppercase tracking-wide text-slate-500">Template</span>
-            <select
-              value={template}
-              onChange={(e) => setTemplate(e.target.value)}
-              className="h-10 w-full rounded-xl border border-slate-200 px-3 text-[13px] font-semibold"
-            >
-              {(templates.length ? templates : [{ id: "custom", label: "Custom message" }]).map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <UserFilterDropdown
+            compact
+            className="w-full"
+            menuWidth={280}
+            label="Template"
+            menuTitle="Template"
+            value={template}
+            options={(templates.length ? templates : [{ id: "custom", label: "Custom message" }]).map(
+              (item) => item.id,
+            )}
+            onChange={setTemplate}
+            renderOption={(value) =>
+              (templates.length ? templates : [{ id: "custom", label: "Custom message" }]).find(
+                (item) => item.id === value,
+              )?.label || value
+            }
+            renderValue={(value) =>
+              (templates.length ? templates : [{ id: "custom", label: "Custom message" }]).find(
+                (item) => item.id === value,
+              )?.label || value
+            }
+          />
           <label className="block space-y-1">
             <span className="text-[12px] font-bold uppercase tracking-wide text-slate-500">Subject</span>
             <input
@@ -117,5 +129,6 @@ export default function SendEmailModal({ open, saving, templates = [], onClose, 
         </div>
       </div>
     </div>
+    </ViewportPortal>
   );
 }

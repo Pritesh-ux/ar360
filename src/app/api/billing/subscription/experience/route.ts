@@ -11,9 +11,28 @@ export async function GET() {
     return NextResponse.json({ error: "Login required." }, { status: 401 });
   }
 
-  const experience = await getSubscriptionExperience(user.customerUid);
-  return NextResponse.json(
-    { success: true, experience },
-    { headers: { "Cache-Control": "private, no-store" } },
-  );
+  try {
+    const experience = await getSubscriptionExperience(user.customerUid);
+    if (!experience) {
+      return NextResponse.json(
+        { error: "No subscription found for this account.", experience: null },
+        { status: 404, headers: { "Cache-Control": "private, no-store" } },
+      );
+    }
+    return NextResponse.json(
+      { success: true, experience },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
+  } catch (error) {
+    console.error("[billing/subscription/experience]", error);
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Subscription details could not be loaded.",
+      },
+      { status: 500 },
+    );
+  }
 }

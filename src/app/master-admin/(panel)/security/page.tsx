@@ -13,11 +13,15 @@ import {
   CheckCircle2,
   XCircle,
   Eye,
+  Download,
+  Search,
 } from "lucide-react";
-import AdminSearch from "@/components/features/master-admin/AdminSearch";
-import AdminTable from "@/components/features/master-admin/AdminTable";
+import AdminPageHeader from "@/components/features/master-admin/AdminPageHeader";
 import AdminActionMenu from "@/components/features/master-admin/AdminActionMenu";
 import ExportDateModal, { isWithinDateRange } from "@/components/features/master-admin/ExportDateModal";
+import ViewportPortal from "@/components/shared/ViewportPortal";
+import UserMetricCard from "@/components/user-panel/UserMetricCard";
+import { AdminEmptyState } from "@/components/ui/admin";
 
 type SecurityStatus = "Safe" | "Suspicious" | "Blocked" | "Locked";
 
@@ -38,15 +42,16 @@ type SecurityUser = {
   risk: "Low" | "Medium" | "High";
 };
 
-
 export default function SecurityPage() {
   const [users, setUsers] = useState<SecurityUser[]>([]);
   useEffect(() => {
     const controller = new AbortController();
     fetch("/api/master-admin/live?kind=security", { cache: "no-store", signal: controller.signal })
-      .then((response) => response.ok ? response.json() : Promise.reject(response))
+      .then((response) => (response.ok ? response.json() : Promise.reject(response)))
       .then((data) => setUsers(Array.isArray(data.rows) ? data.rows : []))
-      .catch((error) => { if (error?.name !== "AbortError") console.error(error); });
+      .catch((error) => {
+        if (error?.name !== "AbortError") console.error(error);
+      });
     return () => controller.abort();
   }, []);
 
@@ -75,7 +80,6 @@ export default function SecurityPage() {
   function statusClass(status: SecurityStatus) {
     if (status === "Safe") return "bg-green-50 text-green-700";
     if (status === "Suspicious") return "bg-yellow-50 text-yellow-700";
-    // Locked and Blocked are soft red
     return "bg-red-50 text-red-700";
   }
 
@@ -85,60 +89,51 @@ export default function SecurityPage() {
     return "bg-red-50 text-red-700";
   }
 
+  async function callSecurityAction(customerUid: string, action: string, optimistic?: Partial<SecurityUser>) {
+    if (optimistic) {
+      setUsers((prev) => prev.map((u) => (u.id === customerUid ? { ...u, ...optimistic } : u)));
+    }
+    try {
+      const res = await fetch("/api/master-admin/security", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, customerUid }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Action failed");
+      }
+    } catch {
+      setUsers((prev) => prev);
+    }
+  }
+
   function changeStatus(id: string, status: SecurityStatus) {
-    setUsers((prev) =>
-      prev.map((u) =>
-        u.id === id
-          ? {
-              ...u,
-              status,
-              activeSessions:
-                status === "Blocked" || status === "Locked"
-                  ? 0
-                  : u.activeSessions,
-              risk:
-                status === "Safe"
-                  ? "Low"
-                  : status === "Suspicious"
-                    ? "High"
-                    : u.risk,
-            }
-          : u
-      )
-    );
+    const optimistic: Partial<SecurityUser> = {
+      status,
+      activeSessions: status === "Blocked" || status === "Locked" ? 0 : undefined,
+      risk: status === "Safe" ? "Low" : status === "Suspicious" ? "High" : undefined,
+    };
+    const apiAction = status === "Safe" ? "unlock" : status === "Locked" ? "lock" : "block";
+    void callSecurityAction(id, apiAction, optimistic);
   }
 
   function forceLogout(id: string) {
-    setUsers((prev) =>
-      prev.map((u) => (u.id === id ? { ...u, activeSessions: 0 } : u))
-    );
+    void callSecurityAction(id, "force_logout", { activeSessions: 0 });
   }
 
   function resetFailedLogins(id: string) {
-    setUsers((prev) =>
-      prev.map((u) =>
-        u.id === id
-          ? {
-              ...u,
-              failedLogins: 0,
-              status: u.status === "Locked" ? "Safe" : u.status,
-              risk: "Low",
-            }
-          : u
-      )
-    );
+    void callSecurityAction(id, "reset_failed_logins", { failedLogins: 0, risk: "Low" });
   }
 
   function toggle2FA(id: string) {
-    setUsers((prev) =>
-      prev.map((u) => (u.id === id ? { ...u, twoFA: !u.twoFA } : u))
-    );
+    const user = users.find((u) => u.id === id);
+    if (!user) return;
+    void callSecurityAction(id, "toggle_2fa", { twoFA: !user.twoFA });
   }
 
   function revokeApiKeys(id: string) {
-    setUsers((prev) =>
-      prev.map((u) => (u.id === id ? { ...u, apiKeys: 0 } : u))
-    );
+    void callSecurityAction(id, "revoke_api_keys", { apiKeys: 0 });
     setConfirmRevokeId(null);
   }
 
@@ -179,9 +174,7 @@ export default function SecurityPage() {
       u.lastLogin,
     ]);
 
-    const csv = [header, ...rows]
-      .map((row) => row.map((v) => `"${v}"`).join(","))
-      .join("\n");
+    const csv = [header, ...rows].map((row) => row.map((v) => `"${v}"`).join(",")).join("\n");
 
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -196,164 +189,178 @@ export default function SecurityPage() {
   }
 
   return (
-    <div className="min-h-full p-4 md:p-6 2xl:p-8 pb-10 md:pb-12">
-      <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h1 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl md:text-[32px]">
-            Security Center
-          </h1>
-          <p className="mt-1 text-sm font-semibold text-slate-500">
-            Manage login limits, locked accounts, suspicious users, 2FA, sessions and API keys.
-          </p>
-        </div>
+    <div className="master-admin-panel dash-premium animate-dash-fade-in flex min-h-0 flex-1 flex-col gap-3">
+      <AdminPageHeader
+        title="Security Center"
+        subtitle="Manage login limits, locked accounts, suspicious users, 2FA, sessions and API keys."
+        actions={
+          <button type="button" onClick={() => setIsExportOpen(true)} className="dash-premium-btn-primary h-10 px-4 text-[12px]">
+            <Download size={15} />
+            Export Security Report
+          </button>
+        }
+      />
 
-        <button
-          onClick={() => setIsExportOpen(true)}
-          className="inline-flex items-center gap-2 rounded-[14px] bg-[var(--color-primary)] px-5 py-3 text-sm font-black text-[var(--color-text)] shadow-[var(--shadow-sm)] hover:bg-[var(--color-primary-hover)] transition-colors"
-        >
-          <X className="rotate-45" size={18} />
-          Export Security Report
-        </button>
-      </div>
-
-      {/* Spacing improved, 20px card radius, soft shadow, no heavy border, lime icons on soft lime circles */}
-      <section className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4 2xl:gap-5">
-        {[
-          { label: "Failed Logins", value: failedToday, icon: <AlertTriangle size={20} /> },
-          { label: "Suspicious", value: suspiciousUsers, icon: <Shield size={20} /> },
-          { label: "Locked Accounts", value: lockedAccounts, icon: <Lock size={20} /> },
-          { label: "Blocked Users", value: blockedAccounts, icon: <Ban size={20} /> },
-        ].map((card, idx) => (
-          <div key={idx} className="rounded-[20px] border border-slate-200/60 bg-white p-5 shadow-[0_4px_14px_rgba(5,7,6,0.03)] flex flex-col justify-between">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold text-slate-500">{card.label}</p>
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#A6FF2E]/10 text-slate-800">
-                {card.icon}
-              </div>
-            </div>
-            <div className="mt-2 text-2xl font-black tracking-tight text-slate-950 md:text-3xl">
-              {card.value}
-            </div>
-          </div>
-        ))}
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <UserMetricCard title="Failed Logins" value={String(failedToday)} icon={AlertTriangle} accent="amber" compact />
+        <UserMetricCard title="Suspicious" value={String(suspiciousUsers)} icon={Shield} accent="rose" compact />
+        <UserMetricCard title="Locked Accounts" value={String(lockedAccounts)} icon={Lock} accent="violet" compact />
+        <UserMetricCard title="Blocked Users" value={String(blockedAccounts)} icon={Ban} accent="sky" compact />
       </section>
 
-      <section className="rounded-[20px] border border-slate-200/60 bg-white p-4 shadow-[0_4px_14px_rgba(5,7,6,0.03)]">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4 mb-4">
-          <AdminSearch
-            value={search}
-            onChange={setSearch}
-            placeholder="Search customer, IP, risk, status..."
-          />
+      <section className="dash-premium-card overflow-hidden">
+        <div className="flex flex-wrap items-center gap-2 border-b border-[#ECECEC] px-4 py-3">
+          <div className="relative min-w-[200px] flex-1 basis-[220px] max-w-sm">
+            <Search
+              size={15}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]"
+            />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search customer, IP, risk, status..."
+              className="h-10 w-full rounded-[14px] border border-[#ECECEC] bg-white pl-9 pr-3 text-[13px] font-medium text-[#111827] outline-none transition focus:border-[#84D400] focus:shadow-[0_0_0_3px_rgba(182,255,56,0.18)]"
+            />
+          </div>
 
-          <div className="rounded-[14px] bg-slate-50 px-4 py-3 text-xs font-black text-slate-500">
+          <div className="ml-auto rounded-[12px] bg-[#FAFAFB] px-3 py-2 text-[11px] font-semibold text-[#6B7280]">
             Login Limit: 5 failed attempts → 30 min lock
           </div>
         </div>
 
-        <AdminTable headers={["Customer", "Status", "Risk", "Failed", "Sessions", "Last IP", "Device", "2FA", "API Keys", "Action"]} alignRightIndex={[9]}>
-          {filtered.map((u) => {
-            const actionItems = [
-              {
-                label: "Unlock / Mark Safe",
-                icon: <Unlock size={15} />,
-                onClick: () => changeStatus(u.id, "Safe"),
-              },
-              {
-                label: "Lock Account",
-                icon: <Lock size={15} />,
-                onClick: () => changeStatus(u.id, "Locked"),
-                isDangerous: true,
-              },
-              {
-                label: "Block Customer",
-                icon: <Ban size={15} />,
-                onClick: () => changeStatus(u.id, "Blocked"),
-                isDangerous: true,
-              },
-              {
-                label: "Force Logout",
-                icon: <MonitorSmartphone size={15} />,
-                onClick: () => forceLogout(u.id),
-              },
-              {
-                label: "Reset Failed Logins",
-                icon: <Shield size={15} />,
-                onClick: () => resetFailedLogins(u.id),
-              },
-              {
-                label: "Toggle 2FA",
-                icon: <KeyRound size={15} />,
-                onClick: () => toggle2FA(u.id),
-              },
-              {
-                label: "Revoke API Keys",
-                icon: <KeyRound size={15} />,
-                onClick: () => setConfirmRevokeId(u.id),
-                isDangerous: true,
-              },
-            ];
-
-            return (
-              <tr key={u.id} className="align-middle">
-                <td className="p-3 md:p-4">
-                  <div className="font-black text-slate-950">{u.customer}</div>
-                  <div className="mt-1 text-xs font-semibold text-slate-500">{u.email}</div>
-                  <div className="mt-1 text-xs font-semibold text-slate-400">{u.plan}</div>
-                </td>
-
-                <td className="p-3 md:p-4">
-                  <span className={`rounded-full px-3 py-1 text-xs font-black ${statusClass(u.status)}`}>
-                    {u.status}
-                  </span>
-                </td>
-
-                <td className="p-3 md:p-4">
-                  <span className={`rounded-full px-3 py-1 text-xs font-black ${riskClass(u.risk)}`}>
-                    {u.risk}
-                  </span>
-                </td>
-
-                <td className="p-3 font-black md:p-4">{u.failedLogins}</td>
-                <td className="p-3 font-black md:p-4">{u.activeSessions}</td>
-
-                <td className="p-3 md:p-4">
-                  <div className="font-black text-slate-900">{u.lastIp}</div>
-                  <div className="text-xs font-semibold text-slate-500">{u.lastLocation}</div>
-                </td>
-
-                <td className="p-3 font-bold md:p-4 text-slate-600">{u.lastDevice}</td>
-
-                <td className="p-3 md:p-4">
-                  <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-black ${
-                    u.twoFA ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
-                  }`}>
-                    {u.twoFA ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
-                    {u.twoFA ? "On" : "Off"}
-                  </span>
-                </td>
-
-                <td className="p-3 font-black md:p-4">{u.apiKeys}</td>
-
-                <td className="p-3 md:p-4 text-right">
-                  <div className="inline-flex items-center gap-2">
-                    <button
-                      onClick={() => setSelected(u)}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#A6FF2E]/10 text-slate-950 transition hover:bg-[#A6FF2E]"
-                      title="View Details"
-                    >
-                      <Eye size={16} />
-                    </button>
-                    <AdminActionMenu items={actionItems} />
-                  </div>
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1100px] text-left">
+            <thead>
+              <tr className="border-b border-[#ECECEC] bg-[#FAFAFB] text-[10px] font-bold uppercase tracking-wide text-[#9CA3AF]">
+                <th className="px-3 py-3">Customer</th>
+                <th className="px-3 py-3">Status</th>
+                <th className="px-3 py-3">Risk</th>
+                <th className="px-3 py-3">Failed</th>
+                <th className="px-3 py-3">Sessions</th>
+                <th className="px-3 py-3">Last IP</th>
+                <th className="px-3 py-3">Device</th>
+                <th className="px-3 py-3">2FA</th>
+                <th className="px-3 py-3">API Keys</th>
+                <th className="w-24 px-3 py-3 text-right">Action</th>
               </tr>
-            );
-          })}
-        </AdminTable>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={10}>
+                    <AdminEmptyState title="No security records match your search." />
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((u) => {
+                  const actionItems = [
+                    {
+                      label: "Unlock / Mark Safe",
+                      icon: <Unlock size={15} />,
+                      onClick: () => changeStatus(u.id, "Safe"),
+                    },
+                    {
+                      label: "Lock Account",
+                      icon: <Lock size={15} />,
+                      onClick: () => changeStatus(u.id, "Locked"),
+                      isDangerous: true,
+                    },
+                    {
+                      label: "Block Customer",
+                      icon: <Ban size={15} />,
+                      onClick: () => changeStatus(u.id, "Blocked"),
+                      isDangerous: true,
+                    },
+                    {
+                      label: "Force Logout",
+                      icon: <MonitorSmartphone size={15} />,
+                      onClick: () => forceLogout(u.id),
+                    },
+                    {
+                      label: "Reset Failed Logins",
+                      icon: <Shield size={15} />,
+                      onClick: () => resetFailedLogins(u.id),
+                    },
+                    {
+                      label: "Toggle 2FA",
+                      icon: <KeyRound size={15} />,
+                      onClick: () => toggle2FA(u.id),
+                    },
+                    {
+                      label: "Revoke API Keys",
+                      icon: <KeyRound size={15} />,
+                      onClick: () => setConfirmRevokeId(u.id),
+                      isDangerous: true,
+                    },
+                  ];
+
+                  return (
+                    <tr key={u.id} className="border-b border-[#F3F4F6] transition hover:bg-[#FAFAFB]">
+                      <td className="px-3 py-3">
+                        <div className="text-[13px] font-bold text-[#111827]">{u.customer}</div>
+                        <div className="mt-0.5 text-[11px] font-medium text-[#9CA3AF]">{u.email}</div>
+                        <div className="mt-0.5 text-[11px] font-medium text-[#9CA3AF]">{u.plan}</div>
+                      </td>
+
+                      <td className="px-3 py-3">
+                        <span className={`rounded-full px-3 py-1 text-[11px] font-bold ${statusClass(u.status)}`}>
+                          {u.status}
+                        </span>
+                      </td>
+
+                      <td className="px-3 py-3">
+                        <span className={`rounded-full px-3 py-1 text-[11px] font-bold ${riskClass(u.risk)}`}>
+                          {u.risk}
+                        </span>
+                      </td>
+
+                      <td className="px-3 py-3 text-[12px] font-bold text-[#111827]">{u.failedLogins}</td>
+                      <td className="px-3 py-3 text-[12px] font-bold text-[#111827]">{u.activeSessions}</td>
+
+                      <td className="px-3 py-3">
+                        <div className="text-[12px] font-semibold text-[#374151]">{u.lastIp}</div>
+                        <div className="text-[11px] font-medium text-[#9CA3AF]">{u.lastLocation}</div>
+                      </td>
+
+                      <td className="px-3 py-3 text-[12px] font-semibold text-[#374151]">{u.lastDevice}</td>
+
+                      <td className="px-3 py-3">
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-bold ${
+                            u.twoFA ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
+                          }`}
+                        >
+                          {u.twoFA ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
+                          {u.twoFA ? "On" : "Off"}
+                        </span>
+                      </td>
+
+                      <td className="px-3 py-3 text-[12px] font-bold text-[#111827]">{u.apiKeys}</td>
+
+                      <td className="px-3 py-3 text-right">
+                        <div className="inline-flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setSelected(u)}
+                            className="grid h-8 w-8 place-items-center rounded-[10px] text-[#6B7280] transition hover:bg-[#F3F4F6] hover:text-[#111827]"
+                            title="View Details"
+                          >
+                            <Eye size={15} />
+                          </button>
+                          <AdminActionMenu items={actionItems} />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       {confirmRevokeId && (
+        <ViewportPortal>
         <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/40 p-6">
           <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
             <div className="mb-5 flex items-start gap-3">
@@ -362,10 +369,8 @@ export default function SecurityPage() {
               </div>
 
               <div>
-                <h2 className="text-xl font-black text-slate-950">
-                  Revoke API Keys?
-                </h2>
-                <p className="mt-1 text-xs font-semibold md:text-sm text-slate-500">
+                <h2 className="text-xl font-black text-slate-950">Revoke API Keys?</h2>
+                <p className="mt-1 text-xs font-semibold text-slate-500 md:text-sm">
                   This will remove all API keys for this customer.
                 </p>
               </div>
@@ -373,6 +378,7 @@ export default function SecurityPage() {
 
             <div className="flex flex-wrap gap-3">
               <button
+                type="button"
                 onClick={() => setConfirmRevokeId(null)}
                 className="flex-1 rounded-2xl border border-slate-200 px-5 py-3 text-sm font-black text-slate-600"
               >
@@ -380,6 +386,7 @@ export default function SecurityPage() {
               </button>
 
               <button
+                type="button"
                 onClick={() => revokeApiKeys(confirmRevokeId)}
                 className="flex-1 rounded-2xl bg-red-500 px-5 py-3 text-sm font-black text-white hover:bg-red-600"
               >
@@ -388,30 +395,27 @@ export default function SecurityPage() {
             </div>
           </div>
         </div>
+        </ViewportPortal>
       )}
 
       {selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-6">
+        <ViewportPortal>
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/40 p-6">
           <div className="w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl">
             <div className="mb-6 flex items-center justify-between">
               <div>
-                <h2 className="text-2xl font-black text-slate-950">
-                  Security Details
-                </h2>
-                <p className="mt-1 text-xs font-semibold md:text-sm text-slate-500">
+                <h2 className="text-2xl font-black text-slate-950">Security Details</h2>
+                <p className="mt-1 text-xs font-semibold text-slate-500 md:text-sm">
                   {selected.customer} • {selected.email}
                 </p>
               </div>
 
-              <button
-                onClick={() => setSelected(null)}
-                className="rounded-xl bg-slate-100 p-2 text-slate-500"
-              >
+              <button type="button" onClick={() => setSelected(null)} className="rounded-xl bg-slate-100 p-2 text-slate-500">
                 <X size={20} />
               </button>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 text-sm">
+            <div className="grid grid-cols-1 gap-4 text-sm md:grid-cols-2">
               {[
                 ["Customer", selected.customer],
                 ["Email", selected.email],
@@ -428,19 +432,15 @@ export default function SecurityPage() {
                 ["Last Login", selected.lastLogin],
                 ["Login Rule", "5 failed attempts → 30 min lock"],
               ].map(([label, value]) => (
-                <div
-                  key={label}
-                  className="rounded-2xl border border-slate-100 bg-slate-50 p-4"
-                >
-                  <p className="text-xs font-black uppercase tracking-wide text-slate-500">
-                    {label}
-                  </p>
+                <div key={label} className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                  <p className="text-xs font-black uppercase tracking-wide text-slate-500">{label}</p>
                   <p className="mt-1 font-black text-slate-950">{value}</p>
                 </div>
               ))}
             </div>
 
             <button
+              type="button"
               onClick={() => setSelected(null)}
               className="mt-6 w-full rounded-2xl bg-[var(--color-primary)] px-5 py-3 text-sm font-black text-[var(--color-text)]"
             >
@@ -448,6 +448,7 @@ export default function SecurityPage() {
             </button>
           </div>
         </div>
+        </ViewportPortal>
       )}
       <ExportDateModal
         isOpen={isExportOpen}

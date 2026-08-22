@@ -1,6 +1,7 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Outfit, Instrument_Sans } from "next/font/google";
 import "./globals.css";
+import CsrfFetchInterceptor from "@/components/auth/CsrfFetchInterceptor";
 
 const authDisplay = Outfit({
   subsets: ["latin"],
@@ -21,13 +22,25 @@ export const metadata: Metadata = {
   description: "Premium 3D / AR product experience",
   icons: {
     icon: [
-      { url: "/brand/favicon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico", sizes: "any" },
       { url: "/brand/favicon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/brand/favicon-180.png", sizes: "180x180", type: "image/png" },
+      { url: "/brand/favicon.svg", type: "image/svg+xml" },
     ],
     apple: [{ url: "/brand/favicon-180.png", sizes: "180x180", type: "image/png" }],
-    shortcut: ["/brand/favicon.svg"],
+    shortcut: ["/favicon.ico"],
   },
 };
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#141517",
+};
+
+import DynamicDesignSystem from "@/components/landing/DynamicDesignSystem";
+import WebPresenceTracker from "@/components/analytics/WebPresenceTracker";
 
 export default function RootLayout({
   children,
@@ -36,10 +49,15 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" data-portal-theme="lime" suppressHydrationWarning className={`${authDisplay.variable} ${authBody.variable}`}>
+      <head>
+        <DynamicDesignSystem />
+      </head>
       <body
         className="font-[family-name:var(--font-auth-body)] antialiased"
         suppressHydrationWarning
       >
+        <CsrfFetchInterceptor />
+        <WebPresenceTracker />
         {children}
       </body>
     </html>

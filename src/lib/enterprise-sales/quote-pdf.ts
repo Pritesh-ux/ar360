@@ -1,4 +1,5 @@
 import PDFDocument from "pdfkit";
+import { drawAr360WordmarkOnPdf } from "@/lib/brand/ar360-logo";
 import { formatQuoteDate, resolveQuoteServicePeriod } from "./quote-dates";
 
 type QuoteDocument = {
@@ -77,12 +78,9 @@ export async function generateEnterpriseQuotePdfBuffer(quote: QuoteDocument): Pr
     const period = resolveQuoteServicePeriod(quote);
     const total = money(quote.price_paise);
 
-    // Title + brand (no black strip)
+    // Title + brand (landing wordmark)
     doc.fillColor(ink).font("Helvetica-Bold").fontSize(28).text("Quote", left, 54);
-    const brandX = right - 90;
-    doc.roundedRect(brandX, 54, 22, 22, 4).lineWidth(2.5).strokeColor("#B9FF2C").stroke();
-    doc.fillColor(ink).font("Helvetica-Bold").fontSize(14).text("AR", brandX + 28, 58, { continued: true });
-    doc.fillColor("#84D400").text("360");
+    drawAr360WordmarkOnPdf(doc, right - 96, 54, 22);
 
     let y = 100;
     doc.fillColor(ink).font("Helvetica-Bold").fontSize(10).text("Quote number", left, y, { continued: true });

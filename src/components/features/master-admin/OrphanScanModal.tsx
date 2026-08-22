@@ -3,6 +3,7 @@
 import { X } from "lucide-react";
 import { AdminButton } from "@/components/ui/admin";
 import { fmtFileSize } from "@/components/features/master-admin/storage-utils";
+import ViewportPortal from "@/components/shared/ViewportPortal";
 
 export type OrphanFolder = {
   path: string;
@@ -28,7 +29,8 @@ export default function OrphanScanModal({ open, scan, deleting, onClose, onConfi
   if (!open || !scan) return null;
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/40 p-6">
+    <ViewportPortal>
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/40 p-6">
       <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-3xl bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-6">
           <div>
@@ -84,5 +86,6 @@ export default function OrphanScanModal({ open, scan, deleting, onClose, onConfi
         </div>
       </div>
     </div>
+    </ViewportPortal>
   );
 }

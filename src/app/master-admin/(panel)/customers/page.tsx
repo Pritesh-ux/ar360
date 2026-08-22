@@ -2,16 +2,16 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useDeferredEffect } from "@/lib/react/use-deferred-effect";
 import { useRouter } from "next/navigation";
 import {
   ArrowUpCircle,
   Building2,
-  ChevronDown,
   Download,
   Eye,
-  Filter,
   LogIn,
   Plus,
+  Search,
   Trash2,
   TrendingUp,
   Upload,
@@ -19,26 +19,26 @@ import {
   UserMinus,
   Users,
   UserX,
+  X,
 } from "lucide-react";
 import AdminActionMenu from "@/components/features/master-admin/AdminActionMenu";
-import AdminPageHeader from "@/components/features/master-admin/AdminPageHeader";
 import ConfirmModal from "@/components/features/master-admin/ConfirmModal";
 import CustomerAvatar from "@/components/features/master-admin/CustomerAvatar";
 import PlanBadge from "@/components/features/master-admin/PlanBadge";
 import {
-  AdminButton,
   AdminEmptyState,
-  AdminFilterBar,
-  AdminInput,
   AdminLoadingState,
-  AdminMetricCard,
   AdminPagination,
-  AdminActionMessage,
-  AdminBulkActions,
-  AdminSelect,
-  AdminTablePanel,
   StatusBadge,
 } from "@/components/ui/admin";
+import UserMetricCard from "@/components/user-panel/UserMetricCard";
+import UserPageHeader from "@/components/user-panel/UserPageHeader";
+import UserFilterDropdown from "@/components/user-panel/UserFilterDropdown";
+import UserDateRangePicker, {
+  defaultDateRange,
+  type DateRangeValue,
+} from "@/components/user-panel/UserDateRangePicker";
+import type { MetricAccent } from "@/components/user-panel/metric-accent";
 import {
   fmtBandwidth,
   fmtDateTime,
@@ -47,6 +47,11 @@ import {
   planLabel,
 } from "@/components/features/master-admin/customers-utils";
 import { type PaginationMeta } from "@/lib/master-admin/pagination";
+import "@/components/dashboard/dashboard-premium.css";
+
+const PLAN_FILTER_OPTIONS = ["all", "trial", "free", "basic", "professional", "enterprise"];
+const STATUS_FILTER_OPTIONS = ["all", "Active", "Suspended"];
+const BULK_OPTIONS = ["none", "suspend", "export"];
 
 type Customer = {
   customer_uid: string;
@@ -86,17 +91,15 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
-  const [countryFilter, setCountryFilter] = useState("");
-  const [planFilter, setPlanFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [signupFrom, setSignupFrom] = useState("");
-  const [signupTo, setSignupTo] = useState("");
+  const [countryFilter, setCountryFilter] = useState("all");
+  const [planFilter, setPlanFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [dateRange, setDateRange] = useState<DateRangeValue>(() => defaultDateRange("all"));
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState<PaginationMeta>({ page: 1, pageSize: PAGE_SIZE, total: 0, totalPages: 1 });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [actionMessage, setActionMessage] = useState("");
-  const [bulkAction, setBulkAction] = useState("");
-  const [moreFiltersOpen, setMoreFiltersOpen] = useState(false);
+  const [bulkAction, setBulkAction] = useState("none");
   const [confirmDeleteUid, setConfirmDeleteUid] = useState<string | null>(null);
 
   async function load(nextPage = page) {
@@ -108,11 +111,11 @@ export default function CustomersPage() {
       params.set("pageSize", String(PAGE_SIZE));
       if (search) params.set("search", search);
       if (companyFilter) params.set("company", companyFilter);
-      if (countryFilter) params.set("country", countryFilter);
-      if (planFilter) params.set("plan", planFilter);
-      if (statusFilter) params.set("status", statusFilter);
-      if (signupFrom) params.set("signupFrom", signupFrom);
-      if (signupTo) params.set("signupTo", signupTo);
+      if (countryFilter && countryFilter !== "all") params.set("country", countryFilter);
+      if (planFilter && planFilter !== "all") params.set("plan", planFilter);
+      if (statusFilter && statusFilter !== "all") params.set("status", statusFilter);
+      if (dateRange.from) params.set("signupFrom", dateRange.from);
+      if (dateRange.to) params.set("signupTo", dateRange.to);
 
       const res = await fetch(`/api/master-admin/customers?${params}`);
       if (!res.ok) {
@@ -139,14 +142,14 @@ export default function CustomersPage() {
     }
   }
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     setPage(1);
-  }, [search, companyFilter, countryFilter, planFilter, statusFilter, signupFrom, signupTo]);
+  }, [search, companyFilter, countryFilter, planFilter, statusFilter, dateRange.from, dateRange.to, dateRange.preset]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void load(page), 250);
     return () => window.clearTimeout(timer);
-  }, [search, companyFilter, countryFilter, planFilter, statusFilter, signupFrom, signupTo, page]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [search, companyFilter, countryFilter, planFilter, statusFilter, dateRange.from, dateRange.to, dateRange.preset, page]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function doAction(uid: string, action: "suspend" | "activate" | "change_plan", plan_id?: string) {
     const res = await fetch("/api/master-admin/customers", {
@@ -187,10 +190,10 @@ export default function CustomersPage() {
   }
 
   async function runBulkAction() {
-    if (!bulkAction) return;
+    if (!bulkAction || bulkAction === "none") return;
     if (bulkAction === "export") {
       exportCsv();
-      setBulkAction("");
+      setBulkAction("none");
       return;
     }
     if (selected.size === 0) {
@@ -207,7 +210,7 @@ export default function CustomersPage() {
       }
       setActionMessage(`Suspended ${selected.size} customer(s).`);
       setSelected(new Set());
-      setBulkAction("");
+      setBulkAction("none");
       await load(page);
     }
   }
@@ -261,184 +264,225 @@ export default function CustomersPage() {
   function clearFilters() {
     setSearch("");
     setCompanyFilter("");
-    setCountryFilter("");
-    setPlanFilter("");
-    setStatusFilter("");
-    setSignupFrom("");
-    setSignupTo("");
+    setCountryFilter("all");
+    setPlanFilter("all");
+    setStatusFilter("all");
+    setDateRange(defaultDateRange("all"));
     setPage(1);
   }
 
-  const statCards = [
+  const statCards: Array<{
+    title: string;
+    value: string;
+    note: string;
+    icon: typeof Users;
+    accent: MetricAccent;
+  }> = [
     {
       title: "Total Customers",
-      value: summary?.total ?? 0,
-      note: "+12.5% vs last month",
+      value: String(summary?.total ?? 0),
+      note: `${summary?.total ?? 0} registered`,
       icon: Users,
-      iconBg: "bg-sky-50 text-sky-600",
+      accent: "sky",
     },
     {
       title: "Active Customers",
-      value: summary?.active ?? 0,
+      value: String(summary?.active ?? 0),
       note: `${summary?.activePct ?? 0}% of total`,
       icon: UserCheck,
-      iconBg: "bg-emerald-50 text-emerald-600",
+      accent: "emerald",
     },
     {
       title: "Trial Users",
-      value: summary?.trial ?? 0,
+      value: String(summary?.trial ?? 0),
       note: `${summary?.trialPct ?? 0}% of total`,
       icon: TrendingUp,
-      iconBg: "bg-amber-50 text-amber-600",
+      accent: "amber",
     },
     {
       title: "Enterprise Users",
-      value: summary?.enterprise ?? 0,
+      value: String(summary?.enterprise ?? 0),
       note: `${summary?.enterprisePct ?? 0}% of total`,
       icon: Building2,
-      iconBg: "bg-violet-50 text-violet-600",
+      accent: "violet",
     },
     {
       title: "Suspended Users",
-      value: summary?.suspended ?? 0,
+      value: String(summary?.suspended ?? 0),
       note: `${summary?.suspendedPct ?? 0}% of total`,
       icon: UserX,
-      iconBg: "bg-red-50 text-red-500",
+      accent: "rose",
     },
   ];
 
+  const hasFilters = Boolean(
+    search ||
+      companyFilter ||
+      countryFilter !== "all" ||
+      planFilter !== "all" ||
+      statusFilter !== "all" ||
+      dateRange.preset !== "all",
+  );
+
+  const countryOptions = ["all", ...countries];
+
   return (
-    <div className="master-admin-panel space-y-5">
-      <AdminPageHeader
+    <div className="master-admin-panel dash-premium animate-dash-fade-in flex min-h-0 flex-1 flex-col gap-3">
+      <UserPageHeader
         title="Customers"
         subtitle="Manage all registered users and their activity on AR360."
+        highlighted
         actions={
           <>
-            <AdminButton onClick={exportCsv}>
-              <Download size={16} />
+            <button type="button" onClick={exportCsv} className="dash-premium-btn-secondary h-10 px-3 text-[12px]">
+              <Download size={15} />
               Export
-              <ChevronDown size={14} className="text-slate-400" />
-            </AdminButton>
-            <AdminButton>
-              <Upload size={16} />
+            </button>
+            <button type="button" className="dash-premium-btn-secondary h-10 px-3 text-[12px]">
+              <Upload size={15} />
               Import
-            </AdminButton>
-            <AdminButton variant="primary">
-              <Plus size={16} />
-              Add New Customer
-            </AdminButton>
+            </button>
+            <button type="button" className="dash-premium-btn-primary h-10 px-4 text-[12px]">
+              <Plus size={15} strokeWidth={2.2} />
+              Add Customer
+            </button>
           </>
         }
       />
 
-      {actionMessage ? <AdminActionMessage message={actionMessage} variant="success" /> : null}
+      {actionMessage ? (
+        <div className="dash-premium-card flex items-center justify-between gap-3 border-[#DCFCE7] bg-[#F0FDF4] px-4 py-3">
+          <p className="text-[13px] font-semibold text-[#166534]">{actionMessage}</p>
+          <button
+            type="button"
+            onClick={() => setActionMessage("")}
+            className="grid h-8 w-8 place-items-center rounded-[10px] text-[#166534] hover:bg-white/70"
+            aria-label="Dismiss"
+          >
+            <X size={15} />
+          </button>
+        </div>
+      ) : null}
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {statCards.map((card) => (
-          <AdminMetricCard
+          <UserMetricCard
             key={card.title}
-            layout="compact"
             title={card.title}
             value={card.value}
             note={card.note}
-            iconComponent={card.icon}
-            iconClassName={card.iconBg}
+            icon={card.icon}
+            accent={card.accent}
+            compact
           />
         ))}
       </section>
 
-      <AdminTablePanel>
-        <AdminFilterBar onClear={clearFilters}>
-          <AdminInput
-            soft
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search customers..."
-            className="min-w-[200px] flex-1"
-          />
-          <AdminInput
+      <section className="dash-premium-card overflow-hidden">
+        <div className="flex flex-wrap items-center gap-2 border-b border-[#ECECEC] px-4 py-3">
+          <div className="relative min-w-[200px] flex-1 basis-[220px] max-w-sm">
+            <Search
+              size={15}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]"
+            />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search customers..."
+              className="h-10 w-full rounded-[14px] border border-[#ECECEC] bg-white pl-9 pr-3 text-[13px] font-medium text-[#111827] outline-none transition focus:border-[#84D400] focus:shadow-[0_0_0_3px_rgba(182,255,56,0.18)]"
+            />
+          </div>
+
+          <input
             value={companyFilter}
             onChange={(e) => setCompanyFilter(e.target.value)}
             placeholder="Company"
-            className="min-w-[130px]"
+            className="h-10 w-[140px] shrink-0 rounded-[14px] border border-[#ECECEC] bg-white px-3 text-[13px] font-medium text-[#111827] outline-none transition focus:border-[#84D400]"
           />
-          <AdminSelect
-            value={countryFilter}
-            onChange={(e) => setCountryFilter(e.target.value)}
-            className="min-w-[130px]"
-          >
-            <option value="">All Countries</option>
-            {countries.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </AdminSelect>
-          <AdminSelect value={planFilter} onChange={(e) => setPlanFilter(e.target.value)}>
-            <option value="">All Plans</option>
-            {["trial", "free", "basic", "professional", "enterprise"].map((p) => (
-              <option key={p} value={p}>
-                {planLabel(p)}
-              </option>
-            ))}
-          </AdminSelect>
-          <AdminSelect value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="">All Status</option>
-            <option value="Active">Active</option>
-            <option value="Suspended">Suspended</option>
-          </AdminSelect>
-          <AdminBulkActions
-            value={bulkAction}
-            onChange={setBulkAction}
-            selectedCount={selected.size}
-            onApply={() => void runBulkAction()}
-            requireSelection={bulkAction !== "export"}
-            options={[
-              { value: "suspend", label: "Suspend Selected" },
-              { value: "export", label: "Export Page" },
-            ]}
-          />
-          <AdminButton
-            size="sm"
-            variant={moreFiltersOpen ? "primary" : "secondary"}
-            onClick={() => setMoreFiltersOpen((open) => !open)}
-          >
-            <Filter size={15} />
-            More Filters
-          </AdminButton>
-        </AdminFilterBar>
 
-        {moreFiltersOpen && (
-          <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 bg-slate-50/50 px-4 py-3">
-            <div className="flex items-center gap-2">
-              <AdminInput
-                type="date"
-                value={signupFrom}
-                onChange={(e) => setSignupFrom(e.target.value)}
-                className="text-[12px]"
-                title="Signup from"
-              />
-              <span className="text-[12px] font-semibold text-slate-400">to</span>
-              <AdminInput
-                type="date"
-                value={signupTo}
-                onChange={(e) => setSignupTo(e.target.value)}
-                className="text-[12px]"
-                title="Signup to"
-              />
-            </div>
-            <AdminButton
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                setSignupFrom("");
-                setSignupTo("");
-              }}
+          <UserFilterDropdown
+            hideLabel
+            compact
+            className="w-[148px] shrink-0"
+            label="Country"
+            menuTitle="Country"
+            value={countryFilter}
+            options={countryOptions}
+            onChange={setCountryFilter}
+            renderOption={(value) => (value === "all" ? "All Countries" : value)}
+            renderValue={(value) => (value === "all" ? "All Countries" : value)}
+          />
+
+          <UserFilterDropdown
+            hideLabel
+            compact
+            className="w-[148px] shrink-0"
+            label="Plan"
+            menuTitle="Plan"
+            value={planFilter}
+            options={PLAN_FILTER_OPTIONS}
+            onChange={setPlanFilter}
+            renderOption={(value) => (value === "all" ? "All Plans" : planLabel(value))}
+            renderValue={(value) => (value === "all" ? "All Plans" : planLabel(value))}
+          />
+
+          <UserFilterDropdown
+            hideLabel
+            compact
+            className="w-[138px] shrink-0"
+            label="Status"
+            menuTitle="Status"
+            value={statusFilter}
+            options={STATUS_FILTER_OPTIONS}
+            onChange={setStatusFilter}
+            renderOption={(value) => (value === "all" ? "All Status" : value)}
+            renderValue={(value) => (value === "all" ? "All Status" : value)}
+          />
+
+          <UserDateRangePicker value={dateRange} onChange={setDateRange} />
+
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <UserFilterDropdown
+              hideLabel
+              compact
+              className="w-[150px] shrink-0"
+              label="Bulk"
+              menuTitle="Bulk actions"
+              value={bulkAction}
+              options={BULK_OPTIONS}
+              onChange={setBulkAction}
+              renderOption={(value) =>
+                ({ none: "Bulk actions", suspend: "Suspend Selected", export: "Export Page" } as Record<
+                  string,
+                  string
+                >)[value] || value
+              }
+              renderValue={(value) =>
+                ({ none: "Bulk actions", suspend: "Suspend Selected", export: "Export Page" } as Record<
+                  string,
+                  string
+                >)[value] || value
+              }
+            />
+            <button
+              type="button"
+              onClick={() => void runBulkAction()}
+              disabled={bulkAction === "none" || (bulkAction !== "export" && selected.size === 0)}
+              className="inline-flex h-10 shrink-0 items-center rounded-[14px] border border-[#ECECEC] bg-white px-3 text-[12px] font-semibold text-[#111827] transition hover:bg-[#FAFAFB] disabled:opacity-40"
             >
-              Clear extra filters
-            </AdminButton>
+              Apply{selected.size > 0 ? ` (${selected.size})` : ""}
+            </button>
+            {hasFilters ? (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="inline-flex h-10 shrink-0 items-center rounded-[14px] px-3 text-[12px] font-semibold text-[#6B7280] transition hover:bg-[#F3F4F6] hover:text-[#111827]"
+              >
+                Clear
+              </button>
+            ) : null}
           </div>
-        )}
+        </div>
 
         {loading ? (
           <AdminLoadingState label="Loading customers..." />
@@ -446,22 +490,25 @@ export default function CustomersPage() {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1280px] text-left">
               <thead>
-                <tr className="border-b border-slate-100 bg-slate-50/60 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                  <th className="w-10 p-3">
-                    <input type="checkbox" checked={allPageSelected} onChange={toggleAllPage} />
+                <tr className="border-b border-[#ECECEC] bg-[#FAFAFB] text-[10px] font-bold uppercase tracking-wide text-[#9CA3AF]">
+                  <th className="w-10 px-3 py-3">
+                    <input
+                      type="checkbox"
+                      checked={allPageSelected}
+                      onChange={toggleAllPage}
+                      className="h-4 w-4 rounded border-[#D1D5DB] accent-[#84D400]"
+                    />
                   </th>
-                  <th className="p-3">Avatar</th>
-                  <th className="p-3">Name</th>
-                  <th className="p-3">Company</th>
-                  <th className="p-3">Email</th>
-                  <th className="p-3">Current Plan</th>
-                  <th className="p-3">Projects</th>
-                  <th className="p-3">Storage</th>
-                  <th className="p-3">Bandwidth</th>
-                  <th className="p-3">Revenue</th>
-                  <th className="p-3">Last Login</th>
-                  <th className="p-3">Status</th>
-                  <th className="w-36 p-3">Actions</th>
+                  <th className="px-3 py-3">Customer</th>
+                  <th className="px-3 py-3">Company</th>
+                  <th className="px-3 py-3">Plan</th>
+                  <th className="px-3 py-3">Projects</th>
+                  <th className="px-3 py-3">Storage</th>
+                  <th className="px-3 py-3">Bandwidth</th>
+                  <th className="px-3 py-3">Revenue</th>
+                  <th className="px-3 py-3">Last Login</th>
+                  <th className="px-3 py-3">Status</th>
+                  <th className="w-40 px-3 py-3">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -501,8 +548,11 @@ export default function CustomersPage() {
                   ];
 
                   return (
-                    <tr key={c.customer_uid} className="border-b border-slate-50 transition hover:bg-slate-50/70">
-                      <td className="p-3">
+                    <tr
+                      key={c.customer_uid}
+                      className="border-b border-[#F3F4F6] transition hover:bg-[#FAFAFB]"
+                    >
+                      <td className="px-3 py-3">
                         <input
                           type="checkbox"
                           checked={selected.has(c.customer_uid)}
@@ -514,40 +564,51 @@ export default function CustomersPage() {
                               return next;
                             })
                           }
+                          className="h-4 w-4 rounded border-[#D1D5DB] accent-[#84D400]"
                         />
                       </td>
-                      <td className="p-3">
-                        <CustomerAvatar name={c.contact_name} seed={c.customer_uid} size="sm" />
+                      <td className="px-3 py-3">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <CustomerAvatar name={c.contact_name} seed={c.customer_uid} size="sm" />
+                          <div className="min-w-0">
+                            <Link
+                              href={`/master-admin/customers/${c.customer_uid}`}
+                              className="block truncate text-[13px] font-bold text-[#111827] transition hover:text-[#5AA700]"
+                            >
+                              {c.contact_name}
+                            </Link>
+                            <p className="truncate text-[11px] font-medium text-[#9CA3AF]">{c.email}</p>
+                          </div>
+                        </div>
                       </td>
-                      <td className="p-3">
-                        <Link
-                          href={`/master-admin/customers/${c.customer_uid}`}
-                          className="text-[13px] font-bold text-slate-900 hover:text-[#4D9A00]"
-                        >
-                          {c.contact_name}
-                        </Link>
+                      <td className="px-3 py-3 text-[12px] font-semibold text-[#374151]">
+                        {c.company_name || "—"}
                       </td>
-                      <td className="p-3 text-[12px] font-semibold text-slate-700">{c.company_name || "—"}</td>
-                      <td className="p-3 text-[12px] font-medium text-slate-500">{c.email}</td>
-                      <td className="p-3">
+                      <td className="px-3 py-3">
                         <PlanBadge planId={c.plan_id} />
                       </td>
-                      <td className="p-3 text-[12px] font-bold text-slate-800">{c.product_count}</td>
-                      <td className="p-3 text-[12px] font-semibold text-slate-700">{fmtStorage(c.storage_used_mb)}</td>
-                      <td className="p-3 text-[12px] font-semibold text-slate-700">{fmtBandwidth(c.bandwidth_used_mb)}</td>
-                      <td className="p-3 text-[12px] font-bold text-slate-900">{fmtRevenue(c.total_revenue)}</td>
-                      <td className="p-3">
-                        <p className="text-[12px] font-semibold text-slate-700">{login.date}</p>
-                        <p className="text-[11px] font-medium text-slate-400">{login.time}</p>
+                      <td className="px-3 py-3 text-[12px] font-bold text-[#111827]">{c.product_count}</td>
+                      <td className="px-3 py-3 text-[12px] font-semibold text-[#374151]">
+                        {fmtStorage(c.storage_used_mb)}
                       </td>
-                      <td className="p-3">
+                      <td className="px-3 py-3 text-[12px] font-semibold text-[#374151]">
+                        {fmtBandwidth(c.bandwidth_used_mb)}
+                      </td>
+                      <td className="px-3 py-3 text-[12px] font-bold text-[#111827]">
+                        {fmtRevenue(c.total_revenue)}
+                      </td>
+                      <td className="px-3 py-3">
+                        <p className="text-[12px] font-semibold text-[#374151]">{login.date}</p>
+                        <p className="text-[11px] font-medium text-[#9CA3AF]">{login.time}</p>
+                      </td>
+                      <td className="px-3 py-3">
                         <StatusBadge label={c.status} domain="customer" value={c.status} />
                       </td>
-                      <td className="p-3">
+                      <td className="px-3 py-3">
                         <div className="flex items-center gap-0.5">
                           <Link
                             href={`/master-admin/customers/${c.customer_uid}`}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
+                            className="grid h-8 w-8 place-items-center rounded-[10px] text-[#6B7280] transition hover:bg-[#F3F4F6] hover:text-[#111827]"
                             title="View"
                           >
                             <Eye size={15} />
@@ -555,14 +616,14 @@ export default function CustomersPage() {
                           <button
                             type="button"
                             onClick={() => void impersonateCustomer(c.customer_uid)}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-emerald-50 hover:text-emerald-700"
+                            className="grid h-8 w-8 place-items-center rounded-[10px] text-[#6B7280] transition hover:bg-emerald-50 hover:text-emerald-700"
                             title="Login As User"
                           >
                             <LogIn size={15} />
                           </button>
                           <Link
                             href={`/master-admin/customers/${c.customer_uid}/billing`}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
+                            className="grid h-8 w-8 place-items-center rounded-[10px] text-[#6B7280] transition hover:bg-[#F3F4F6] hover:text-[#111827]"
                             title="Upgrade"
                           >
                             <ArrowUpCircle size={15} />
@@ -571,7 +632,7 @@ export default function CustomersPage() {
                             <button
                               type="button"
                               onClick={() => doAction(c.customer_uid, "suspend")}
-                              className="flex h-8 w-8 items-center justify-center rounded-lg text-amber-600 hover:bg-amber-50"
+                              className="grid h-8 w-8 place-items-center rounded-[10px] text-amber-600 transition hover:bg-amber-50"
                               title="Suspend"
                             >
                               <UserMinus size={15} />
@@ -580,7 +641,7 @@ export default function CustomersPage() {
                             <button
                               type="button"
                               onClick={() => doAction(c.customer_uid, "activate")}
-                              className="flex h-8 w-8 items-center justify-center rounded-lg text-emerald-600 hover:bg-emerald-50"
+                              className="grid h-8 w-8 place-items-center rounded-[10px] text-emerald-600 transition hover:bg-emerald-50"
                               title="Activate"
                             >
                               <UserCheck size={15} />
@@ -589,7 +650,7 @@ export default function CustomersPage() {
                           <button
                             type="button"
                             onClick={() => setConfirmDeleteUid(c.customer_uid)}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-red-500 hover:bg-red-50"
+                            className="grid h-8 w-8 place-items-center rounded-[10px] text-red-500 transition hover:bg-red-50"
                             title="Delete"
                           >
                             <Trash2 size={15} />
@@ -602,7 +663,7 @@ export default function CustomersPage() {
                 })}
                 {pageCustomers.length === 0 && (
                   <tr>
-                    <td colSpan={13}>
+                    <td colSpan={11}>
                       <AdminEmptyState title="No customers found." />
                     </td>
                   </tr>
@@ -612,13 +673,15 @@ export default function CustomersPage() {
           </div>
         )}
 
-        <AdminPagination
-          page={page}
-          totalPages={pagination.totalPages}
-          meta={pagination}
-          onPageChange={setPage}
-        />
-      </AdminTablePanel>
+        <div className="border-t border-[#ECECEC] px-2">
+          <AdminPagination
+            page={page}
+            totalPages={pagination.totalPages}
+            meta={pagination}
+            onPageChange={setPage}
+          />
+        </div>
+      </section>
 
       <ConfirmModal
         open={!!confirmDeleteUid}

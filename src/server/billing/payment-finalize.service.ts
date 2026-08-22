@@ -52,16 +52,53 @@ export async function finalizeSuccessfulPayment(input: FinalizePaymentInput) {
     };
   }
 
-  const subscription = await activatePaidSubscription({
-    customerUid: input.customerUid,
-    planId: input.planId,
-    period: input.period,
-    amountPaise: input.amountPaise,
-    razorpayPaymentId: input.razorpayPaymentId,
-    resetBandwidth: true,
-  });
+  // Captured payment row without invoice: resume invoice only — do NOT re-activate
+  // (would extend period / reset bandwidth again on webhook retry).
+  const resumeInvoiceOnly = Boolean(existing?.payment_uid);
 
-  await query(`UPDATE billing_orders SET status = 'paid', updated_at = NOW() WHERE order_uid = ?`, [input.orderUid]);
+  const subscription = resumeInvoiceOnly
+    ? null
+    : await activatePaidSubscription({
+        customerUid: input.customerUid,
+        planId: input.planId,
+        period: input.period,
+        amountPaise: input.amountPaise,
+        razorpayPaymentId: input.razorpayPaymentId,
+        resetBandwidth: true,
+      });
+
+  if (!resumeInvoiceOnly) {
+    await query(`UPDATE billing_orders SET status = 'paid', updated_at = NOW() WHERE order_uid = ?`, [input.orderUid]);
+
+    // Record coupon redemption if a coupon was applied
+    try {
+      const orderRows = await query<{ metadata: string | null }>(
+        "SELECT metadata FROM billing_orders WHERE order_uid = ? LIMIT 1",
+        [input.orderUid],
+      );
+      const meta = orderRows[0]?.metadata ? JSON.parse(orderRows[0].metadata) : null;
+      if (meta?.couponUid) {
+        const { recordCouponRedemption } = await import("@/lib/coupons/coupon-customer.service");
+        const redemption = await recordCouponRedemption(
+          meta.couponUid,
+          input.customerUid,
+          Number(meta.discountPaise || 0),
+          input.orderUid,
+        );
+        if (!redemption.recorded && redemption.reason === "limit_reached") {
+          console.warn(
+            "[payment-finalize] coupon claim failed after payment (limit); order=%s coupon=%s",
+            input.orderUid,
+            meta.couponUid,
+          );
+        }
+      }
+    } catch (couponErr) {
+      console.error("[payment-finalize] coupon redemption recording failed (non-fatal)", couponErr);
+    }
+  } else {
+    await query(`UPDATE billing_orders SET status = 'paid', updated_at = NOW() WHERE order_uid = ?`, [input.orderUid]);
+  }
 
   const paymentUid = existing?.payment_uid || uid("pay");
 
@@ -118,7 +155,7 @@ export async function finalizeSuccessfulPayment(input: FinalizePaymentInput) {
   });
 
   const { createCustomerNotification } = await import("@/lib/account/notify.service");
-  await createCustomerNotification({
+  void createCustomerNotification({
     customerUid: input.customerUid,
     category: "billing",
     title: "Payment successful",
@@ -127,7 +164,8 @@ export async function finalizeSuccessfulPayment(input: FinalizePaymentInput) {
     dedupeKey: `payment-success:${input.razorpayPaymentId}`,
   }).catch(() => {});
 
-  await Promise.allSettled([
+  // Emails must not block the checkout response — fire and forget.
+  void Promise.allSettled([
     sendPlanActivatedEmail({
       customerUid: input.customerUid,
       planId: input.planId,

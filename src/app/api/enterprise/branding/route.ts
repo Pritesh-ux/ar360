@@ -87,6 +87,7 @@ export async function PATCH(req: NextRequest) {
     faviconUrl?: string | null;
     showProductTitle?: boolean;
     hideInteractionHint?: boolean;
+    poweredByLabel?: string | null;
   };
   const { workspaceUid = "", ...config } = body;
   if (!workspaceUid) return NextResponse.json({ error: "workspaceUid required." }, { status: 400 });
@@ -151,6 +152,13 @@ export async function PATCH(req: NextRequest) {
   config.viewerTagline = config.viewerTagline?.trim() || null;
   config.ctaLabel = config.ctaLabel?.trim() || null;
   config.loadingMessage = config.loadingMessage?.trim() || null;
+  if (config.poweredByLabel !== undefined) {
+    const label = String(config.poweredByLabel || "").trim();
+    if (label.length > 80) {
+      return NextResponse.json({ error: "White-label name is too long." }, { status: 400 });
+    }
+    config.poweredByLabel = label || null;
+  }
   if (config.accentColor === "") config.accentColor = null;
 
   await ensureAppSchema();

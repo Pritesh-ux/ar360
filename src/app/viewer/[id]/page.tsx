@@ -1,13 +1,38 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import PublicViewerPage from "@/components/features/viewer/PublicViewerPage";
+import UserWorkspaceLoading from "@/components/user-panel/UserWorkspaceLoading";
+import { buildViewerShareMetadata } from "@/lib/viewer/viewer-share-metadata";
+
+export const dynamic = "force-dynamic";
+
+type PageProps = {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ client?: string }>;
+};
+
+export async function generateMetadata({
+  params,
+  searchParams,
+}: PageProps): Promise<Metadata> {
+  const { id } = await params;
+  const query = await searchParams;
+  return buildViewerShareMetadata({
+    productId: id,
+    clientUid: query.client,
+  });
+}
 
 export default function ViewerRoutePage() {
   return (
     <Suspense
       fallback={
-        <main className="grid h-screen w-screen place-items-center bg-white">
-          <div className="h-12 w-12 animate-pulse rounded-2xl bg-slate-100" />
-        </main>
+        <UserWorkspaceLoading
+          mode="screen"
+          label="Loading Viewer"
+          hint="Please wait while we prepare the 3D experience..."
+          withRecovery={false}
+        />
       }
     >
       <PublicViewerPage />

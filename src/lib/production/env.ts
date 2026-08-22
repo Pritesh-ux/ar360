@@ -23,7 +23,7 @@ export const productionEnvSpec = [
   { key: "SMTP_PASSWORD", required: false, feature: "email" },
   { key: "SMTP_FROM", required: false, feature: "email" },
   { key: "SENTRY_DSN", required: false, feature: "monitoring" },
-  { key: "REDIS_URL", required: false, feature: "rate-limit" },
+  { key: "AR360_INTERNAL_KEY", required: false, feature: "custom-domain" },
 ] as const;
 
 export function getProductionEnvReport(): EnvCheckResult[] {

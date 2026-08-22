@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { guardAdminPermission } from "@/lib/permissions/admin-rbac";
+import { guardAdminPermission, logAdminAudit } from "@/lib/permissions/admin-rbac";
 import { ensureAppSchema, query } from "@/lib/db";
 import {
   createManualLedgerPayment,
@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
   try {
     const auth = await guardAdminPermission("billing.manual_payment");
     if (auth instanceof NextResponse) return auth;
+    const { admin } = auth;
 
     const body = await req.json();
     const { email, plan, billing, amount, gateway, paymentMethod, notes } = body;
@@ -63,6 +64,7 @@ export async function POST(req: NextRequest) {
       notes,
     });
 
+    await logAdminAudit(admin, "payment.manual_create", "payment", payment.id, { customerUid, plan });
     return NextResponse.json({
       success: true,
       payment: {
@@ -94,6 +96,7 @@ export async function PUT(req: NextRequest) {
   try {
     const auth = await guardAdminPermission("billing.manual_payment");
     if (auth instanceof NextResponse) return auth;
+    const { admin } = auth;
 
     const body = await req.json();
     const { id, status } = body;
@@ -104,6 +107,7 @@ export async function PUT(req: NextRequest) {
 
     await ensureAppSchema();
     await updateLedgerPaymentStatus(String(id), String(status));
+    await logAdminAudit(admin, "payment.status_update", "payment", String(id), { status });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Failed to update payment status", error);

@@ -1,6 +1,16 @@
 import { query } from "@/lib/db";
 
+function shouldSkipRuntimeDdl(): boolean {
+  const flag = process.env.SKIP_RUNTIME_DDL?.trim().toLowerCase();
+  if (flag === "true" || flag === "1") return true;
+  if (flag === "false" || flag === "0") return false;
+  return process.env.NODE_ENV === "production";
+}
+
+let ensureEnterpriseSchemaPromise: Promise<void> | null = null;
+
 async function addWorkspaceBrandingColumns() {
+  if (shouldSkipRuntimeDdl()) return;
   const columns: Array<[string, string]> = [
     ["viewer_tagline", "VARCHAR(240) NULL"],
     ["cta_label", "VARCHAR(80) NULL"],
@@ -12,6 +22,12 @@ async function addWorkspaceBrandingColumns() {
     ["favicon_url", "TEXT NULL"],
     ["show_product_title", "TINYINT(1) NOT NULL DEFAULT 1"],
     ["hide_interaction_hint", "TINYINT(1) NOT NULL DEFAULT 0"],
+    ["contact_whatsapp_number", "VARCHAR(40) NULL"],
+    ["contact_whatsapp_enabled", "TINYINT(1) NOT NULL DEFAULT 0"],
+    ["contact_enquire_enabled", "TINYINT(1) NOT NULL DEFAULT 0"],
+    ["contact_enquire_label", "VARCHAR(40) NULL"],
+    ["contact_whatsapp_label", "VARCHAR(40) NULL"],
+    ["powered_by_label", "VARCHAR(80) NULL"],
   ];
   for (const [column, definition] of columns) {
     const [{ total = 0 } = { total: 0 }] = await query<{ total: number }>(
@@ -25,7 +41,30 @@ async function addWorkspaceBrandingColumns() {
   }
 }
 
+async function addClientWhiteLabelColumn() {
+  if (shouldSkipRuntimeDdl()) return;
+  const [{ total = 0 } = { total: 0 }] = await query<{ total: number }>(
+    `SELECT COUNT(*) AS total FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'clients' AND COLUMN_NAME = 'powered_by_label'`,
+  ).catch(() => [{ total: 0 }]);
+  if (Number(total) === 0) {
+    await query(`ALTER TABLE clients ADD COLUMN powered_by_label VARCHAR(80) NULL`).catch(() => undefined);
+  }
+}
+
 export async function ensureEnterpriseSchema(): Promise<void> {
+  if (ensureEnterpriseSchemaPromise) return ensureEnterpriseSchemaPromise;
+  ensureEnterpriseSchemaPromise = ensureEnterpriseSchemaOnce().catch((error) => {
+    ensureEnterpriseSchemaPromise = null;
+    throw error;
+  });
+  return ensureEnterpriseSchemaPromise;
+}
+
+async function ensureEnterpriseSchemaOnce(): Promise<void> {
+  // Production uses migrations; skip repeated DDL on every request.
+  if (shouldSkipRuntimeDdl()) return;
+
   // ── Workspaces ────────────────────────────────────────────────────────────
   await query(`
     CREATE TABLE IF NOT EXISTS workspaces (
@@ -65,6 +104,7 @@ export async function ensureEnterpriseSchema(): Promise<void> {
   `);
 
   await addWorkspaceBrandingColumns();
+  await addClientWhiteLabelColumn();
 
   // ── Workspace Members ─────────────────────────────────────────────────────
   await query(`

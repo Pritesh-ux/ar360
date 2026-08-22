@@ -36,12 +36,27 @@ export async function requestEnableTwoFactor(input: {
     code,
   );
 
-  // In production, email service sends code; dev logs only
+  const { sendTwoFactorCodeEmail } = await import("@/lib/email/two-factor-email");
+  const mail = await sendTwoFactorCodeEmail({
+    to: input.email,
+    name: input.name,
+    code,
+    purpose: "enable",
+  }).catch((error) => {
+    console.error("[2FA enable] email failed", error);
+    return { delivered: false, mode: "skipped" as const };
+  });
+
   if (process.env.NODE_ENV !== "production") {
     console.info(`[2FA enable] code for ${input.email}: ${code}`);
   }
 
-  return { success: true as const, message: "Verification code sent. Enter it to enable 2FA." };
+  return {
+    success: true as const,
+    message: mail.delivered
+      ? "Verification code sent to your email. Enter it to enable 2FA."
+      : "Verification code generated. Check your email (or contact support if it does not arrive).",
+  };
 }
 
 export async function confirmEnableTwoFactor(input: {

@@ -50,8 +50,9 @@ export async function ensureEmbedConfig(input: {
       [input.customerUid, input.userId, input.productId, input.publicId],
     );
   } else {
+    // Preserve active/inactive — republish must not silently re-activate.
     await query(
-      `UPDATE product_embed_configs SET public_id = ?, status = 'active', updated_at = NOW() WHERE product_id = ?`,
+      `UPDATE product_embed_configs SET public_id = ?, updated_at = NOW() WHERE product_id = ?`,
       [input.publicId, input.productId],
     );
   }
@@ -253,7 +254,27 @@ export async function getEmbedAllowedDomainsForProduct(productKey: string): Prom
   }
 }
 
+async function getEmbedConfigStatus(productKey: string): Promise<"active" | "inactive" | null> {
+  await ensureUserPanelSchema();
+  const key = String(productKey || "").trim();
+  if (!key) return null;
+  const rows = await query<{ status: string }>(
+    `SELECT status FROM product_embed_configs
+      WHERE product_id = ? OR public_id = ?
+      ORDER BY updated_at DESC
+      LIMIT 1`,
+    [key, key],
+  );
+  const status = String(rows[0]?.status || "").toLowerCase();
+  if (status === "active" || status === "inactive") return status;
+  return null;
+}
+
 export async function assertEmbedReferrerAllowed(productKey: string, referrer: string) {
+  const status = await getEmbedConfigStatus(productKey);
+  // Explicitly inactive embeds must not render for anyone.
+  if (status === "inactive") return false;
   const allowed = await getEmbedAllowedDomainsForProduct(productKey);
+  // No config row yet (legacy products) — allow. Active with empty allowlist — allow all.
   return isEmbedDomainAllowed(allowed, referrer);
 }

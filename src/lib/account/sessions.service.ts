@@ -71,7 +71,8 @@ export async function isSessionValid(input: { userId: number; sessionUid?: strin
   await ensureAccountSchema();
   const version = await getUserSessionVersion(input.userId);
   if (input.sessionVersion !== undefined && input.sessionVersion !== version) return false;
-  if (!input.sessionUid) return true;
+  // Require sessionUid so revoked/legacy cookies cannot retain access.
+  if (!input.sessionUid) return false;
 
   const rows = await query<{ id: number }>(
     `SELECT id FROM customer_sessions WHERE session_uid = ? AND user_id = ? AND revoked_at IS NULL LIMIT 1`,

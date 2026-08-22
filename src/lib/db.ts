@@ -4,8 +4,11 @@ export type QueryValue = string | number | boolean | Date | null;
 
 const globalForMysql = globalThis as typeof globalThis & {
   mysqlPool?: mysql.Pool;
+  mysqlPoolRevision?: number;
   mysqlDatabaseReady?: boolean;
 };
+
+const MYSQL_POOL_REVISION = 2;
 
 function getDatabaseUrl() {
   return process.env.MYSQL_URL || process.env.DATABASE_URL;
@@ -35,9 +38,20 @@ async function ensureDatabase() {
 
 function createPool() {
   const uri = getDatabaseUrl();
+  const isDev = process.env.NODE_ENV === "development";
+  const connectionLimit = Number(process.env.MYSQL_POOL_LIMIT) || (isDev ? 25 : 15);
+  const queueLimit = Number(process.env.MYSQL_QUEUE_LIMIT) || (isDev ? 250 : 120);
+  const poolOptions = {
+    waitForConnections: true as const,
+    connectionLimit: Math.max(5, connectionLimit),
+    queueLimit: Math.max(50, queueLimit),
+    connectTimeout: 10_000,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 0,
+  };
 
   if (uri) {
-    return mysql.createPool({ uri, waitForConnections: true, connectionLimit: 10 });
+    return mysql.createPool({ uri, ...poolOptions });
   }
 
   return mysql.createPool({
@@ -46,21 +60,35 @@ function createPool() {
     user: process.env.MYSQL_USER || "root",
     password: process.env.MYSQL_PASSWORD || "",
     database: process.env.MYSQL_DATABASE || "arstudio",
-    waitForConnections: true,
-    connectionLimit: 10,
+    ...poolOptions,
   });
 }
 
 export async function getPool() {
   await ensureDatabase();
-  if (!globalForMysql.mysqlPool) globalForMysql.mysqlPool = createPool();
+  if (!globalForMysql.mysqlPool || globalForMysql.mysqlPoolRevision !== MYSQL_POOL_REVISION) {
+    const previous = globalForMysql.mysqlPool;
+    globalForMysql.mysqlPool = createPool();
+    globalForMysql.mysqlPoolRevision = MYSQL_POOL_REVISION;
+    // Drain prior pool in the background so Fast Refresh can raise limits.
+    if (previous) {
+      void previous.end().catch(() => undefined);
+    }
+  }
   return globalForMysql.mysqlPool;
 }
 
 export async function query<T>(sql: string, values: QueryValue[] = []): Promise<T[]> {
-  const pool = await getPool();
-  const [rows] = await pool.execute(sql, values);
-  return rows as T[];
+  try {
+    const pool = await getPool();
+    // Use query() not execute(): MySQL 8 prepared statements reject LIMIT ? / OFFSET ?
+    // with ER_WRONG_ARGUMENTS ("Incorrect arguments to mysqld_stmt_execute").
+    const [rows] = await pool.query(sql, values);
+    return rows as T[];
+  } catch (err: any) {
+    console.error("Database query failed:", err);
+    throw err;
+  }
 }
 
 async function addIndexIfMissing(table: string, index: string, sql: string) {
@@ -87,6 +115,21 @@ async function addColumnIfMissing(table: string, column: string, definition: str
     [table, column],
   );
   if (Number(total) === 0) await query(`ALTER TABLE ${escapeIdentifier(table)} ADD COLUMN ${escapeIdentifier(column)} ${definition}`);
+}
+
+/** Drop orphaned .frm entries so CREATE TABLE IF NOT EXISTS can rebuild them. */
+async function dropIfMissingInEngine(table: string) {
+  if (shouldSkipRuntimeDdl()) return;
+  const rows = await query<{ Engine: string | null; Comment: string | null }>(
+    "SHOW TABLE STATUS LIKE ?",
+    [table],
+  ).catch(() => [] as Array<{ Engine: string | null; Comment: string | null }>);
+  const row = rows[0];
+  if (!row) return;
+  const comment = String(row.Comment || "");
+  if (row.Engine == null || /doesn't exist in engine/i.test(comment)) {
+    await query(`DROP TABLE IF EXISTS ${escapeIdentifier(table)}`);
+  }
 }
 
 export async function ensureAuthSchema() {
@@ -379,6 +422,105 @@ export async function ensureAnalyticsSchema(): Promise<void> {
   await addColumnIfMissing("analytics_daily", "cta_clicks", "INT UNSIGNED NOT NULL DEFAULT 0");
 }
 
+export async function ensureSiteWebAnalyticsSchema(): Promise<void> {
+  if (shouldSkipRuntimeDdl()) return;
+  await ensureDatabase();
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS site_visitors (
+      visitor_id VARCHAR(64) NOT NULL,
+      customer_uid VARCHAR(40) NULL,
+      first_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      country VARCHAR(80) NOT NULL DEFAULT '',
+      region VARCHAR(120) NOT NULL DEFAULT '',
+      city VARCHAR(120) NOT NULL DEFAULT '',
+      device_type VARCHAR(20) NOT NULL DEFAULT 'unknown',
+      browser VARCHAR(40) NOT NULL DEFAULT 'unknown',
+      os VARCHAR(20) NOT NULL DEFAULT 'unknown',
+      screen_width SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+      screen_height SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+      ip_hash VARCHAR(32) NOT NULL DEFAULT '',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (visitor_id),
+      INDEX idx_sv_last_seen (last_seen_at),
+      INDEX idx_sv_customer (customer_uid),
+      INDEX idx_sv_country (country)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS site_sessions (
+      session_id VARCHAR(64) NOT NULL,
+      visitor_id VARCHAR(64) NOT NULL,
+      customer_uid VARCHAR(40) NULL,
+      started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      last_activity_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      ended_at DATETIME NULL,
+      landing_page VARCHAR(512) NOT NULL DEFAULT '',
+      exit_page VARCHAR(512) NULL,
+      referrer VARCHAR(255) NOT NULL DEFAULT '',
+      utm_source VARCHAR(120) NOT NULL DEFAULT '',
+      utm_medium VARCHAR(120) NOT NULL DEFAULT '',
+      utm_campaign VARCHAR(160) NOT NULL DEFAULT '',
+      utm_term VARCHAR(160) NOT NULL DEFAULT '',
+      utm_content VARCHAR(160) NOT NULL DEFAULT '',
+      device_type VARCHAR(20) NOT NULL DEFAULT 'unknown',
+      browser VARCHAR(40) NOT NULL DEFAULT 'unknown',
+      os VARCHAR(20) NOT NULL DEFAULT 'unknown',
+      country VARCHAR(80) NOT NULL DEFAULT '',
+      region VARCHAR(120) NOT NULL DEFAULT '',
+      city VARCHAR(120) NOT NULL DEFAULT '',
+      page_view_count INT UNSIGNED NOT NULL DEFAULT 0,
+      PRIMARY KEY (session_id),
+      INDEX idx_ss_visitor (visitor_id),
+      INDEX idx_ss_last_activity (last_activity_at),
+      INDEX idx_ss_started (started_at),
+      INDEX idx_ss_customer (customer_uid)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS site_page_views (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      session_id VARCHAR(64) NOT NULL,
+      visitor_id VARCHAR(64) NOT NULL,
+      customer_uid VARCHAR(40) NULL,
+      path VARCHAR(512) NOT NULL,
+      page_title VARCHAR(255) NOT NULL DEFAULT '',
+      referrer VARCHAR(255) NOT NULL DEFAULT '',
+      viewed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      duration_seconds INT UNSIGNED NULL,
+      utm_source VARCHAR(120) NOT NULL DEFAULT '',
+      utm_medium VARCHAR(120) NOT NULL DEFAULT '',
+      utm_campaign VARCHAR(160) NOT NULL DEFAULT '',
+      PRIMARY KEY (id),
+      INDEX idx_spv_session (session_id),
+      INDEX idx_spv_visitor (visitor_id),
+      INDEX idx_spv_viewed (viewed_at),
+      INDEX idx_spv_path (path(191))
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS site_events (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      session_id VARCHAR(64) NOT NULL DEFAULT '',
+      visitor_id VARCHAR(64) NOT NULL DEFAULT '',
+      customer_uid VARCHAR(40) NULL,
+      event VARCHAR(60) NOT NULL,
+      path VARCHAR(512) NOT NULL DEFAULT '',
+      meta JSON NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      INDEX idx_se_created (created_at),
+      INDEX idx_se_event (event),
+      INDEX idx_se_visitor (visitor_id),
+      INDEX idx_se_session (session_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+}
+
 export async function ensureAdminSchema() {
   if (shouldSkipRuntimeDdl()) return;
   await ensureDatabase();
@@ -645,6 +787,7 @@ export async function ensureBillingSchema() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
 
+  await dropIfMissingInEngine("invoice_counters");
   await query(`
     CREATE TABLE IF NOT EXISTS invoice_counters (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -666,6 +809,7 @@ export async function ensureBillingSchema() {
   await addColumnIfMissing("billing_invoices", "buyer_email", "VARCHAR(191) NULL");
   await addColumnIfMissing("billing_invoices", "buyer_address", "TEXT NULL");
   await addColumnIfMissing("billing_invoices", "invoice_html", "LONGTEXT NULL");
+  await addColumnIfMissing("billing_invoices", "price_snapshot", "JSON NULL");
 }
 
 export async function ensureCouponsSchema() {
@@ -701,13 +845,29 @@ export async function ensureCouponsSchema() {
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
       coupon_uid VARCHAR(64) NOT NULL,
       customer_uid VARCHAR(64) NOT NULL DEFAULT '',
+      order_uid VARCHAR(64) NULL,
       amount_saved_paise INT NOT NULL DEFAULT 0,
       redeemed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (id),
+      UNIQUE KEY uq_coupon_customer (coupon_uid, customer_uid),
       INDEX idx_coupon_redemptions_coupon (coupon_uid),
+      INDEX idx_coupon_redemptions_customer (customer_uid),
+      INDEX idx_coupon_redemptions_order (order_uid),
       INDEX idx_coupon_redemptions_date (redeemed_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+
+  await addColumnIfMissing("coupon_redemptions", "order_uid", "VARCHAR(64) NULL AFTER customer_uid");
+  await addIndexIfMissing(
+    "coupon_redemptions",
+    "uq_coupon_customer",
+    "ALTER TABLE coupon_redemptions ADD UNIQUE KEY uq_coupon_customer (coupon_uid, customer_uid)",
+  );
+  await addIndexIfMissing(
+    "coupon_redemptions",
+    "idx_coupon_redemptions_order",
+    "ALTER TABLE coupon_redemptions ADD INDEX idx_coupon_redemptions_order (order_uid)",
+  );
 
   await query(`
     CREATE TABLE IF NOT EXISTS storage_usage_snapshots (
@@ -777,6 +937,7 @@ export async function ensureAppSchema() {
   await ensureQrSchema();
   await ensurePlanSchema();
   await ensureAnalyticsSchema();
+  await ensureSiteWebAnalyticsSchema();
   await ensureAdminSchema();
   await ensureBillingSchema();
   await ensureCouponsSchema();
@@ -790,6 +951,9 @@ export async function ensureAppSchema() {
   // Enterprise schema — imported lazily to avoid circular deps
   const { ensureEnterpriseSchema } = await import("@/lib/enterprise/schema");
   await ensureEnterpriseSchema();
+  // Website CMS schema — imported dynamically
+  const { ensureWebsiteCmsSchema } = await import("@/lib/website-cms-schema");
+  await ensureWebsiteCmsSchema();
 }
 
 export async function ensureQrSchema() {

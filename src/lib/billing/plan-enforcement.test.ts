@@ -5,6 +5,7 @@ import {
   checkEnterpriseModelEntitlement,
   DEFAULT_PLAN_LIMITS,
   mapLegacyPlanId,
+  planAllowsProductContact,
   type PlanLimits,
 } from "./plan-enforcement";
 import { getPlanById } from "./plans";
@@ -16,6 +17,22 @@ describe("mapLegacyPlanId", () => {
     assert.equal(mapLegacyPlanId("professional"), "pro");
     assert.equal(mapLegacyPlanId("business"), "business");
     assert.equal(mapLegacyPlanId("enterprise"), "enterprise");
+    assert.equal(mapLegacyPlanId("organisation"), "enterprise");
+    assert.equal(mapLegacyPlanId("organization"), "enterprise");
+  });
+});
+
+describe("planAllowsProductContact", () => {
+  it("allows trial, business, enterprise and custom enterprise only", () => {
+    assert.equal(planAllowsProductContact("trial"), true);
+    assert.equal(planAllowsProductContact("free"), true);
+    assert.equal(planAllowsProductContact("business"), true);
+    assert.equal(planAllowsProductContact("enterprise"), true);
+    assert.equal(planAllowsProductContact("organisation"), true);
+    assert.equal(planAllowsProductContact({ planId: "ecp_abc", isEnterpriseCustom: true }), true);
+    assert.equal(planAllowsProductContact("starter"), false);
+    assert.equal(planAllowsProductContact("intermediate"), false);
+    assert.equal(planAllowsProductContact("pro"), false);
   });
 });
 

@@ -27,7 +27,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       return NextResponse.json({ error: "Login required." }, { status: 401 });
     }
 
-    const permission = await enforcePermission(user.customerUid ?? "", "access_dashboard");
+    const permission = await enforcePermission(user.customerUid ?? "", "analytics");
     if (!permission.ok) return permission.response;
 
     const { searchParams } = new URL(request.url);
@@ -53,10 +53,10 @@ export async function GET(request: Request): Promise<NextResponse> {
         ...data,
         summary: {
           ...data.summary,
-          shareViews: growth.shareViews,
-          embedViews: growth.embedViews,
-          ctaClicks: growth.ctaClicks,
-          qrScans: growth.qrScans,
+          shareViews: data.summary.shareViews ?? growth.shareViews,
+          embedViews: data.summary.embedViews ?? growth.embedViews,
+          ctaClicks: data.summary.ctaClicks ?? growth.ctaClicks,
+          qrScans: data.summary.qrScans,
         },
         growth: {
           trafficSources: growth.trafficSources,

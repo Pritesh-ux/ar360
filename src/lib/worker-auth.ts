@@ -2,6 +2,8 @@
  * Shared secret auth for background workers (object capture, cron, etc.).
  * Set WORKER_SECRET in production. In local dev, missing secret allows access.
  */
+import { timingSafeEqual } from "crypto";
+
 export function verifyWorkerRequest(req: Request): boolean {
   const secret = process.env.WORKER_SECRET || process.env.OBJECT_CAPTURE_WORKER_SECRET || "";
 
@@ -15,7 +17,8 @@ export function verifyWorkerRequest(req: Request): boolean {
     req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim() ||
     "";
 
-  return headerSecret.length > 0 && headerSecret === secret;
+  if (!headerSecret || headerSecret.length !== secret.length) return false;
+  return timingSafeEqual(Buffer.from(headerSecret), Buffer.from(secret));
 }
 
 export function workerUnauthorizedResponse() {

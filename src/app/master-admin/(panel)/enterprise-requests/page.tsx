@@ -2,34 +2,41 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Download, Eye, Search } from "lucide-react";
+import { Download, Eye, Search, X } from "lucide-react";
 import AdminPageHeader from "@/components/features/master-admin/AdminPageHeader";
-import {
-  AdminActionMessage,
-  AdminButton,
-  AdminEmptyState,
-  AdminFilterBar,
-  AdminInput,
-  AdminLoadingState,
-  AdminPagination,
-  AdminSelect,
-  AdminTablePanel,
-} from "@/components/ui/admin";
+import { AdminEmptyState, AdminLoadingState, AdminPagination } from "@/components/ui/admin";
+import UserFilterDropdown from "@/components/user-panel/UserFilterDropdown";
+import UserDateRangePicker, {
+  defaultDateRange,
+  type DateRangeValue,
+} from "@/components/user-panel/UserDateRangePicker";
 import type { EnterpriseRequest, EnterpriseStatus } from "@/lib/enterprise-sales/types";
 import type { PaginationMeta } from "@/lib/master-admin/pagination";
 
 const PAGE_SIZE = 20;
-const STATUS_OPTIONS: { value: EnterpriseStatus | ""; label: string }[] = [
-  { value: "", label: "All Statuses" },
-  { value: "new", label: "New" },
-  { value: "contacted", label: "Contacted" },
-  { value: "negotiating", label: "Negotiating" },
-  { value: "quoted", label: "Quoted" },
-  { value: "waiting_payment", label: "Waiting Payment" },
-  { value: "active", label: "Active" },
-  { value: "rejected", label: "Rejected" },
-  { value: "closed", label: "Closed" },
-];
+const STATUS_OPTIONS = [
+  "all",
+  "new",
+  "contacted",
+  "negotiating",
+  "quoted",
+  "waiting_payment",
+  "active",
+  "rejected",
+  "closed",
+] as const;
+
+const STATUS_LABELS: Record<string, string> = {
+  all: "All Statuses",
+  new: "New",
+  contacted: "Contacted",
+  negotiating: "Negotiating",
+  quoted: "Quoted",
+  waiting_payment: "Waiting Payment",
+  active: "Active",
+  rejected: "Rejected",
+  closed: "Closed",
+};
 
 type FilterOptions = {
   countries: string[];
@@ -71,12 +78,11 @@ export default function EnterpriseRequestsPage() {
   });
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("");
-  const [country, setCountry] = useState("");
-  const [industry, setIndustry] = useState("");
-  const [assignee, setAssignee] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [status, setStatus] = useState("all");
+  const [country, setCountry] = useState("all");
+  const [industry, setIndustry] = useState("all");
+  const [assignee, setAssignee] = useState("all");
+  const [dateRange, setDateRange] = useState<DateRangeValue>(() => defaultDateRange("all"));
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
 
@@ -87,12 +93,12 @@ export default function EnterpriseRequestsPage() {
       params.set("pageSize", String(PAGE_SIZE));
     }
     if (search.trim()) params.set("search", search.trim());
-    if (status) params.set("status", status);
-    if (country) params.set("country", country);
-    if (industry) params.set("industry", industry);
-    if (assignee) params.set("assignee", assignee);
-    if (dateFrom) params.set("dateFrom", dateFrom);
-    if (dateTo) params.set("dateTo", dateTo);
+    if (status !== "all") params.set("status", status);
+    if (country !== "all") params.set("country", country);
+    if (industry !== "all") params.set("industry", industry);
+    if (assignee !== "all") params.set("assignee", assignee);
+    if (dateRange.from) params.set("dateFrom", dateRange.from);
+    if (dateRange.to) params.set("dateTo", dateRange.to);
     return params;
   }
 
@@ -124,16 +130,24 @@ export default function EnterpriseRequestsPage() {
       controller.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, search, status, country, industry, assignee, dateFrom, dateTo]);
+  }, [page, search, status, country, industry, assignee, dateRange.from, dateRange.to, dateRange.preset]);
+
+  const hasFilters = Boolean(
+    search ||
+      status !== "all" ||
+      country !== "all" ||
+      industry !== "all" ||
+      assignee !== "all" ||
+      dateRange.preset !== "all",
+  );
 
   function clearFilters() {
     setSearch("");
-    setStatus("");
-    setCountry("");
-    setIndustry("");
-    setAssignee("");
-    setDateFrom("");
-    setDateTo("");
+    setStatus("all");
+    setCountry("all");
+    setIndustry("all");
+    setAssignee("all");
+    setDateRange(defaultDateRange("all"));
     setPage(1);
   }
 
@@ -143,108 +157,145 @@ export default function EnterpriseRequestsPage() {
     window.open(`/api/master-admin/enterprise-requests?${params}`, "_blank", "noopener,noreferrer");
   }
 
+  const countryOptions = ["all", ...options.countries];
+  const industryOptions = ["all", ...options.industries];
+  const assigneeOptions = ["all", "unassigned", ...options.assignees.map((a) => String(a.id))];
+
   return (
-    <div className="master-admin-panel space-y-5">
+    <div className="master-admin-panel dash-premium animate-dash-fade-in flex min-h-0 flex-1 flex-col gap-3">
       <AdminPageHeader
         title="Enterprise Requests"
         subtitle="Review and manage custom-plan sales enquiries."
         actions={
-          <AdminButton onClick={exportCsv}>
-            <Download size={16} />
+          <button type="button" onClick={exportCsv} className="dash-premium-btn-secondary h-10 px-3 text-[12px]">
+            <Download size={15} />
             Export CSV
-          </AdminButton>
+          </button>
         }
       />
 
-      {message ? <AdminActionMessage message={message} variant="error" /> : null}
+      {message ? (
+        <div className="dash-premium-card flex items-center justify-between gap-3 border-[#FEE2E2] bg-[#FEF2F2] px-4 py-3">
+          <p className="text-[13px] font-semibold text-[#991B1B]">{message}</p>
+          <button
+            type="button"
+            onClick={() => setMessage("")}
+            className="grid h-8 w-8 place-items-center rounded-[10px] text-[#991B1B] hover:bg-white/70"
+            aria-label="Dismiss"
+          >
+            <X size={15} />
+          </button>
+        </div>
+      ) : null}
 
-      <AdminTablePanel>
-        <AdminFilterBar onClear={clearFilters}>
-          <div className="relative min-w-[240px] flex-1">
+      <section className="dash-premium-card overflow-hidden">
+        <div className="flex flex-wrap items-center gap-2 border-b border-[#ECECEC] px-4 py-3">
+          <div className="relative min-w-[200px] flex-1 basis-[220px] max-w-sm">
             <Search
               size={15}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]"
             />
-            <AdminInput
-              soft
+            <input
               value={search}
               onChange={(event) => {
                 setSearch(event.target.value);
                 setPage(1);
               }}
               placeholder="Search ID, company, contact or email..."
-              className="w-full pl-9"
+              className="h-10 w-full rounded-[14px] border border-[#ECECEC] bg-white pl-9 pr-3 text-[13px] font-medium text-[#111827] outline-none transition focus:border-[#84D400] focus:shadow-[0_0_0_3px_rgba(182,255,56,0.18)]"
             />
           </div>
-          <AdminSelect
+
+          <UserFilterDropdown
+            hideLabel
+            compact
+            className="w-[148px] shrink-0"
+            label="Status"
+            menuTitle="Status"
             value={status}
-            onChange={(event) => {
-              setStatus(event.target.value);
+            options={[...STATUS_OPTIONS]}
+            onChange={(v) => {
+              setStatus(v);
               setPage(1);
             }}
-          >
-            {STATUS_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </AdminSelect>
-          <AdminSelect
+            renderOption={(value) => STATUS_LABELS[value] || value}
+            renderValue={(value) => STATUS_LABELS[value] || value}
+          />
+
+          <UserFilterDropdown
+            hideLabel
+            compact
+            className="w-[148px] shrink-0"
+            label="Country"
+            menuTitle="Country"
             value={country}
-            onChange={(event) => {
-              setCountry(event.target.value);
+            options={countryOptions}
+            onChange={(v) => {
+              setCountry(v);
               setPage(1);
             }}
-          >
-            <option value="">All Countries</option>
-            {options.countries.map((value) => (
-              <option key={value} value={value}>{value}</option>
-            ))}
-          </AdminSelect>
-          <AdminSelect
+            renderOption={(value) => (value === "all" ? "All Countries" : value)}
+            renderValue={(value) => (value === "all" ? "All Countries" : value)}
+          />
+
+          <UserFilterDropdown
+            hideLabel
+            compact
+            className="w-[148px] shrink-0"
+            label="Industry"
+            menuTitle="Industry"
             value={industry}
-            onChange={(event) => {
-              setIndustry(event.target.value);
+            options={industryOptions}
+            onChange={(v) => {
+              setIndustry(v);
               setPage(1);
             }}
-          >
-            <option value="">All Industries</option>
-            {options.industries.map((value) => (
-              <option key={value} value={value}>{value}</option>
-            ))}
-          </AdminSelect>
-          <AdminSelect
+            renderOption={(value) => (value === "all" ? "All Industries" : value)}
+            renderValue={(value) => (value === "all" ? "All Industries" : value)}
+          />
+
+          <UserFilterDropdown
+            hideLabel
+            compact
+            className="w-[148px] shrink-0"
+            label="Assignee"
+            menuTitle="Assignee"
             value={assignee}
-            onChange={(event) => {
-              setAssignee(event.target.value);
+            options={assigneeOptions}
+            onChange={(v) => {
+              setAssignee(v);
               setPage(1);
             }}
-          >
-            <option value="">All Assignees</option>
-            <option value="unassigned">Unassigned</option>
-            {options.assignees.map((value) => (
-              <option key={value.id} value={value.id}>{value.name}</option>
-            ))}
-          </AdminSelect>
-          <AdminInput
-            type="date"
-            value={dateFrom}
-            onChange={(event) => {
-              setDateFrom(event.target.value);
-              setPage(1);
+            renderOption={(value) => {
+              if (value === "all") return "All Assignees";
+              if (value === "unassigned") return "Unassigned";
+              return options.assignees.find((a) => String(a.id) === value)?.name || value;
             }}
-            title="Created from"
+            renderValue={(value) => {
+              if (value === "all") return "All Assignees";
+              if (value === "unassigned") return "Unassigned";
+              return options.assignees.find((a) => String(a.id) === value)?.name || value;
+            }}
           />
-          <AdminInput
-            type="date"
-            value={dateTo}
-            onChange={(event) => {
-              setDateTo(event.target.value);
+
+          <UserDateRangePicker
+            value={dateRange}
+            onChange={(v) => {
+              setDateRange(v);
               setPage(1);
             }}
-            title="Created to"
           />
-        </AdminFilterBar>
+
+          {hasFilters ? (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="ml-auto inline-flex h-10 shrink-0 items-center rounded-[14px] px-3 text-[12px] font-semibold text-[#6B7280] transition hover:bg-[#F3F4F6] hover:text-[#111827]"
+            >
+              Clear
+            </button>
+          ) : null}
+        </div>
 
         {loading ? (
           <AdminLoadingState label="Loading Enterprise requests..." />
@@ -254,44 +305,46 @@ export default function EnterpriseRequestsPage() {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1120px] text-left">
               <thead>
-                <tr className="border-b border-slate-100 bg-slate-50/60 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                  <th className="p-3">Request ID</th>
-                  <th className="p-3">Company</th>
-                  <th className="p-3">Contact Person</th>
-                  <th className="p-3">Email</th>
-                  <th className="p-3">Country</th>
-                  <th className="p-3">Industry</th>
-                  <th className="p-3">Status</th>
-                  <th className="p-3">Created Date</th>
-                  <th className="w-20 p-3 text-right">Action</th>
+                <tr className="border-b border-[#ECECEC] bg-[#FAFAFB] text-[10px] font-bold uppercase tracking-wide text-[#9CA3AF]">
+                  <th className="px-3 py-3">Request ID</th>
+                  <th className="px-3 py-3">Company</th>
+                  <th className="px-3 py-3">Contact Person</th>
+                  <th className="px-3 py-3">Email</th>
+                  <th className="px-3 py-3">Country</th>
+                  <th className="px-3 py-3">Industry</th>
+                  <th className="px-3 py-3">Status</th>
+                  <th className="px-3 py-3">Created Date</th>
+                  <th className="w-20 px-3 py-3 text-right">Action</th>
                 </tr>
               </thead>
               <tbody>
                 {requests.map((item) => (
-                  <tr key={item.requestUid} className="border-b border-slate-50 hover:bg-slate-50/70">
-                    <td className="p-3">
+                  <tr key={item.requestUid} className="border-b border-[#F3F4F6] transition hover:bg-[#FAFAFB]">
+                    <td className="px-3 py-3">
                       <Link
                         href={`/master-admin/enterprise-requests/${item.requestUid}`}
-                        className="text-[12px] font-black text-slate-900 hover:text-[#4D9A00]"
+                        className="text-[12px] font-bold text-[#111827] transition hover:text-[#5AA700]"
                       >
                         {item.requestUid}
                       </Link>
                     </td>
-                    <td className="p-3 text-[12px] font-bold text-slate-800">{item.companyName}</td>
-                    <td className="p-3 text-[12px] font-semibold text-slate-700">{item.contactName}</td>
-                    <td className="p-3 text-[12px] font-medium text-slate-500">{item.businessEmail}</td>
-                    <td className="p-3 text-[12px] font-semibold text-slate-600">{item.country}</td>
-                    <td className="p-3 text-[12px] font-semibold text-slate-600">{item.industry}</td>
-                    <td className="p-3">
-                      <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ring-inset ${badgeClass[item.status]}`}>
+                    <td className="px-3 py-3 text-[12px] font-semibold text-[#374151]">{item.companyName}</td>
+                    <td className="px-3 py-3 text-[12px] font-semibold text-[#374151]">{item.contactName}</td>
+                    <td className="px-3 py-3 text-[12px] font-medium text-[#9CA3AF]">{item.businessEmail}</td>
+                    <td className="px-3 py-3 text-[12px] font-semibold text-[#374151]">{item.country}</td>
+                    <td className="px-3 py-3 text-[12px] font-semibold text-[#374151]">{item.industry}</td>
+                    <td className="px-3 py-3">
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ring-inset ${badgeClass[item.status]}`}
+                      >
                         {item.statusLabel}
                       </span>
                     </td>
-                    <td className="p-3 text-[12px] font-semibold text-slate-600">{formatDate(item.createdAt)}</td>
-                    <td className="p-3 text-right">
+                    <td className="px-3 py-3 text-[12px] font-semibold text-[#374151]">{formatDate(item.createdAt)}</td>
+                    <td className="px-3 py-3 text-right">
                       <Link
                         href={`/master-admin/enterprise-requests/${item.requestUid}`}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
+                        className="grid h-8 w-8 place-items-center rounded-[10px] text-[#6B7280] transition hover:bg-[#F3F4F6] hover:text-[#111827]"
                         title="View request"
                       >
                         <Eye size={15} />
@@ -304,13 +357,10 @@ export default function EnterpriseRequestsPage() {
           </div>
         )}
 
-        <AdminPagination
-          page={page}
-          totalPages={pagination.totalPages}
-          meta={pagination}
-          onPageChange={setPage}
-        />
-      </AdminTablePanel>
+        <div className="border-t border-[#ECECEC] px-2">
+          <AdminPagination page={page} totalPages={pagination.totalPages} meta={pagination} onPageChange={setPage} />
+        </div>
+      </section>
     </div>
   );
 }

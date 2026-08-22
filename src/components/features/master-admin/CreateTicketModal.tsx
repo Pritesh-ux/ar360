@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useDeferredEffect } from "@/lib/react/use-deferred-effect";
 import { X } from "lucide-react";
 import { AdminButton } from "@/components/ui/admin";
+import UserFilterDropdown from "@/components/user-panel/UserFilterDropdown";
+import ViewportPortal from "@/components/shared/ViewportPortal";
 
 type Props = {
   open: boolean;
@@ -24,7 +27,7 @@ export default function CreateTicketModal({ open, assigneeOptions, saving, onClo
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     if (!open) return;
     setCustomerUid("");
     setCustomerName("");
@@ -73,7 +76,8 @@ export default function CreateTicketModal({ open, assigneeOptions, saving, onClo
   }
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/40 p-4">
+    <ViewportPortal>
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/40 p-4">
       <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <h2 className="text-[16px] font-black text-slate-900">New Support Ticket</h2>
@@ -116,39 +120,40 @@ export default function CreateTicketModal({ open, assigneeOptions, saving, onClo
             className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px] outline-none"
           />
           <div className="grid grid-cols-2 gap-3">
-            <select
+            <UserFilterDropdown
+              compact
+              hideLabel
+              label="Category"
+              menuTitle="Category"
               value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="rounded-xl border border-slate-200 px-3 py-2.5 text-[13px] outline-none"
-            >
-              <option value="technical">Technical</option>
-              <option value="billing">Billing</option>
-              <option value="account">Account</option>
-              <option value="feature">Feature</option>
-              <option value="other">Other</option>
-            </select>
-            <select
+              options={["technical", "billing", "account", "feature", "other"]}
+              onChange={setCategory}
+              renderOption={(v) => v.charAt(0).toUpperCase() + v.slice(1)}
+              renderValue={(v) => v.charAt(0).toUpperCase() + v.slice(1)}
+            />
+            <UserFilterDropdown
+              compact
+              hideLabel
+              label="Priority"
+              menuTitle="Priority"
               value={priority}
-              onChange={(e) => setPriority(e.target.value)}
-              className="rounded-xl border border-slate-200 px-3 py-2.5 text-[13px] outline-none"
-            >
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-            </select>
+              options={["low", "medium", "high"]}
+              onChange={setPriority}
+              renderOption={(v) => v.charAt(0).toUpperCase() + v.slice(1)}
+              renderValue={(v) => v.charAt(0).toUpperCase() + v.slice(1)}
+            />
           </div>
-          <select
-            value={assignedTo}
-            onChange={(e) => setAssignedTo(e.target.value)}
-            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[13px] outline-none"
-          >
-            <option value="">Unassigned</option>
-            {assigneeOptions.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
+          <UserFilterDropdown
+            compact
+            hideLabel
+            label="Assigned To"
+            menuTitle="Assigned To"
+            value={assignedTo || "none"}
+            options={["none", ...assigneeOptions]}
+            onChange={(v) => setAssignedTo(v === "none" ? "" : v)}
+            renderOption={(v) => (v === "none" ? "Unassigned" : v)}
+            renderValue={(v) => (v === "none" ? "Unassigned" : v)}
+          />
           {error ? <p className="text-[12px] font-semibold text-red-600">{error}</p> : null}
         </div>
 
@@ -162,5 +167,6 @@ export default function CreateTicketModal({ open, assigneeOptions, saving, onClo
         </div>
       </div>
     </div>
+    </ViewportPortal>
   );
 }

@@ -274,6 +274,7 @@ export async function activatePaidEnterprisePayment(
   if (Number.isNaN(paidAt.getTime())) {
     throw new EnterpriseSalesValidationError("Paid date is invalid");
   }
+  const paidAtMysql = paidAt.toISOString().slice(0, 19).replace("T", " ");
 
   const pool = await getPool();
   const connection = await pool.getConnection();
@@ -517,11 +518,15 @@ export async function activatePaidEnterprisePayment(
       },
       { transactionId, paymentMethod, paidAt },
     );
+    const paidAtForDb =
+      effectivePayment.paidAt instanceof Date
+        ? effectivePayment.paidAt.toISOString().slice(0, 19).replace("T", " ")
+        : paidAtMysql;
     await connection.execute(
       `UPDATE billing_invoices
           SET subscription_id = ?, plan_id = ?, period = ?, status = 'paid', paid_at = ?
         WHERE id = ?`,
-      [subscriptionId, plan.custom_plan_uid, quote.billing_cycle, effectivePayment.paidAt, payment.invoice_id],
+      [subscriptionId, plan.custom_plan_uid, quote.billing_cycle, paidAtForDb, payment.invoice_id],
     );
     await connection.execute(
       `UPDATE enterprise_payments
@@ -531,7 +536,7 @@ export async function activatePaidEnterprisePayment(
       [
         effectivePayment.transactionId,
         effectivePayment.paymentMethod,
-        effectivePayment.paidAt,
+        paidAtForDb,
         subscriptionId,
         contractId,
         payment.id,

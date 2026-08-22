@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const user = await requireScopedApiUser();
+  const user = await requireScopedApiUser({ allowSuspended: true });
   if (!user) return rejectScopedApiUser();
 
   const { id } = await context.params;
@@ -23,7 +23,7 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
 }
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const user = await requireScopedApiUser();
+  const user = await requireScopedApiUser({ allowSuspended: true });
   if (!user) return rejectScopedApiUser();
 
   const ip = getClientIp(request);

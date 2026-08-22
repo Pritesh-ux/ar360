@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  advanceEnterpriseRequestStatus,
   createEnterpriseQuote,
   EnterpriseSalesValidationError,
   getEnterpriseQuoteForDocument,
@@ -83,6 +84,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         metadata: { requestUid: id, delivered: email.delivered },
       });
     }
+
+    await advanceEnterpriseRequestStatus(id, "quoted", Number(auth.admin.id)).catch(() => undefined);
+
     return NextResponse.json({ ok: true, quoteUid: result.quoteUid, email, request: await getEnterpriseSalesRequest(id) });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Quote creation failed";

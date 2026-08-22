@@ -17,7 +17,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Login required." }, { status: 401 });
     }
 
-    const permission = await enforcePermission(user.customerUid ?? "", "access_dashboard");
+    const permission = await enforcePermission(user.customerUid ?? "", "analytics");
     if (!permission.ok) return permission.response;
 
     const url = new URL(req.url);
@@ -26,7 +26,11 @@ export async function GET(req: Request) {
     const from = getParam(url, "from") || undefined;
     const to = getParam(url, "to") || undefined;
     const event = getParam(url, "event") || undefined;
-    const format = (getParam(url, "format") || "csv").toLowerCase();
+    const format = (getParam(url, "format") || "excel").toLowerCase();
+
+    if (format === "json" || format === "csv") {
+      return NextResponse.json({ error: "Only Excel export is available." }, { status: 400 });
+    }
 
     if (!customerUid) {
       return NextResponse.json({ error: "customerUid is required." }, { status: 400 });
@@ -37,18 +41,14 @@ export async function GET(req: Request) {
     }
 
     const rows = await getAnalyticsExportRows({ customerUid, productUid, from, to, event });
-
-    if (format === "json") {
-      return NextResponse.json({ rows });
-    }
-
-    const csv = toCsv(rows);
-    const fileName = `analytics-${customerUid}-${new Date().toISOString().slice(0, 10)}.csv`;
+    const csv = `\uFEFF${toCsv(rows)}`;
+    const stamp = [from, to].filter(Boolean).join("-") || new Date().toISOString().slice(0, 10);
+    const fileName = `analytics-${stamp}.xls`;
 
     return new NextResponse(csv, {
       status: 200,
       headers: {
-        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Type": "application/vnd.ms-excel; charset=utf-8",
         "Content-Disposition": `attachment; filename="${fileName}"`,
         "Cache-Control": "no-store",
       },

@@ -28,30 +28,30 @@ export default function SidebarItem({
       title={collapsed ? label : undefined}
       aria-current={active ? "page" : undefined}
       className={[
-        "group relative flex items-center rounded-2xl transition-all duration-200",
-        collapsed ? "mx-auto h-11 w-11 justify-center" : "h-11 gap-3 px-3",
+        "group relative flex items-center rounded-xl transition-all duration-150",
+        collapsed ? "mx-auto h-10 w-10 justify-center" : "h-10 gap-3 px-3",
         active
-          ? "bg-[#C8FF46] text-[#151515] shadow-[0_8px_22px_rgba(200,255,70,0.14)]"
-          : "text-white/75 hover:bg-white/[0.07] hover:text-white",
+          ? "bg-[#C8FF46] text-[#151515] shadow-[0_4px_16px_rgba(200,255,70,0.12)]"
+          : "text-white/60 hover:bg-white/[0.05] hover:text-white/90",
       ].join(" ")}
     >
       {active && !collapsed ? (
         <motion.span
           layoutId="sidebar-active-indicator"
-          className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-[#151515]"
+          className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-[#151515]"
           transition={{ type: "spring", stiffness: 380, damping: 32 }}
         />
       ) : null}
 
       <Icon
-        size={20}
-        strokeWidth={2}
-        className={active ? "text-[#151515]" : "text-white/70 group-hover:text-white"}
+        size={18}
+        strokeWidth={active ? 2.2 : 1.8}
+        className={active ? "text-[#151515]" : "text-white/50 group-hover:text-white/80"}
         aria-hidden
       />
 
       {!collapsed ? (
-        <span className={`truncate text-[14px] ${active ? "font-bold text-[#151515]" : "font-medium"}`}>
+        <span className={`truncate text-[13px] ${active ? "font-bold text-[#151515]" : "font-medium text-white/70 group-hover:text-white/90"}`}>
           {label}
         </span>
       ) : null}

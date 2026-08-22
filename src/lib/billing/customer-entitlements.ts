@@ -1,4 +1,9 @@
 import { getCustomerUsage } from "@/lib/billing/customer-usage";
+import {
+  formatBytesShort,
+  formatDataSize,
+  formatLimitPair,
+} from "@/lib/billing/format-data-size";
 
 export type CustomerEntitlements = {
   planId: string;
@@ -62,34 +67,4 @@ export async function getCustomerEntitlements(customerUid: string): Promise<Cust
   };
 }
 
-export function formatBytesShort(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
-  const gb = bytes / (1024 * 1024 * 1024);
-  if (gb >= 1) return `${gb.toFixed(gb >= 10 ? 0 : 1)} GB`;
-  const mb = bytes / (1024 * 1024);
-  if (mb >= 1) return `${mb.toFixed(mb >= 100 ? 0 : 1)} MB`;
-  const kb = bytes / 1024;
-  return `${kb.toFixed(0)} KB`;
-}
-
-export function formatLimitPair(
-  used: number,
-  limit: number | null,
-  unit: "products" | "bytes" | "qr" | "share" = "products",
-): string {
-  if (unit === "products") {
-    const limitLabel = limit == null ? "Unlimited" : String(limit);
-    return `${used} / ${limitLabel} products`;
-  }
-  if (unit === "qr") {
-    const limitLabel = limit == null ? "Unlimited" : String(limit);
-    return `${used} / ${limitLabel} QR codes`;
-  }
-  if (unit === "share") {
-    const limitLabel = limit == null ? "Unlimited" : String(limit);
-    return `${used} / ${limitLabel} share links`;
-  }
-  const usedLabel = formatBytesShort(used);
-  const limitLabel = limit == null ? "Unlimited" : formatBytesShort(limit);
-  return `${usedLabel} / ${limitLabel}`;
-}
+export { formatBytesShort, formatDataSize, formatLimitPair };

@@ -1,9 +1,12 @@
 export { AppSidebar, USER_SIDEBAR_COLLAPSED_WIDTH, USER_SIDEBAR_WIDTH } from "./sidebar";
+export { UserPanelProvider, useObjectCaptureEnabled, useUserPanelSession } from "./UserPanelContext";
 export { default as UserPanelShell } from "./UserPanelShell";
 export { default as UserMobileNav } from "./UserMobileNav";
 export { default as UserPageHeader } from "./UserPageHeader";
 export { default as UserRangePills } from "./UserRangePills";
 export { default as UserMetricCard } from "./UserMetricCard";
+export { default as UserStatCard } from "./UserStatCard";
+export type { MetricAccent } from "./metric-accent";
 export { default as UserButton } from "./UserButton";
 export { default as StatusBadge } from "./StatusBadge";
 export { UserField, UserInput, UserSelect, UserTextarea } from "./UserInput";
@@ -13,5 +16,8 @@ export { default as UserActionMenu, UserActionMenuPanel, UserActionMenuItemButto
 export type { UserActionMenuItem } from "./UserActionMenu";
 export { default as UserDateRangePicker, defaultDateRange, isDateInRange, formatDateRangeLabel } from "./UserDateRangePicker";
 export type { DateRangeValue, DateRangePreset } from "./UserDateRangePicker";
+export { default as UserFilterDropdown } from "./UserFilterDropdown";
+export { default as UserPanelPageShell } from "./UserPanelPageShell";
+export { default as UserWorkspaceLoading } from "./UserWorkspaceLoading";
 export { UserIconRail } from "./UserSidebarParts";
 export * from "./nav";

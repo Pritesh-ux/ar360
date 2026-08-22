@@ -1,6 +1,7 @@
 "use client";
 
 import AdminButton from "./AdminButton";
+import UserFilterDropdown from "@/components/user-panel/UserFilterDropdown";
 
 export type BulkActionOption = {
   value: string;
@@ -29,21 +30,32 @@ export default function AdminBulkActions({
   className = "",
 }: Props) {
   const applyDisabled = disabled || (requireSelection && selectedCount === 0);
+  const optionValues = ["", ...options.map((option) => option.value)];
 
   return (
     <div className={`flex items-center gap-2 ${className}`}>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-10 min-w-[148px] rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-700 outline-none focus:border-[#A6FF2E]"
-      >
-        <option value="">Bulk Actions</option>
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+      <UserFilterDropdown
+        hideLabel
+        compact
+        className="min-w-[148px]"
+        menuWidth={200}
+        label="Bulk actions"
+        menuTitle="Bulk actions"
+        value={value || ""}
+        options={optionValues}
+        onChange={onChange}
+        disabled={disabled}
+        renderOption={(optionValue) =>
+          optionValue === ""
+            ? "Bulk Actions"
+            : options.find((option) => option.value === optionValue)?.label || optionValue
+        }
+        renderValue={(optionValue) =>
+          optionValue === ""
+            ? "Bulk Actions"
+            : options.find((option) => option.value === optionValue)?.label || optionValue
+        }
+      />
       {value ? (
         <AdminButton size="sm" onClick={onApply} disabled={applyDisabled}>
           Apply{selectedCount > 0 ? ` (${selectedCount})` : ""}

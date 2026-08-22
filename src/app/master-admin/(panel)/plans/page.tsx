@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, Edit3, Plus, RefreshCw, Save, ToggleLeft, ToggleRight, X } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Check, Edit3, Plus, RefreshCw, Save, ToggleLeft, ToggleRight, Trash2, X } from "lucide-react";
+import AdminPageHeader from "@/components/features/master-admin/AdminPageHeader";
+import "@/components/dashboard/dashboard-premium.css";
+import { adminCardClass, adminInputClass } from "@/components/ui/admin/tokens";
 import type { AdminBillingPlan } from "@/lib/billing/admin-plans";
 import {
   ASSUMED_MODEL_MB,
@@ -10,6 +14,12 @@ import {
   formatInr,
   type YearlyPricingMode,
 } from "@/lib/billing/plans";
+import {
+  buildPricingChecklist,
+  buildPricingFeatureGates,
+  featureLabelsFromLimits,
+  isOrganisationPlan,
+} from "@/lib/billing/pricing-features";
 
 type Notice = { type: "success" | "error"; message: string } | null;
 
@@ -35,8 +45,8 @@ const emptyPlan: PlanForm = {
   popular: false,
   badge: "",
   icon: "paper",
-  features: ["3D Viewer & AR", "QR Code Sharing", "Basic Analytics"],
-    limits: {
+  features: [],
+  limits: {
       customBranding: false,
       advancedAnalytics: false,
       embedViewer: false,
@@ -65,13 +75,6 @@ const emptyPlan: PlanForm = {
 
 function cleanId(value: string) {
   return value.toLowerCase().trim().replace(/[^a-z0-9_-]/g, "_");
-}
-
-function parseFeatures(value: string) {
-  return value
-    .split("\n")
-    .map((item) => item.trim())
-    .filter(Boolean);
 }
 
 async function readJsonResponse(response: Response) {
@@ -105,6 +108,7 @@ export default function MasterAdminPlansPage() {
   const [saveReason, setSaveReason] = useState("Updated plan settings from Master Admin");
   const [notice, setNotice] = useState<Notice>(null);
   const [providerControls, setProviderControls] = useState<ProviderControl[]>([]);
+  const [portalReady, setPortalReady] = useState(false);
 
   async function loadPlans() {
     setLoading(true);
@@ -125,6 +129,21 @@ export default function MasterAdminPlansPage() {
     const timeout = window.setTimeout(() => void loadPlans(), 0);
     return () => window.clearTimeout(timeout);
   }, []);
+
+  useEffect(() => {
+    // Client-only portal mount gate (SSR-safe).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPortalReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!editing) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [editing]);
 
   const sortedPlans = useMemo(() => [...plans].sort((a, b) => a.sortOrder - b.sortOrder), [plans]);
   const modernPlans = useMemo(
@@ -207,11 +226,17 @@ export default function MasterAdminPlansPage() {
       if (reason.length < 5) {
         throw new Error("Audit reason required (minimum 5 characters). Example: Updated Pro AR feature toggle");
       }
+      const planPayload = {
+        ...editing,
+        id: cleanId(editing.id || editing.name),
+        // Checklist comes from ON/OFF gates only — no free-text bullets.
+        features: featureLabelsFromLimits(editing.limits),
+      };
       const response = await fetch("/api/master-admin/billing/plans", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          plan: { ...editing, id: cleanId(editing.id || editing.name) },
+          plan: planPayload,
           originalId: editingOriginalId,
           confirmDeactivate,
           confirm: true,
@@ -312,36 +337,68 @@ export default function MasterAdminPlansPage() {
     }
   }
 
-  return (
-    <div className="min-h-full p-4 md:p-6 2xl:p-8 pb-10 md:pb-12">
-      <div className="w-full">
-        <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h1 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl md:text-[32px]">
-              Plan Control
-            </h1>
-            <p className="mt-1 text-sm font-semibold text-slate-500">Control pricing, limits, trial, storage, product count and public plan visibility.</p>
-          </div>
+  async function deletePlan(plan: AdminBillingPlan) {
+    const confirmed = window.confirm(`Are you sure you want to delete the plan "${plan.name}" (${plan.id})? This action cannot be undone.`);
+    if (!confirmed) return;
 
-          <div className="flex gap-3">
-            <button onClick={loadPlans} className="flex h-12 items-center gap-2 rounded-2xl border bg-[var(--color-surface)] px-4 text-sm font-black shadow-sm">
-              <RefreshCw size={16} /> Refresh
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/master-admin/billing/plans?id=${encodeURIComponent(plan.id)}`, {
+        method: "DELETE",
+      });
+      const data = await readJsonResponse(response);
+      if (!response.ok) {
+        if (response.status === 401) {
+          window.setTimeout(() => {
+            window.location.href = "/master-admin/login?next=/master-admin/plans";
+          }, 1200);
+        }
+        throw new Error(apiErrorMessage(data, "Unable to delete plan", response.status));
+      }
+      setPlans(data.plans || []);
+      setNotice({
+        type: "success",
+        message: `Plan "${plan.name}" has been deleted successfully.`,
+      });
+    } catch (error) {
+      setNotice({ type: "error", message: error instanceof Error ? error.message : "Unable to delete plan" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="master-admin-panel dash-premium animate-dash-fade-in flex min-h-0 flex-1 flex-col gap-3">
+      <AdminPageHeader
+        title="Plan Control"
+        subtitle="Control pricing, limits, trial, storage, product count and public plan visibility."
+        actions={
+          <>
+            <button type="button" onClick={loadPlans} className="dash-premium-btn-secondary h-10 px-3 text-[12px]">
+              <RefreshCw size={15} />
+              Refresh
             </button>
-            <button onClick={openNewPlan} className="flex h-12 items-center gap-2 rounded-2xl bg-[var(--color-primary)] px-5 text-sm font-black text-[var(--color-text)] shadow-[var(--shadow-sm)]">
-              <Plus size={16} /> New Plan
+            <button type="button" onClick={openNewPlan} className="dash-premium-btn-primary h-10 px-4 text-[12px]">
+              <Plus size={15} strokeWidth={2.2} />
+              New Plan
             </button>
-          </div>
-        </div>
+          </>
+        }
+      />
 
         {notice && (
-          <div className={`master-toast ${notice.type === "error" ? "!text-[var(--color-danger)]" : ""}`}>
+          <div
+            className={`dash-premium-card px-4 py-3 text-[13px] font-semibold ${
+              notice.type === "error" ? "border-[#FEE2E2] bg-[#FEF2F2] text-[#991B1B]" : "border-[#DCFCE7] bg-[#F0FDF4] text-[#166534]"
+            }`}
+          >
             {notice.message}
           </div>
         )}
 
-        <section className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           {loading ? (
-            <div className="col-span-full rounded-[var(--radius-lg)] bg-[var(--color-surface)] p-8 text-center font-black text-slate-400">Loading plans...</div>
+            <div className={`col-span-full p-8 text-center text-[13px] font-semibold text-[#9CA3AF] ${adminCardClass}`}>Loading plans...</div>
           ) : (
             modernPlans.map((plan) => (
               <PlanCard
@@ -351,18 +408,19 @@ export default function MasterAdminPlansPage() {
                 saving={saving}
                 onToggle={() => void toggleActive(plan)}
                 onEdit={() => openEdit(plan)}
+                onDelete={() => void deletePlan(plan)}
               />
             ))
           )}
         </section>
 
         {!loading && legacyPlans.length > 0 ? (
-          <section className="mt-8">
-            <h2 className="text-sm font-black uppercase tracking-wider text-slate-500">Legacy plan rows (keep inactive)</h2>
-            <p className="mt-1 text-xs font-semibold text-slate-500">
+          <section className="mt-3">
+            <h2 className="text-[11px] font-bold uppercase tracking-wide text-[#9CA3AF]">Legacy plan rows (keep inactive)</h2>
+            <p className="mt-1 text-[12px] font-medium text-[#6B7280]">
               These old IDs (`basic`, `professional`) stay for history. Use starter / pro for public pricing.
             </p>
-            <div className="mt-4 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+            <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               {legacyPlans.map((plan) => (
                 <PlanCard
                   key={plan.id}
@@ -371,18 +429,19 @@ export default function MasterAdminPlansPage() {
                   saving={saving}
                   onToggle={() => void toggleActive(plan)}
                   onEdit={() => openEdit(plan)}
+                  onDelete={() => void deletePlan(plan)}
                   legacy
                 />
               ))}
             </div>
           </section>
         ) : null}
-      </div>
 
-      {editing && (
-        <div className="fixed inset-0 z-[999] grid place-items-center bg-slate-950/40 p-3 backdrop-blur-sm sm:p-4">
-          <div className="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-[24px] bg-white shadow-2xl">
-            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
+      {editing && portalReady
+        ? createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/45 p-3 backdrop-blur-sm sm:p-4">
+          <div className="flex max-h-[min(96dvh,920px)] w-full max-w-6xl flex-col overflow-hidden rounded-[20px] border border-[#ECECEC] bg-white shadow-2xl">
+            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[#ECECEC] px-5 py-3 sm:px-6 sm:py-4">
               <div>
                 <h2 className="text-xl font-black tracking-tight text-slate-950 sm:text-2xl">
                   {editingOriginalId ? "Edit Plan" : "Create Plan"}
@@ -401,11 +460,13 @@ export default function MasterAdminPlansPage() {
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4 sm:px-6 sm:py-5">
+              <div className="grid gap-4 xl:grid-cols-2 xl:gap-5">
+              <div className="space-y-4">
               {/* Identity */}
-              <section className="rounded-2xl border border-slate-200 p-4">
+              <section className="dash-premium-card p-4">
                 <h3 className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">Identity</h3>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <Field
                     label="Plan ID"
                     value={editing.id}
@@ -425,7 +486,7 @@ export default function MasterAdminPlansPage() {
               </section>
 
               {/* Pricing — one aligned row */}
-              <section className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+              <section className="dash-premium-card bg-[#FAFAFB] p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h3 className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">Pricing</h3>
@@ -544,7 +605,7 @@ export default function MasterAdminPlansPage() {
               </section>
 
               {/* Limits */}
-              <section className="rounded-2xl border border-slate-200 p-4">
+              <section className="dash-premium-card p-4">
                 <h3 className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">Limits</h3>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   <NumberField
@@ -628,49 +689,54 @@ export default function MasterAdminPlansPage() {
                     onChange={(value) => updateEditing({ sortOrder: Number(value || 0) })}
                   />
                   {editing.id === "trial" ? (
-                    <NumberField
-                      label="Trial Hours"
-                      value={editing.trialHours ?? 24}
-                      integer
-                      onChange={(value) => updateEditing({ trialHours: Number(value || 0) || undefined })}
-                    />
+                    <>
+                      <NumberField
+                        label="Trial Days"
+                        value={Math.max(1, Math.round((editing.trialHours ?? 72) / 24))}
+                        integer
+                        hint="Signup trial length. Products, storage, bandwidth & feature gates above apply to new signups."
+                        onChange={(value) => {
+                          const days = Math.max(1, Number(value || 0) || 1);
+                          updateEditing({ trialHours: days * 24 });
+                        }}
+                      />
+                      <NumberField
+                        label="Trial Hours (exact)"
+                        value={editing.trialHours ?? 72}
+                        integer
+                        hint="Stored value. Editing days above sets hours as days × 24."
+                        onChange={(value) =>
+                          updateEditing({ trialHours: Math.max(1, Number(value || 0) || 72) })
+                        }
+                      />
+                    </>
                   ) : null}
                 </div>
               </section>
 
+              </div>
+
+              <div className="space-y-4">
               {/* Marketing copy */}
-              <section className="rounded-2xl border border-slate-200 p-4">
+              <section className="dash-premium-card p-4">
                 <h3 className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">Marketing copy</h3>
-                <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                <div className="mt-3 grid gap-3">
                   <label className="block">
                     <span className="text-sm font-black text-slate-600">Description</span>
                     <textarea
                       value={editing.description}
                       onChange={(event) => updateEditing({ description: event.target.value })}
-                      className="mt-2 min-h-[120px] w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm font-semibold outline-none focus:border-[var(--color-primary)]"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-sm font-black text-slate-600">Feature bullets (one per line)</span>
-                    <p className="mt-1 text-[11px] font-medium text-slate-400">
-                      Highlight on pricing: start the line with <code className="rounded bg-slate-100 px-1">*</code>{" "}
-                      e.g. <code className="rounded bg-slate-100 px-1">* Custom Branding</code>
-                    </p>
-                    <textarea
-                      value={editing.features.join("\n")}
-                      onChange={(event) => updateEditing({ features: parseFeatures(event.target.value) })}
-                      className="mt-2 min-h-[120px] w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm font-semibold outline-none focus:border-[var(--color-primary)]"
+                      className="mt-2 min-h-[88px] w-full rounded-[14px] border border-[#ECECEC] bg-white p-3 text-[13px] font-medium text-[#111827] outline-none transition focus:border-[#84D400] focus:shadow-[0_0_0_3px_rgba(182,255,56,0.18)]"
                     />
                   </label>
                 </div>
               </section>
 
               {/* Feature gates */}
-              <section className="rounded-2xl border border-slate-200 p-4">
+              <section className="dash-premium-card p-4">
                 <h3 className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">Feature gates</h3>
                 <p className="mt-1 text-xs font-medium text-slate-500">
-                  These toggles control real access and also show on /pricing (chips + checklist). Marketing bullets
-                  above are extra display text only.
+                  ON = included on /pricing and unlocked for subscribers. OFF = hidden and blocked in the customer panel.
                 </p>
 
                 <p className="mt-4 text-[11px] font-black uppercase tracking-wider text-slate-400">Visibility</p>
@@ -761,24 +827,42 @@ export default function MasterAdminPlansPage() {
                     onChange={(value) => updateLimit("prioritySupport", value)}
                   />
                 </div>
+
+                <div className="mt-5 rounded-2xl border border-[#EAF7C8] bg-[#F7FCEB] p-4">
+                  <p className="text-[11px] font-black uppercase tracking-wider text-[#3F5C00]">
+                    Live /pricing preview
+                  </p>
+                  <ul className="mt-3 grid max-h-[220px] gap-1.5 overflow-y-auto sm:grid-cols-2">
+                    {buildPricingChecklist({
+                      limits: editing.limits,
+                    }).map((line) => (
+                      <li key={line.label} className="flex items-start gap-2 text-[12px] font-semibold text-[#111]">
+                        <Check size={14} className="mt-0.5 shrink-0 text-[#84D400]" />
+                        <span>{line.label}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </section>
+              </div>
+              </div>
             </div>
 
-            <div className="flex shrink-0 flex-col gap-3 border-t border-slate-200 bg-slate-50/90 px-5 py-4 sm:flex-row sm:items-end sm:justify-between sm:px-6">
+            <div className="flex shrink-0 flex-col gap-3 border-t border-[#ECECEC] bg-[#FAFAFB] px-5 py-3 sm:flex-row sm:items-end sm:justify-between sm:px-6 sm:py-4">
               <label className="min-w-0 flex-1">
                 <span className="text-xs font-black text-slate-600">Audit reason (required)</span>
                 <input
                   value={saveReason}
                   onChange={(event) => setSaveReason(event.target.value)}
                   placeholder="Example: Enabled AR for Pro plan"
-                  className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold outline-none focus:border-[var(--color-primary)]"
+                  className={`mt-1 h-10 w-full ${adminInputClass}`}
                 />
               </label>
               <div className="flex shrink-0 justify-end gap-2">
                 <button
                   type="button"
                   onClick={closeEditor}
-                  className="h-11 rounded-xl border border-slate-200 bg-white px-5 text-sm font-black transition hover:bg-slate-50"
+                  className="dash-premium-btn-secondary h-10 px-4 text-[12px]"
                 >
                   Cancel
                 </button>
@@ -786,15 +870,18 @@ export default function MasterAdminPlansPage() {
                   type="button"
                   onClick={() => void savePlan()}
                   disabled={saving}
-                  className="flex h-11 items-center gap-2 rounded-xl bg-[var(--color-primary)] px-5 text-sm font-black text-[var(--color-text)] disabled:opacity-50"
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#B6FF38] px-6 text-[13px] font-bold text-[#111111] transition hover:bg-[#A3F020] disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <Save size={16} /> {saving ? "Saving..." : "Save Plan"}
+                  <Save size={16} strokeWidth={2.25} />
+                  {saving ? "Saving..." : "Save Plan"}
                 </button>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        </div>,
+        document.body,
+      )
+        : null}
     </div>
   );
 }
@@ -805,6 +892,7 @@ function PlanCard({
   saving,
   onToggle,
   onEdit,
+  onDelete,
   legacy = false,
 }: {
   plan: AdminBillingPlan;
@@ -812,18 +900,47 @@ function PlanCard({
   saving: boolean;
   onToggle: () => void;
   onEdit: () => void;
+  onDelete: () => void;
   legacy?: boolean;
 }) {
   const mappings = providerControls.filter((item) => item.planId === plan.id);
+  const isOrg = isOrganisationPlan(plan);
+  const publicFeatures = buildPricingChecklist({
+    limits: plan.limits,
+  });
+  const gatePreview = buildPricingFeatureGates(plan.limits);
+  const productsLabel = isOrg
+    ? "Custom"
+    : plan.products >= 999999
+      ? "Unlimited"
+      : String(plan.products);
+  const storageLabel = isOrg
+    ? "Custom"
+    : plan.unlimitedStorage
+      ? "Unlimited"
+      : `${plan.storageGb} GB`;
+  const bandwidthLabel = isOrg
+    ? "Custom"
+    : plan.unlimitedBandwidth
+      ? "Unlimited"
+      : `${plan.bandwidthGb} GB`;
+  const qrLabel = isOrg
+    ? "Custom"
+    : plan.limits?.allowQr === false
+      ? "Off"
+      : plan.qrLimit == null
+        ? "Unlimited"
+        : String(plan.qrLimit);
+
   return (
     <article
-      className={`relative flex h-full flex-col rounded-[var(--radius-lg)] p-5 shadow-[var(--shadow-sm)] ${
-        plan.popular ? "bg-[var(--color-primary)] text-[var(--color-text)]" : "bg-[var(--color-surface)]"
-      } ${!plan.isActive ? "opacity-70 ring-1 ring-slate-300" : ""}`}
+      className={`relative flex h-full flex-col p-5 ${adminCardClass} ${
+        plan.popular ? "border-[#B6FF38] bg-gradient-to-br from-[#F4FFE0] to-white" : ""
+      } ${!plan.isActive ? "opacity-70" : ""}`}
     >
-      {plan.badge ? (
-        <div className="absolute right-14 top-4 max-w-[110px] truncate rounded-full bg-slate-950 px-3 py-1 text-xs font-black text-white">
-          {plan.badge}
+      {plan.badge || plan.popular ? (
+        <div className="absolute right-14 top-4 max-w-[120px] truncate rounded-full bg-slate-950 px-3 py-1 text-xs font-black text-[#C9FF57]">
+          {plan.badge || "Most Popular"}
         </div>
       ) : null}
 
@@ -840,6 +957,7 @@ function PlanCard({
           </p>
           <p className="mt-2 text-[11px] font-black uppercase tracking-wider opacity-65">
             {plan.isActive ? "Active · Public" : "Inactive · Hidden"}
+            {isOrg ? " · Enterprise" : ""}
           </p>
           {legacy ? (
             <p className="mt-1 text-[10px] font-semibold text-amber-700">
@@ -866,32 +984,48 @@ function PlanCard({
 
       <div className={`my-5 h-px ${plan.popular ? "bg-white/25" : "bg-slate-200"}`} />
 
-      <div className="grid grid-cols-3 gap-3 text-center">
-        <Metric label="Storage" value={plan.unlimitedStorage ? "Unlimited" : `${plan.storageGb} GB`} light={plan.popular} />
-        <Metric
-          label="Bandwidth"
-          value={plan.unlimitedBandwidth ? "Unlimited" : `${plan.bandwidthGb} GB`}
-          light={plan.popular}
-        />
-        <Metric label="Products" value={String(plan.products)} light={plan.popular} />
+      <div className="grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
+        <Metric label="Products" value={productsLabel} light={plan.popular} />
+        <Metric label="Storage" value={storageLabel} light={plan.popular} />
+        <Metric label="Bandwidth" value={bandwidthLabel} light={plan.popular} />
+        <Metric label="QR" value={qrLabel} light={plan.popular} />
       </div>
 
       <div className="mt-5 text-center">
-        <p className="text-3xl font-black">{formatInr(plan.priceMonthlyInr)}</p>
-        <p className={plan.popular ? "text-[var(--color-text)] opacity-75" : "text-[var(--color-muted)]"}>/month</p>
-        {plan.priceYearlyInr !== null ? (
+        <p className="text-3xl font-black">{isOrg ? "Custom" : formatInr(plan.priceMonthlyInr)}</p>
+        <p className={plan.popular ? "text-[var(--color-text)] opacity-75" : "text-[var(--color-muted)]"}>
+          {isOrg ? "negotiated" : "/month"}
+        </p>
+        {!isOrg && plan.priceYearlyInr !== null ? (
           <p className="mt-2 text-xs font-bold opacity-70">
             Yearly: {formatInr(plan.priceYearlyInr)}
             {plan.yearlyPricingMode === "percent_off" && plan.yearlyDiscountPercent != null
               ? ` (${Number(plan.yearlyDiscountPercent)}% off)`
               : ""}
+            {plan.bandwidthResetsMonthly ? " · BW resets monthly" : ""}
           </p>
         ) : null}
       </div>
 
+      <div className="mt-4 flex flex-wrap gap-1.5">
+        {gatePreview.map((gate) => (
+          <span
+            key={gate.label}
+            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+              gate.on
+                ? "bg-[#EAF7C8] text-[#3F5C00]"
+                : "bg-slate-100 text-slate-400 line-through"
+            }`}
+            title={gate.on ? "ON — shown on /pricing" : "OFF — hidden on /pricing"}
+          >
+            {gate.label}
+          </span>
+        ))}
+      </div>
+
       <div className="mt-4 space-y-2 rounded-2xl bg-black/5 p-3 text-[11px] font-bold">
-        {plan.id === "enterprise" ? (
-          <p>Manual invariant · no Razorpay price mapping · excluded from recurring MRR</p>
+        {plan.id === "enterprise" || isOrg ? (
+          <p>Manual / Enterprise · Contact Sales · custom limits</p>
         ) : mappings.length ? (
           mappings.map((item) => (
             <div key={`${item.providerMode}-${item.billingInterval}`} className="rounded-xl bg-white/70 p-2">
@@ -910,38 +1044,52 @@ function PlanCard({
         )}
       </div>
 
-      <ul className="mt-5 flex-1 space-y-2 text-sm font-semibold">
-        {plan.features.slice(0, 5).map((feature, index) => {
-          let text = "";
-          if (typeof feature === "string") text = feature;
-          else if (feature && typeof feature === "object" && "label" in feature) {
-            text = String((feature as { label?: unknown }).label ?? "");
-          }
-          text = text.replace(/^[*!]\s*/, "");
-          return (
-            <li key={`${index}-${text}`} className="flex gap-2">
-              <Check size={16} /> <span>{text}</span>
-            </li>
-          );
-        })}
+      <p className="mt-4 text-[10px] font-black uppercase tracking-wider text-slate-400">
+        Public /pricing checklist
+      </p>
+      <ul className="mt-2 flex-1 space-y-1.5 text-sm font-semibold">
+        {publicFeatures.slice(0, 8).map((feature) => (
+          <li key={feature.label} className="flex gap-2">
+            <Check size={16} className="mt-0.5 shrink-0 text-[#84D400]" />{" "}
+            <span>{feature.label}</span>
+          </li>
+        ))}
+        {publicFeatures.length > 8 ? (
+          <li className="text-xs font-bold text-slate-400">+{publicFeatures.length - 8} more on /pricing</li>
+        ) : null}
       </ul>
 
-      <button
-        type="button"
-        onClick={onEdit}
-        className={`mt-6 flex h-11 w-full items-center justify-center gap-2 rounded-2xl text-sm font-black ${
-          plan.popular ? "bg-white text-[#111111]" : "bg-[var(--color-primary)] text-[var(--color-text)]"
-        }`}
-      >
-        <Edit3 size={15} /> Edit Plan
-      </button>
+      <div className="mt-6 flex gap-2 w-full">
+        <button
+          type="button"
+          onClick={onEdit}
+          className={`flex-1 flex h-10 items-center justify-center gap-2 rounded-[14px] text-[12px] font-bold ${
+            plan.popular ? "dash-premium-btn-secondary" : "dash-premium-btn-primary"
+          }`}
+        >
+          <Edit3 size={15} /> Edit
+        </button>
+        <button
+          type="button"
+          onClick={onDelete}
+          className={`flex h-11 w-11 items-center justify-center rounded-2xl border transition ${
+            plan.popular
+              ? "border-red-400 bg-red-950/20 text-red-100 hover:bg-red-950/40"
+              : "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
+          }`}
+          title="Delete plan"
+          aria-label={`Delete ${plan.name}`}
+        >
+          <Trash2 size={16} />
+        </button>
+      </div>
     </article>
   );
 }
 
 function Metric({ label, value, light }: { label: string; value: string; light?: boolean }) {
   return (
-    <div className={`rounded-2xl p-3 ${light ? "bg-white/15" : "bg-slate-50"}`}>
+    <div className={`rounded-[14px] p-3 ${light ? "bg-white/60" : "bg-[#FAFAFB]"}`}>
       <p className="text-lg font-black">{value}</p>
       <p className={`text-[11px] font-bold ${light ? "text-[var(--color-text)] opacity-75" : "text-slate-400"}`}>{label}</p>
     </div>
@@ -968,7 +1116,7 @@ function Field({
         value={value}
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold outline-none focus:border-[var(--color-primary)] disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+        className="mt-1.5 h-10 w-full rounded-[14px] border border-[#ECECEC] bg-white px-3 text-[13px] font-medium text-[#111827] outline-none transition focus:border-[#84D400] focus:shadow-[0_0_0_3px_rgba(182,255,56,0.18)] disabled:cursor-not-allowed disabled:bg-[#FAFAFB] disabled:text-[#9CA3AF]"
       />
       {hint ? <span className="mt-1 block text-[11px] font-medium text-slate-400">{hint}</span> : null}
     </label>
@@ -1003,7 +1151,7 @@ function NumberField({
         disabled={disabled}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value === "" ? null : Number(event.target.value))}
-        className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold outline-none focus:border-[var(--color-primary)] disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+        className="mt-1.5 h-10 w-full rounded-[14px] border border-[#ECECEC] bg-white px-3 text-[13px] font-medium text-[#111827] outline-none transition focus:border-[#84D400] focus:shadow-[0_0_0_3px_rgba(182,255,56,0.18)] disabled:cursor-not-allowed disabled:bg-[#FAFAFB] disabled:text-[#9CA3AF]"
       />
       {hint ? <span className="mt-1 block text-[11px] font-medium text-slate-400">{hint}</span> : null}
     </label>

@@ -5,6 +5,10 @@ import { ensureProductSchema, query, type QueryValue } from "@/lib/db";
 import { getProductFolder, updateProductJson } from "@/lib/localCustomerStorage";
 import { locateProductJsonPath } from "@/lib/storage/locate-asset";
 import { scanCustomerProductsFromDisk } from "@/lib/products/disk-sync";
+import {
+  normalizeLogicalProductFolder,
+  resolveLogicalProductFolder,
+} from "@/lib/products/logical-folder";
 import { recalculateCustomerStorage } from "@/lib/storage";
 import { randomBytes } from "crypto";
 import {
@@ -92,16 +96,41 @@ type ProductRow = {
 };
 
 function normalizeStatus(value?: string | null) {
-  const raw = String(value || "Draft").trim().toLowerCase();
-  if (raw === "published" || raw === "publish" || raw === "active") return "Published";
+  const raw = String(value || "published").trim().toLowerCase();
   if (raw === "archived" || raw === "archive" || raw === "disabled") return "Archived";
   if (raw === "processing") return "Processing";
-  return "Draft";
+  return "Saved";
 }
 
-function normalizeFolder(value?: string | null) {
-  const folder = String(value || "All").trim();
-  return folder || "All";
+const normalizeFolder = normalizeLogicalProductFolder;
+const resolveLogicalFolder = resolveLogicalProductFolder;
+
+/** Rewrite legacy rows that stored disk asset paths in product_folder. */
+async function healStoragePathFolders(customerUid: string) {
+  await query(
+    `UPDATE products
+        SET product_folder = 'All'
+      WHERE customer_uid = ?
+        AND (
+          product_folder LIKE '/Storage/%'
+          OR product_folder LIKE 'Storage/%'
+          OR product_folder LIKE '%/Customers/%/Products/%'
+        )`,
+    [customerUid],
+  ).catch(() => {});
+}
+
+/** Promote legacy Draft rows so the user panel never shows Draft products. */
+async function healDraftProductStatuses(customerUid: string) {
+  await query(
+    `UPDATE products
+        SET status = 'published',
+            published_at = COALESCE(published_at, NOW())
+      WHERE customer_uid = ?
+        AND deleted_at IS NULL
+        AND LOWER(COALESCE(status, '')) IN ('draft', '')`,
+    [customerUid],
+  ).catch(() => {});
 }
 
 function rowToListItem(row: ProductRow, customerUid: string): ProductListItem {
@@ -180,7 +209,7 @@ async function ensureCustomerProductsSynced(customerUid: string, userId: number)
           String(json.poster || ""),
           String(json.thumbnailUrl || ""),
           String(json.qrUrl || ""),
-          normalizeFolder(String(json.folder || json.productFolder || json.publicFolder || "All")),
+          resolveLogicalFolder(json, "All"),
           normalizeStatus(String(json.status || "Draft")),
           Number(json.views || 0),
         ],
@@ -206,9 +235,25 @@ async function readProductJson(customerUid: string, productUid: string) {
   }
 }
 
+async function clientLinkTablesReady() {
+  try {
+    await query("SELECT 1 FROM client_resources LIMIT 1");
+    await query("SELECT 1 FROM clients LIMIT 1");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function listCustomerProducts(input: ProductListFilters): Promise<ProductListResult> {
-  await ensureProductSchema();
-  await ensureCustomerProductsSynced(input.customerUid, input.userId);
+  try {
+    await ensureProductSchema();
+  } catch (error) {
+    console.error("[listCustomerProducts] ensureProductSchema", error);
+  }
+  await ensureCustomerProductsSynced(input.customerUid, input.userId).catch(() => {});
+  await healStoragePathFolders(input.customerUid).catch(() => {});
+  await healDraftProductStatuses(input.customerUid).catch(() => {});
 
   const pageSize = Math.min(Math.max(input.pageSize ?? 8, 1), 50);
   const page = Math.max(input.page ?? 1, 1);
@@ -217,7 +262,7 @@ export async function listCustomerProducts(input: ProductListFilters): Promise<P
   const conditions: string[] = [
     "p.customer_uid = ?",
     "(p.user_id = ? OR p.user_id IS NULL)",
-    `p.${ACTIVE_PRODUCT_SQL}`,
+    "p.deleted_at IS NULL",
   ];
   const values: QueryValue[] = [input.customerUid, input.userId];
 
@@ -228,7 +273,7 @@ export async function listCustomerProducts(input: ProductListFilters): Promise<P
     values.push(like, like, like, like);
   }
 
-  const folder = input.folder?.trim();
+  const folder = normalizeFolder(input.folder);
   if (folder && folder !== "All") {
     conditions.push("COALESCE(NULLIF(p.product_folder, ''), 'All') = ?");
     values.push(folder);
@@ -236,14 +281,12 @@ export async function listCustomerProducts(input: ProductListFilters): Promise<P
 
   const status = input.status?.trim();
   if (status && status !== "All") {
-    if (status === "Published") {
-      conditions.push("LOWER(p.status) IN ('published', 'active')");
+    if (status === "Saved" || status === "Published" || status === "Draft") {
+      conditions.push("LOWER(p.status) IN ('published', 'active', 'draft')");
     } else if (status === "Archived") {
       conditions.push("LOWER(p.status) IN ('archived', 'disabled')");
     } else if (status === "Processing") {
       conditions.push("LOWER(p.status) = 'processing'");
-    } else {
-      conditions.push("LOWER(p.status) IN ('draft')");
     }
   }
 
@@ -253,7 +296,7 @@ export async function listCustomerProducts(input: ProductListFilters): Promise<P
     values.push(category);
   }
 
-  if (input.excludeClientLinked) {
+  if (input.excludeClientLinked && (await clientLinkTablesReady())) {
     conditions.push(`NOT EXISTS (
       SELECT 1 FROM client_resources cr
       INNER JOIN clients cl ON cl.client_uid = cr.client_uid
@@ -265,25 +308,38 @@ export async function listCustomerProducts(input: ProductListFilters): Promise<P
 
   const where = `WHERE ${conditions.join(" AND ")}`;
 
-  const [countRows, facetRows, rows] = await Promise.all([
-    query<{ total: number }>(`SELECT COUNT(*) AS total FROM products p ${where}`, values),
-    query<{ product_folder: string | null; category: string | null; status: string | null }>(
-      `SELECT DISTINCT product_folder, category, status
-         FROM products
-        WHERE customer_uid = ? AND (user_id = ? OR user_id IS NULL) AND ${ACTIVE_PRODUCT_SQL}`,
-      [input.customerUid, input.userId],
-    ),
-    query<ProductRow>(
-      `SELECT p.id, p.customer_uid, p.title, p.category, p.model_url, p.file_name,
-              p.poster, p.thumbnail_url, p.qr_url, p.product_folder, p.status, p.views,
-              p.published_at, p.created_at, p.updated_at
-         FROM products p
-         ${where}
-         ORDER BY ${sortClause(sort)}
-         LIMIT ? OFFSET ?`,
-      [...values, pageSize, (page - 1) * pageSize],
-    ),
-  ]);
+  let countRows: { total: number }[] = [{ total: 0 }];
+  let facetRows: { product_folder: string | null; category: string | null; status: string | null }[] = [];
+  let rows: ProductRow[] = [];
+
+  try {
+    [countRows, facetRows, rows] = await Promise.all([
+      query<{ total: number }>(`SELECT COUNT(*) AS total FROM products p ${where}`, values),
+      query<{ product_folder: string | null; category: string | null; status: string | null }>(
+        `SELECT DISTINCT product_folder, category, status
+           FROM products
+          WHERE customer_uid = ? AND (user_id = ? OR user_id IS NULL) AND ${ACTIVE_PRODUCT_SQL}`,
+        [input.customerUid, input.userId],
+      ),
+      query<ProductRow>(
+        `SELECT p.id, p.customer_uid, p.title, p.category, p.model_url, p.file_name,
+                p.poster, p.thumbnail_url, p.qr_url, p.product_folder, p.status, p.views,
+                p.published_at, p.created_at, p.updated_at
+           FROM products p
+           ${where}
+           ORDER BY ${sortClause(sort)}
+           LIMIT ? OFFSET ?`,
+        [...values, pageSize, (page - 1) * pageSize],
+      ),
+    ]);
+  } catch (error) {
+    console.error("[listCustomerProducts] query failed", error);
+    return {
+      products: [],
+      pagination: { page: 1, pageSize, total: 0, totalPages: 1, from: 0, to: 0 },
+      facets: { folders: ["All"], categories: ["All"], statuses: ["All", "Saved", "Archived"] },
+    };
+  }
 
   const total = Number(countRows[0]?.total || 0);
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -291,27 +347,30 @@ export async function listCustomerProducts(input: ProductListFilters): Promise<P
 
   const products = await Promise.all(
     rows.map(async (row) => {
-      const base = rowToListItem(row, input.customerUid);
-      const json = await readProductJson(input.customerUid, row.id);
-      if (!json) return base;
-      const jsonFolder = normalizeFolder(
-        String(json.folder || json.productFolder || json.publicFolder || base.folder),
-      );
-      return {
-        ...base,
-        poster: String(json.poster || base.poster || ""),
-        thumbnailUrl: String(json.thumbnailUrl || base.thumbnailUrl || ""),
-        modelUrl: String(json.modelUrl || base.modelUrl || ""),
-        folder: jsonFolder,
-        productFolder: jsonFolder,
-        status: normalizeStatus(String(json.status || base.status)),
-      };
+      try {
+        const base = rowToListItem(row, input.customerUid);
+        const json = await readProductJson(input.customerUid, row.id);
+        if (!json) return base;
+        const jsonFolder = resolveLogicalFolder(json, base.folder);
+        return {
+          ...base,
+          poster: String(json.poster || base.poster || ""),
+          thumbnailUrl: String(json.thumbnailUrl || base.thumbnailUrl || ""),
+          modelUrl: String(json.modelUrl || base.modelUrl || ""),
+          folder: jsonFolder,
+          productFolder: jsonFolder,
+          status: normalizeStatus(String(json.status || base.status)),
+        };
+      } catch (error) {
+        console.error("[listCustomerProducts] row map failed", row.id, error);
+        return rowToListItem(row, input.customerUid);
+      }
     }),
   );
 
   const folders = new Set<string>(["All"]);
   const categories = new Set<string>(["All"]);
-  const statuses = new Set<string>(["All", "Draft", "Published", "Archived"]);
+  const statuses = new Set<string>(["All", "Saved", "Archived"]);
 
   for (const row of facetRows) {
     folders.add(normalizeFolder(row.product_folder));
@@ -414,7 +473,7 @@ export async function duplicateCustomerProduct(input: {
     productUid: copyUid,
     customerUid: input.customerUid,
     title: input.title || `${String(baseJson.title || sourceRow?.title || "Untitled")} Copy`,
-    status: "Draft",
+    status: "published",
     views: 0,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -430,7 +489,7 @@ export async function duplicateCustomerProduct(input: {
     `INSERT INTO products
        (id, customer_uid, user_id, title, category, model_url, file_name,
         poster, thumbnail_url, qr_url, product_folder, status, views)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Draft', 0)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'published', 0)`,
     [
       copyUid,
       input.customerUid,
@@ -473,9 +532,10 @@ export async function patchCustomerProduct(input: {
 
   if (input.title !== undefined) patch.title = input.title.trim();
   if (input.folder !== undefined) {
-    patch.folder = input.folder;
-    patch.productFolder = input.folder;
-    patch.publicFolder = input.folder;
+    const logicalFolder = normalizeFolder(input.folder);
+    patch.folder = logicalFolder;
+    patch.productFolder = logicalFolder;
+    // Keep publicFolder as the disk asset path — never overwrite with UI folder label.
   }
   if (input.status !== undefined) patch.status = input.status;
   if (input.category !== undefined) patch.category = input.category;
@@ -497,7 +557,7 @@ export async function patchCustomerProduct(input: {
      WHERE id = ? AND customer_uid = ?`,
     [
       input.title?.trim() ?? null,
-      input.folder ?? null,
+      input.folder !== undefined ? normalizeFolder(input.folder) : null,
       input.status ?? null,
       input.category ?? null,
       input.productUid,

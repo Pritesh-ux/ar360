@@ -24,6 +24,22 @@ export type ViewerAnalyticsQuery = {
   pageSize?: number;
 };
 
+function toDateKey(value: unknown): string {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+  const raw = String(value ?? "").trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+  return raw;
+}
+
+function dateLabelMMDD(value: unknown): string {
+  const key = toDateKey(value);
+  return key.length >= 10 ? key.slice(5) : key;
+}
+
 function fmtDuration(seconds: number) {
   if (!seconds || seconds <= 0) return "00:00";
   const m = Math.floor(seconds / 60);
@@ -321,7 +337,7 @@ export async function getViewerAnalyticsDashboard(input: ViewerAnalyticsQuery) {
   const bounceTrend = trendLabel(bounceRate, prevBounceRate);
 
   const dailyViews = daily.map((row) => ({
-    label: row.date.slice(5),
+    label: dateLabelMMDD(row.date),
     value: row.views,
     arLaunches: row.arLaunches,
     qrScans: 0,
@@ -329,7 +345,7 @@ export async function getViewerAnalyticsDashboard(input: ViewerAnalyticsQuery) {
 
   const dailyAr = daily.map((row) => row.arLaunches);
 
-  const dailyQrRows = await query<{ date: string; qr: number }>(`
+  const dailyQrRows = await query<{ date: string | Date; qr: number }>(`
     SELECT date, SUM(qr_scans) AS qr FROM analytics_daily
     WHERE date >= ? AND date <= ?
     ${filter.customerUid ? "AND customer_uid = ?" : ""}
@@ -342,7 +358,9 @@ export async function getViewerAnalyticsDashboard(input: ViewerAnalyticsQuery) {
     ...(filter.productUid ? [filter.productUid] : []),
   ]).catch(() => []);
 
-  const qrByDate = Object.fromEntries(dailyQrRows.map((r) => [r.date.slice(5), Number(r.qr || 0)]));
+  const qrByDate = Object.fromEntries(
+    dailyQrRows.map((r) => [dateLabelMMDD(r.date), Number(r.qr || 0)]),
+  );
   dailyViews.forEach((row) => {
     row.qrScans = qrByDate[row.label] ?? 0;
   });
@@ -370,10 +388,7 @@ export async function getViewerAnalyticsDashboard(input: ViewerAnalyticsQuery) {
         arOpens: arTrend,
         qrScans: qrTrend,
         avgSession: { ...sessionTrend, label: sessionTrend.label.replace("vs prior period", "vs prior period duration") },
-        bounceRate: {
-          label: `${bounceRate <= prevBounceRate ? "↓" : "↑"} ${Math.abs(Math.round((bounceRate - prevBounceRate) * 10) / 10)} pts vs prior period`,
-          up: bounceRate <= prevBounceRate,
-        },
+        bounceRate: { ...bounceTrend, up: bounceRate <= prevBounceRate },
       },
       sparklines: {
         views: dailyViews.map((r) => r.value),

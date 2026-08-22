@@ -10,6 +10,10 @@ type Props = {
   usedStorageGb: number;
   totalStorageGb: number | null;
   upgradeHref: string;
+  /** Defaults to "Upgrade Plan". Enterprise contracts use "Manage plan". */
+  ctaLabel?: string;
+  /** Hide CTA for fully locked / managed accounts when no action is needed. */
+  showCta?: boolean;
   onNavigate?: () => void;
 };
 
@@ -30,6 +34,8 @@ export default function PlanCard({
   usedStorageGb,
   totalStorageGb,
   upgradeHref,
+  ctaLabel = "Upgrade Plan",
+  showCta = true,
   onNavigate,
 }: Props) {
   const [open, setOpen] = useState(true);
@@ -38,9 +44,9 @@ export default function PlanCard({
   const totalLabel = totalStorageGb ? fmtGb(totalStorageGb) : "∞";
 
   return (
-    <div className="rounded-[20px] border border-white/10 bg-white/[0.06] p-4 shadow-none">
+    <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-3.5">
       <div className="flex items-start gap-3">
-        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-[#C8FF46] text-[13px] font-black text-[#171717]">
+        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#C8FF46] text-[12px] font-black text-[#171717]">
           {planName.charAt(0).toUpperCase()}
         </div>
         <div className="min-w-0 flex-1">
@@ -52,7 +58,7 @@ export default function PlanCard({
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-xl text-white/70 transition hover:bg-white/10 hover:text-white"
+          className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-white/50 transition-colors hover:bg-white/[0.06] hover:text-white/80"
           aria-expanded={open}
           aria-label={open ? "Collapse plan details" : "Expand plan details"}
         >
@@ -73,7 +79,7 @@ export default function PlanCard({
           </p>
 
           <div
-            className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/10"
+            className="mt-2 h-1 w-full overflow-hidden rounded-full bg-white/[0.08]"
             role="progressbar"
             aria-valuenow={Math.round(percent)}
             aria-valuemin={0}
@@ -85,13 +91,15 @@ export default function PlanCard({
             />
           </div>
 
-          <Link
-            href={upgradeHref}
-            onClick={onNavigate}
-            className="mt-4 flex h-10 w-full items-center justify-center rounded-2xl bg-[#C8FF46] text-[13px] font-bold text-[#171717] transition hover:bg-[#D5FF73] active:scale-[0.99]"
-          >
-            Upgrade Plan
-          </Link>
+          {showCta ? (
+            <Link
+              href={upgradeHref}
+              onClick={onNavigate}
+              className="mt-3.5 flex h-9 w-full items-center justify-center rounded-xl bg-[#C8FF46] text-[12px] font-bold text-[#171717] transition-colors hover:bg-[#D5FF73] active:scale-[0.99]"
+            >
+              {ctaLabel}
+            </Link>
+          ) : null}
         </>
       ) : null}
     </div>

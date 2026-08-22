@@ -1,5 +1,5 @@
 export type BillingPeriod = "monthly" | "yearly";
-export type CanonicalPlanId = "trial" | "starter" | "pro" | "business" | "enterprise";
+export type CanonicalPlanId = "trial" | "starter" | "intermediate" | "pro" | "business" | "enterprise";
 export type BillingSalesChannel = "self_service" | "manual" | "legacy";
 export type ProviderMode = "test" | "live";
 

@@ -14,6 +14,7 @@ import {
 } from "@/lib/localCustomerStorage";
 import { ensureProductSchema, query } from "@/lib/db";
 import { writeProductFile, recalculateCustomerStorage } from "@/lib/storage";
+import { optimizeGlbBuffer, describeGlbOptimizeStats } from "@/lib/products/glb-optimize";
 import {
   checkEnterpriseModelLimit,
   checkProductLimit,
@@ -94,11 +95,18 @@ export async function POST(req: Request) {
     });
     const productId = productFolderRecord.productUid;
 
+    // Photogrammetry output carries full-resolution bake textures; downscale them
+    // so the captured product stays viewable on phones.
+    const { buffer: storedModelBuffer, stats: optimizeStats } = await optimizeGlbBuffer(modelBuffer);
+    console.info(
+      `[object-capture] ${productId}: ${describeGlbOptimizeStats(optimizeStats)}`,
+    );
+
     const modelUrl = await writeProductFile({
       customerUid,
       productUid: productId,
       fileName: "model.glb",
-      data: modelBuffer,
+      data: storedModelBuffer,
     });
 
     // 4. Securely copy thumbnail poster if it exists
@@ -118,11 +126,19 @@ export async function POST(req: Request) {
     // 5. Generate QR Code
     let qrUrl = "";
     try {
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const { getAppUrl } = await import("@/lib/url");
+      const appUrl = getAppUrl();
+      const { resolveQrCenterLogoForCustomer } = await import("@/lib/growth/qr-logo");
+      const logo = await resolveQrCenterLogoForCustomer({
+        customerUid,
+        customLogoUrl: null,
+      });
       qrUrl = await saveQrPng({
         customerUid,
         productUid: productId,
         destination: `${appUrl}/viewer/${productId}`,
+        logoUrl: logo.logoUrl,
+        logoSize: logo.logoSize,
       });
     } catch (e) {
       console.warn("QR code generation skipped:", e);
@@ -142,7 +158,7 @@ export async function POST(req: Request) {
         qrUrl: qrUrl || undefined,
         publicFolder: productFolderRecord.publicFolder,
         views: 0,
-        status: "Draft",
+        status: "published",
         variants: [{ id: "default", name: "Default" }],
         materialSettings: {},
         hotspots: [],
@@ -154,7 +170,7 @@ export async function POST(req: Request) {
     await query(
       `INSERT INTO products 
          (id, customer_uid, user_id, title, category, model_url, file_name, poster, thumbnail_url, qr_url, product_folder, status, views, settings, material_settings, variants, hotspots)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Draft', 0, '{}', '{}', '[{"id":"default","name":"Default"}]', '[]')
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'published', 0, '{}', '{}', '[{"id":"default","name":"Default"}]', '[]')
        ON DUPLICATE KEY UPDATE
          title          = VALUES(title),
          category       = VALUES(category),
@@ -176,7 +192,7 @@ export async function POST(req: Request) {
         posterUrl || null,
         posterUrl || null,
         qrUrl || null,
-        productFolderRecord.publicFolder,
+        "All",
       ]
     );
 

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useState, useCallback } from "react";
+import { useDeferredEffect } from "@/lib/react/use-deferred-effect";
 
 export type WorkspaceInfo = {
   workspace_uid: string;
@@ -40,7 +41,7 @@ export function useWorkspace(): WorkspaceContext {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useDeferredEffect(() => { load(); }, [load]);
 
   return { workspaceUid, workspaces, loading, error, refresh: load };
 }

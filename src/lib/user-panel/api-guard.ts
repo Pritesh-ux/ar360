@@ -8,8 +8,10 @@ import {
 
 export type ScopedCustomerUser = CustomerUser & { customerUid: string };
 
-export async function requireScopedApiUser(): Promise<ScopedCustomerUser | null> {
-  const user = await requireApiUser();
+export async function requireScopedApiUser(options?: {
+  allowSuspended?: boolean;
+}): Promise<ScopedCustomerUser | null> {
+  const user = await requireApiUser(options);
   if (!user) return null;
 
   const customerUid = getSessionCustomerUid(user);
@@ -24,7 +26,16 @@ export async function requireScopedApiUser(): Promise<ScopedCustomerUser | null>
     [user.id, customerUid],
   );
   const row = rows[0];
-  if (!row || row.user_status !== "Active" || row.customer_status === "Suspended" || row.customer_status === "Deleted") {
+  if (!row || row.user_status === "Deleted" || row.customer_status === "Deleted") {
+    return null;
+  }
+
+  const suspended =
+    row.user_status === "Suspended" || row.customer_status === "Suspended";
+  if (suspended && !options?.allowSuspended) {
+    return null;
+  }
+  if (!suspended && row.user_status !== "Active") {
     return null;
   }
 

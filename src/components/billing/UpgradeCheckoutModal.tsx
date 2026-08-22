@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredEffect } from "@/lib/react/use-deferred-effect";
 import { createPortal } from "react-dom";
 import { ArrowRight, Check, CreditCard, Lock, Sparkles, X, Zap } from "lucide-react";
 import {
@@ -10,7 +11,9 @@ import {
   type BillingCycle,
   type BillingPlan,
 } from "@/lib/billing/plans";
-import { loadRazorpayScript } from "@/lib/billing/load-razorpay";
+import { buildPricingChecklist } from "@/lib/billing/pricing-features";
+import { formatRazorpayFailure, loadRazorpayScript, prefetchRazorpayScript } from "@/lib/billing/load-razorpay";
+import { useUserPanelSessionActions } from "@/components/user-panel/UserPanelContext";
 
 type Props = {
   plan: BillingPlan;
@@ -30,14 +33,6 @@ function FeatureCheck({ children }: { children: React.ReactNode }) {
   );
 }
 
-function featureText(feature: unknown) {
-  if (typeof feature === "string") return feature.replace(/^[*!]\s*/, "");
-  if (feature && typeof feature === "object" && "label" in feature) {
-    return String((feature as { label?: unknown }).label ?? "").replace(/^[*!]\s*/, "");
-  }
-  return "";
-}
-
 export default function UpgradeCheckoutModal({
   plan,
   initialPeriod = "monthly",
@@ -54,6 +49,8 @@ export default function UpgradeCheckoutModal({
       globalThis.crypto?.randomUUID?.() ??
       `checkout_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
   );
+  const outcomeRef = useRef<"idle" | "success" | "failed" | "verifying">("idle");
+  const { refreshSession } = useUserPanelSessionActions();
 
   const yearlySavePct = resolveYearlyDiscountPercent(plan) ?? 0;
   const yearlyTotalInr =
@@ -71,20 +68,14 @@ export default function UpgradeCheckoutModal({
   const subtotalEstimate = priceInr != null ? priceInr - gstEstimate : 0;
   const canPay = priceInr != null && priceInr > 0;
 
-  const features = useMemo(() => {
-    const list = (plan.features || []).map(featureText).filter(Boolean).slice(0, 8);
-    if (list.length > 0) return list;
-    return [
-      `${plan.products} Active Products`,
-      "All Professional features",
-      "Priority Support",
-      "High Usage",
-      "White-label viewer",
-    ];
-  }, [plan]);
+  const features = useMemo(
+    () => buildPricingChecklist({ limits: plan.limits }).map((line) => line.label).slice(0, 8),
+    [plan.limits],
+  );
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     setMounted(true);
+    prefetchRazorpayScript();
   }, []);
 
   useEffect(() => {
@@ -124,23 +115,28 @@ export default function UpgradeCheckoutModal({
     setLoading(true);
     setMessage("");
     setMessageTone("error");
+    outcomeRef.current = "idle";
 
     try {
-      const scriptReady = await loadRazorpayScript();
+      // Open gateway ASAP: script prefetch + checkout create in parallel when possible.
+      const [scriptReady, checkoutRes] = await Promise.all([
+        loadRazorpayScript(),
+        fetch("/api/billing/checkout", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": checkoutIdempotencyKey,
+          },
+          body: JSON.stringify({ planId: plan.id, period }),
+        }),
+      ]);
+
       if (!scriptReady || !window.Razorpay) {
         throw new Error("Razorpay checkout could not load. Check your network or ad blocker.");
       }
 
-      const res = await fetch("/api/billing/checkout", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Idempotency-Key": checkoutIdempotencyKey,
-        },
-        body: JSON.stringify({ planId: plan.id, period }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Checkout failed.");
+      const data = await checkoutRes.json();
+      if (!checkoutRes.ok) throw new Error(data?.error || "Checkout failed.");
 
       const subscriptionFlow = data.flow === "subscription";
       const options: Record<string, unknown> = {
@@ -157,6 +153,9 @@ export default function UpgradeCheckoutModal({
         },
         theme: { color: "#84D400" },
         handler: async (response: Record<string, string>) => {
+          outcomeRef.current = "verifying";
+          setMessageTone("success");
+          setMessage("Payment received. Confirming…");
           try {
             const verifyRes = await fetch(
               subscriptionFlow ? "/api/billing/verify-subscription" : "/api/billing/verify-payment",
@@ -174,44 +173,66 @@ export default function UpgradeCheckoutModal({
 
             if (subscriptionFlow) {
               const state = verifyData.mandateState as string;
-              setMessageTone(state === "failed" ? "error" : "success");
+              if (state === "failed") {
+                outcomeRef.current = "failed";
+                setMessageTone("error");
+                setMessage("Mandate authorization failed. No subscription access was activated. You can retry.");
+                setLoading(false);
+                return;
+              }
+              outcomeRef.current = "success";
+              setMessageTone("success");
               setMessage(
                 state === "authorized"
-                  ? "Mandate authorized. Your plan will activate after Razorpay confirms payment."
-                  : state === "pending"
-                    ? "Mandate authorization is pending. Check Subscription shortly."
-                    : "Mandate authorization failed. No subscription access was activated.",
+                  ? "Payment successful. Activating your plan…"
+                  : "Payment received. Mandate pending — your plan will activate shortly.",
               );
               setLoading(false);
-              if (state === "authorized" || state === "pending") {
-                onSuccess?.();
-              }
-            } else {
-              setMessageTone("success");
-              setMessage("Payment successful. Refreshing your plan…");
-              setLoading(false);
+              await refreshSession();
               onSuccess?.();
-              setTimeout(() => onClose(), 800);
+              window.setTimeout(() => onClose(), 500);
+              return;
             }
+
+            outcomeRef.current = "success";
+            setMessageTone("success");
+            setMessage("Payment successful. Activating your plan…");
+            setLoading(false);
+            await refreshSession();
+            onSuccess?.();
+            window.setTimeout(() => onClose(), 400);
           } catch (error) {
+            outcomeRef.current = "failed";
             setMessageTone("error");
-            setMessage(error instanceof Error ? error.message : "Payment verification failed.");
+            setMessage(
+              error instanceof Error
+                ? `${error.message} If money was deducted, it will reflect after confirmation or support can help.`
+                : "Payment verification failed. If money was deducted, contact support.",
+            );
             setLoading(false);
           }
         },
         modal: {
-          ondismiss: () => setLoading(false),
+          ondismiss: () => {
+            setLoading(false);
+            if (outcomeRef.current === "idle") {
+              setMessageTone("error");
+              setMessage("Checkout closed before payment completed. You can retry anytime.");
+            }
+          },
         },
       };
 
       const razorpay = new window.Razorpay(options);
-      razorpay.on("payment.failed", () => {
+      razorpay.on("payment.failed", (response: unknown) => {
+        outcomeRef.current = "failed";
         setMessageTone("error");
-        setMessage("Payment failed. Please retry or use another method.");
+        setMessage(`${formatRazorpayFailure(response)} Tap Pay again to retry.`);
         setLoading(false);
       });
       razorpay.open();
     } catch (error) {
+      outcomeRef.current = "failed";
       setMessageTone("error");
       setMessage(error instanceof Error ? error.message : "Payment failed.");
       setLoading(false);
@@ -222,7 +243,7 @@ export default function UpgradeCheckoutModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center overflow-hidden p-3 sm:p-5"
+      className="fixed inset-0 z-[100090] flex items-center justify-center overflow-hidden p-3 sm:p-5"
       role="dialog"
       aria-modal="true"
     >

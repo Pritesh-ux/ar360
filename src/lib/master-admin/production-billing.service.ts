@@ -12,7 +12,7 @@ export async function getPlanProviderControls() {
         WHERE s.price_version_id = v.id AND s.status IN ('active','authenticated','paused','past_due','halted')) AS subscriberCount
     FROM billing_plans p
     LEFT JOIN billing_plan_price_versions v ON v.plan_id = p.id AND v.retired_at IS NULL
-    WHERE p.id IN ('starter','pro','business','enterprise')
+    WHERE p.id IN ('starter','intermediate','pro','business','enterprise')
     ORDER BY p.sort_order, v.provider_mode, v.billing_interval
   `).catch(() => []);
 }

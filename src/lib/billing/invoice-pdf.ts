@@ -1,14 +1,18 @@
 import type { InvoiceRow } from "@/server/billing/invoice.types";
 import {
   formatPeriodLabel,
+  resolveInvoicePlanEntitlements,
   resolvePlanDisplayName,
 } from "@/server/billing/invoice.service";
+import { formatPlanEntitlementLine } from "@/lib/billing/invoice-plan-entitlements";
+import { drawAr360WordmarkOnPdf } from "@/lib/brand/ar360-logo";
+import { resolveInvoiceSellerProfile } from "@/lib/billing/invoice-seller";
 
 type PdfKitCtor = typeof import("pdfkit");
 
 /** Load pdfkit via Node require so Helvetica.afm resolves under node_modules (not .next vendor-chunks). */
 function loadPdfKit(): PdfKitCtor {
-  // eslint-disable-next-line no-eval -- intentional: bypass webpack rewrite of require("pdfkit")
+   
   const nodeRequire = eval("require") as NodeRequire;
   return nodeRequire("pdfkit") as PdfKitCtor;
 }
@@ -33,12 +37,19 @@ function formatInvoiceDate(value?: string | null) {
 
 export async function generateInvoicePdfBuffer(invoice: InvoiceRow): Promise<Buffer> {
   const PDFDocument = loadPdfKit();
-  const planLabel = await resolvePlanDisplayName(invoice.plan_id);
+  const [planLabel, seller, entitlements] = await Promise.all([
+    resolvePlanDisplayName(invoice.plan_id),
+    resolveInvoiceSellerProfile(),
+    resolveInvoicePlanEntitlements(invoice),
+  ]);
+  const entitlementLine = formatPlanEntitlementLine(entitlements);
   return new Promise((resolve, reject) => {
     // A4: 595.28 x 841.89 pt
     const doc = new PDFDocument({
       size: "A4",
-      margins: { top: 54, bottom: 54, left: 54, right: 54 },
+      // Keep bottom margin small so footer can sit on page 1 without PDFKit auto-paging.
+      margins: { top: 48, bottom: 36, left: 54, right: 54 },
+      autoFirstPage: true,
     });
     const chunks: Buffer[] = [];
 
@@ -46,11 +57,11 @@ export async function generateInvoicePdfBuffer(invoice: InvoiceRow): Promise<Buf
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    const sellerName = process.env.BILLING_SELLER_NAME || "AR360 Studio";
-    const sellerAddress = process.env.BILLING_SELLER_ADDRESS || "India";
-    const sellerState = process.env.BILLING_SELLER_STATE || "Gujarat";
-    const sellerGstin = invoice.seller_gstin || process.env.BILLING_SELLER_GSTIN || "Not registered";
-    const supportEmail = process.env.BILLING_SUPPORT_EMAIL || "support@ar360.studio";
+    const sellerName = seller.name;
+    const sellerAddress = seller.address;
+    const sellerState = seller.state;
+    const sellerGstin = invoice.seller_gstin || seller.gstin || "Not registered";
+    const supportEmail = seller.supportEmail;
     const invoiceNo = invoice.invoice_number || invoice.invoice_uid;
     const subtotal = invoice.subtotal_paise ?? invoice.amount_paise;
     const cgst = invoice.cgst_paise || 0;
@@ -65,17 +76,13 @@ export async function generateInvoicePdfBuffer(invoice: InvoiceRow): Promise<Buf
     const paidAt = formatInvoiceDate(invoice.paid_at);
     const isPaid = String(invoice.status).toLowerCase() === "paid";
 
-    // Title left + brand right
-    doc.fillColor("#111111").font("Helvetica-Bold").fontSize(28).text("Invoice", left, 54);
-
-    const brandX = right - 90;
-    doc.roundedRect(brandX, 54, 22, 22, 4).lineWidth(2.5).strokeColor("#B9FF2C").stroke();
-    doc.fillColor("#111111").font("Helvetica-Bold").fontSize(14).text("AR", brandX + 28, 58, {
-      continued: true,
+    // Title left + brand right (landing wordmark)
+    doc.fillColor("#111111").font("Helvetica-Bold").fontSize(28).text("Invoice", left, 48, {
+      lineBreak: false,
     });
-    doc.fillColor("#84D400").text("360");
+    drawAr360WordmarkOnPdf(doc, right - 96, 48, 22);
 
-    let y = 100;
+    let y = 92;
 
     doc.fillColor("#111111").font("Helvetica-Bold").fontSize(10).text("Invoice number", left, y, {
       continued: true,
@@ -179,13 +186,16 @@ export async function generateInvoicePdfBuffer(invoice: InvoiceRow): Promise<Buf
       .fillColor("#6B7280")
       .font("Helvetica")
       .fontSize(9)
-      .text(`${periodLabel} subscription · AR360 SaaS`, left, y + 14);
+      .text(`${periodLabel} subscription · AR360 SaaS`, left, y + 14, { width: 240 });
+    if (entitlementLine) {
+      doc.text(entitlementLine, left, y + 26, { width: 240 });
+    }
     doc.fillColor("#111111").font("Helvetica").fontSize(10);
     doc.text("1", left + 250, y);
     doc.text(money(subtotal), left + 300, y);
     doc.text("18%", left + 390, y);
     doc.text(money(subtotal), left + 430, y, { width: width - 430, align: "right" });
-    y += 40;
+    y += entitlementLine ? 52 : 40;
     doc
       .moveTo(left, y)
       .lineTo(right, y)
@@ -223,17 +233,26 @@ export async function generateInvoicePdfBuffer(invoice: InvoiceRow): Promise<Buf
       y += isGrand ? 20 : 16;
     }
 
-    // Footer pinned near A4 bottom
-    const footerY = 780;
+    // A4 height ≈ 841.89. Keep footer ABOVE the bottom margin so PDFKit does not
+    // spill "sellerName" / disclaimer onto blank page 2 and page 3.
+    const pageHeight = doc.page.height;
+    const footerY = Math.min(pageHeight - 68, Math.max(y + 28, pageHeight - 80));
     doc
       .moveTo(left, footerY)
       .lineTo(right, footerY)
       .strokeColor("#E5E7EB")
       .stroke();
-    doc.fillColor("#6B7280").font("Helvetica").fontSize(9).text(sellerName, left, footerY + 12);
-    doc.text(`GSTIN: ${sellerGstin} · Computer-generated tax invoice. No signature required.`, left, footerY + 24, {
-      width,
-    });
+    doc
+      .fillColor("#6B7280")
+      .font("Helvetica")
+      .fontSize(9)
+      .text(sellerName, left, footerY + 10, { width, lineBreak: false });
+    doc.text(
+      `GSTIN: ${sellerGstin} · Computer-generated tax invoice. No signature required.`,
+      left,
+      footerY + 22,
+      { width, lineBreak: false },
+    );
 
     doc.end();
   });

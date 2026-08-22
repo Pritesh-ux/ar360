@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { query } from "@/lib/db";
-import { hasClientAddon } from "@/lib/billing/addons";
+import { hasClientManagementAccess } from "@/lib/billing/addons";
+import { parseOptionalYmd } from "@/lib/user-panel/client-plan";
 
 export const runtime = "nodejs";
 
@@ -17,7 +18,7 @@ export async function GET(req: Request) {
     }
 
     // Backend Gating
-    const active = await hasClientAddon(customerUid);
+    const active = await hasClientManagementAccess(customerUid);
     if (!active) {
       return NextResponse.json({ error: "Client Management module is not active. Please upgrade." }, { status: 403 });
     }
@@ -61,7 +62,7 @@ export async function POST(req: Request) {
     }
 
     // Backend Gating
-    const active = await hasClientAddon(customerUid);
+    const active = await hasClientManagementAccess(customerUid);
     if (!active) {
       return NextResponse.json({ error: "Client Management module is not active. Please upgrade." }, { status: 403 });
     }
@@ -72,17 +73,24 @@ export async function POST(req: Request) {
     const phone = String(body.phone || "").trim() || null;
     const companyName = String(body.companyName || "").trim() || null;
     const tags = body.tags ? JSON.stringify(body.tags) : null;
+    const planStartsAt = parseOptionalYmd(body.planStartsAt ?? body.plan_starts_at ?? "");
+    const planExpiresAt = parseOptionalYmd(body.planExpiresAt ?? body.plan_expires_at ?? "");
+    const linkExpiresAt = parseOptionalYmd(body.linkExpiresAt ?? body.link_expires_at ?? "");
 
     if (!name) {
       return NextResponse.json({ error: "Client Name is required." }, { status: 400 });
+    }
+    if (planStartsAt === undefined || planExpiresAt === undefined || linkExpiresAt === undefined) {
+      return NextResponse.json({ error: "Invalid plan or link date." }, { status: 400 });
     }
 
     const clientUid = `cli_${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`;
 
     await query(
-      `INSERT INTO clients (client_uid, customer_uid, name, email, phone, company_name, tags, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'active')`,
-      [clientUid, customerUid, name, email, phone, companyName, tags]
+      `INSERT INTO clients (client_uid, customer_uid, name, email, phone, company_name, tags, status,
+                            plan_starts_at, plan_expires_at, link_expires_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
+      [clientUid, customerUid, name, email, phone, companyName, tags, planStartsAt, planExpiresAt, linkExpiresAt]
     );
 
     return NextResponse.json({ success: true, clientUid });

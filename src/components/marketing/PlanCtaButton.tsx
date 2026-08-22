@@ -65,11 +65,11 @@ export default function PlanCtaButton({
   const toneClasses =
     tone === "cyan"
       ? highlighted
-        ? "border-white bg-white text-[#00B2CA] shadow-lg"
-        : "border-[#00B2CA] bg-white text-[#00B2CA] hover:bg-cyan-50"
+        ? "border-white bg-white text-[#00B2CA] shadow-lg transition duration-200 hover:-translate-y-0.5 hover:bg-[#F0FDFF]"
+        : "border border-[#00B2CA] bg-white text-[#00B2CA] transition duration-200 hover:bg-[#00B2CA] hover:text-white"
       : highlighted
-        ? "bg-[#C9FF57] text-slate-950 shadow-lg shadow-lime-300/30"
-        : "border border-slate-300 bg-white text-slate-900 hover:border-[#C9FF57]";
+        ? "bg-[#b9ff2c] text-slate-950 shadow-lg shadow-[0_12px_28px_rgba(185,255,44,0.28)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#a3f020]"
+        : "border border-slate-300 bg-white text-slate-900 transition duration-200 hover:border-[#b9ff2c] hover:bg-[#b9ff2c] hover:text-slate-950";
 
   if (planId === "enterprise") {
     return (
@@ -77,14 +77,14 @@ export default function PlanCtaButton({
         <button
           type="button"
           onClick={() => setQuoteModalOpen(true)}
-          className={`inline-flex h-12 w-full items-center justify-center rounded-2xl text-sm font-black transition hover:-translate-y-0.5 ${toneClasses} ${className}`}
+          className={`inline-flex h-12 w-full items-center justify-center rounded-2xl text-sm font-black ${toneClasses} ${className}`}
         >
-          Contact Sales
+          Custom quote
         </button>
         <EnterpriseRequestModal
           open={quoteModalOpen}
           onClose={() => setQuoteModalOpen(false)}
-          intent="contact-sales"
+          intent="request-quote"
         />
       </>
     );
@@ -93,7 +93,7 @@ export default function PlanCtaButton({
   return (
     <Link
       href={href}
-      className={`inline-flex h-12 w-full items-center justify-center rounded-2xl text-sm font-black transition hover:-translate-y-0.5 ${toneClasses} ${className}`}
+      className={`inline-flex h-12 w-full items-center justify-center rounded-2xl text-sm font-black ${toneClasses} ${className}`}
     >
       {label}
     </Link>

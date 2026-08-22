@@ -11,14 +11,31 @@ import {
   upsertBillingProfile,
 } from "./invoice.repository";
 import { query } from "@/lib/db";
+import { getAr360WordmarkHtml } from "@/lib/brand/ar360-logo";
+import { absoluteUrl } from "@/lib/url";
+import { billingInvoiceViewPath } from "@/lib/subscription/subscription-paths";
+import {
+  emailButton,
+  emailDetails,
+  emailGreeting,
+  emailHeading,
+  emailParagraph,
+  emailSignOff,
+  renderPremiumEmail,
+} from "@/lib/email/templates/email-shell";
 import type { BillingProfile, CreateInvoiceInput, InvoiceRow } from "./invoice.types";
+import {
+  bytesToInvoiceGb,
+  entitlementsFromPriceSnapshot,
+  formatPlanEntitlementLine,
+  type InvoicePlanEntitlements,
+} from "@/lib/billing/invoice-plan-entitlements";
+import {
+  resolveInvoiceSellerProfile,
+  type InvoiceSellerProfile,
+} from "@/lib/billing/invoice-seller";
 
 const GST_RATE = 18;
-const SELLER_GSTIN = process.env.BILLING_SELLER_GSTIN || "";
-const SELLER_NAME = process.env.BILLING_SELLER_NAME || "AR360 Studio";
-const SELLER_ADDRESS = process.env.BILLING_SELLER_ADDRESS || "India";
-const SELLER_STATE = process.env.BILLING_SELLER_STATE || "Gujarat";
-const SUPPORT_EMAIL = process.env.BILLING_SUPPORT_EMAIL || "support@ar360.studio";
 
 function formatMoney(paise: number) {
   return `₹${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -79,6 +96,69 @@ export async function resolvePlanDisplayName(planId: string): Promise<string> {
   return mapped;
 }
 
+export async function resolvePlanEntitlements(planId: string): Promise<InvoicePlanEntitlements | null> {
+  const id = String(planId || "").trim();
+  if (!id) return null;
+  try {
+    if (id.startsWith("ecp_")) {
+      const rows = await query<{
+        product_limit: number | null;
+        storage_limit_bytes: number | null;
+        bandwidth_limit_bytes: number | null;
+      }>(
+        `SELECT product_limit, storage_limit_bytes, bandwidth_limit_bytes
+           FROM enterprise_custom_plans WHERE custom_plan_uid = ? LIMIT 1`,
+        [id],
+      );
+      const row = rows[0];
+      if (!row) return null;
+      const storageGb = bytesToInvoiceGb(row.storage_limit_bytes);
+      const bandwidthGb = bytesToInvoiceGb(row.bandwidth_limit_bytes);
+      return {
+        products: row.product_limit == null ? null : Number(row.product_limit),
+        storageGb,
+        bandwidthGb,
+        unlimitedProducts: row.product_limit == null,
+        unlimitedStorage: storageGb == null,
+        unlimitedBandwidth: bandwidthGb == null,
+      };
+    }
+
+    const plans = await query<{
+      products: number | null;
+      storage_gb: number | null;
+      bandwidth_gb: number | null;
+      unlimited_storage?: number | null;
+      unlimited_bandwidth?: number | null;
+    }>(
+      `SELECT products, storage_gb, bandwidth_gb, unlimited_storage, unlimited_bandwidth
+         FROM billing_plans WHERE id = ? LIMIT 1`,
+      [id],
+    );
+    const plan = plans[0];
+    if (!plan) return null;
+    const unlimitedStorage = Number(plan.unlimited_storage) === 1;
+    const unlimitedBandwidth = Number(plan.unlimited_bandwidth) === 1;
+    return {
+      products: plan.products == null ? null : Number(plan.products),
+      storageGb: unlimitedStorage ? null : plan.storage_gb == null ? null : Number(plan.storage_gb),
+      bandwidthGb: unlimitedBandwidth ? null : plan.bandwidth_gb == null ? null : Number(plan.bandwidth_gb),
+      unlimitedProducts: plan.products == null || Number(plan.products) < 0,
+      unlimitedStorage,
+      unlimitedBandwidth,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function resolveInvoicePlanEntitlements(invoice: Pick<InvoiceRow, "plan_id" | "price_snapshot">) {
+  return (
+    entitlementsFromPriceSnapshot(invoice.price_snapshot) ||
+    (await resolvePlanEntitlements(invoice.plan_id))
+  );
+}
+
 export function formatPeriodLabel(period: string) {
   const key = String(period || "").toLowerCase();
   if (key === "yearly" || key === "annual" || key === "year") return "Yearly";
@@ -110,8 +190,8 @@ function addressFromProfile(profile: Partial<BillingProfile> | null) {
     .join(", ");
 }
 
-function isSameState(profile: Partial<BillingProfile> | null) {
-  return (profile?.state || "").toLowerCase() === SELLER_STATE.toLowerCase();
+function isSameState(profile: Partial<BillingProfile> | null, sellerState: string) {
+  return (profile?.state || "").toLowerCase() === String(sellerState || "").toLowerCase();
 }
 
 /** GST-inclusive: amountPaise is what the customer paid (matches Razorpay). */
@@ -124,20 +204,47 @@ export function splitInclusiveGst(totalPaise: number) {
   return { subtotalPaise, taxPaise, totalPaise };
 }
 
-function buildInvoiceHtml(invoice: InvoiceRow, planDisplayName?: string) {
+/** CGST/SGST vs IGST split for inclusive totals — matches createTaxInvoice. */
+export function computeInclusiveGstBreakdown(
+  totalPaise: number,
+  buyerState: string | null | undefined,
+  sellerState: string,
+) {
+  const split = splitInclusiveGst(totalPaise);
+  const sameState = isSameState({ state: buyerState ?? undefined }, sellerState);
+  const cgstPaise = sameState ? Math.round(split.taxPaise / 2) : 0;
+  const sgstPaise = sameState ? split.taxPaise - cgstPaise : 0;
+  const igstPaise = sameState ? 0 : split.taxPaise;
+  return {
+    subtotalPaise: split.subtotalPaise,
+    taxPaise: split.taxPaise,
+    totalPaise: split.totalPaise,
+    cgstPaise,
+    sgstPaise,
+    igstPaise,
+  };
+}
+
+function buildInvoiceHtml(
+  invoice: InvoiceRow,
+  planDisplayName: string | undefined,
+  seller: InvoiceSellerProfile,
+  entitlements?: InvoicePlanEntitlements | null,
+) {
   const invoiceUid = escapeHtml(invoice.invoice_uid);
   const invoiceNo = escapeHtml(invoice.invoice_number || invoice.invoice_uid);
-  const sellerName = escapeHtml(SELLER_NAME);
-  const sellerAddress = escapeHtml(SELLER_ADDRESS);
-  const sellerGstin = escapeHtml(invoice.seller_gstin || SELLER_GSTIN || "Not registered");
-  const sellerState = escapeHtml(SELLER_STATE);
+  const sellerName = escapeHtml(seller.name);
+  const sellerAddress = escapeHtml(seller.address);
+  const sellerGstin = escapeHtml(invoice.seller_gstin || seller.gstin || "Not registered");
+  const sellerState = escapeHtml(seller.state);
   const buyerName = escapeHtml(invoice.buyer_name || "Customer");
   const buyerEmail = escapeHtml(invoice.buyer_email || "");
   const buyerAddress = escapeHtml(invoice.buyer_address || "");
   const buyerGstin = escapeHtml(invoice.buyer_gstin || "—");
   const planLabel = escapeHtml(planDisplayName || formatPlanLabel(invoice.plan_id));
   const periodLabel = escapeHtml(formatPeriodLabel(invoice.period));
-  const supportEmail = escapeHtml(SUPPORT_EMAIL);
+  const entitlementLine = escapeHtml(formatPlanEntitlementLine(entitlements));
+  const supportEmail = escapeHtml(seller.supportEmail);
   const paymentId = invoice.razorpay_payment_id ? escapeHtml(invoice.razorpay_payment_id) : "";
   const status = statusMeta(invoice.status);
   const subtotal = invoice.subtotal_paise ?? invoice.amount_paise;
@@ -262,20 +369,13 @@ function buildInvoiceHtml(invoice: InvoiceRow, planDisplayName?: string) {
     .logo {
       display: flex;
       align-items: center;
-      gap: 10px;
+      line-height: 0;
     }
-    .mark {
-      width: 34px;
-      height: 34px;
-      border: 3px solid var(--lime);
-      border-radius: 8px;
+    .logo img {
+      display: block;
+      width: 118px;
+      height: 28px;
     }
-    .logo-text {
-      font-size: 18px;
-      font-weight: 800;
-      letter-spacing: -0.03em;
-    }
-    .logo-text span { color: #84D400; }
     .meta {
       margin-top: 22px;
       font-size: 13px;
@@ -446,8 +546,7 @@ function buildInvoiceHtml(invoice: InvoiceRow, planDisplayName?: string) {
       <div class="top">
         <h1>Invoice</h1>
         <div class="logo">
-          <div class="mark" aria-hidden="true"></div>
-          <div class="logo-text">AR<span>360</span></div>
+          ${getAr360WordmarkHtml({ tone: "light", height: 28 })}
         </div>
       </div>
 
@@ -496,6 +595,7 @@ function buildInvoiceHtml(invoice: InvoiceRow, planDisplayName?: string) {
             <td>
               <div class="desc">${planLabel} Plan</div>
               <div class="desc-sub">${periodLabel} subscription · AR360 SaaS</div>
+              ${entitlementLine ? `<div class="desc-sub">${entitlementLine}</div>` : ""}
             </td>
             <td class="qty">1</td>
             <td class="num">${formatMoney(subtotal)}</td>
@@ -547,13 +647,13 @@ async function resolveBuyerProfile(customerUid: string): Promise<Partial<Billing
 }
 
 export async function createTaxInvoice(input: CreateInvoiceInput) {
-  const profile = await resolveBuyerProfile(input.customerUid);
+  const [profile, seller] = await Promise.all([
+    resolveBuyerProfile(input.customerUid),
+    resolveInvoiceSellerProfile(),
+  ]);
   const invoiceNumber = await nextInvoiceNumber();
-  const { subtotalPaise, taxPaise, totalPaise } = splitInclusiveGst(input.amountPaise);
-  const sameState = isSameState(profile);
-  const cgstPaise = sameState ? Math.round(taxPaise / 2) : 0;
-  const sgstPaise = sameState ? taxPaise - cgstPaise : 0;
-  const igstPaise = sameState ? 0 : taxPaise;
+  const { subtotalPaise, taxPaise, totalPaise, cgstPaise, sgstPaise, igstPaise } =
+    computeInclusiveGstBreakdown(input.amountPaise, profile?.state, seller.state);
 
   const draft = {
     invoice_uid: `INV_${randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase()}`,
@@ -577,11 +677,13 @@ export async function createTaxInvoice(input: CreateInvoiceInput) {
     buyer_email: profile?.billing_email || null,
     buyer_gstin: profile?.gstin || null,
     buyer_address: addressFromProfile(profile),
-    seller_gstin: SELLER_GSTIN || null,
+    seller_gstin: seller.gstin || null,
     created_at: new Date().toISOString(),
   } as InvoiceRow;
 
   const planDisplayName = await resolvePlanDisplayName(input.planId);
+  const entitlements = await resolvePlanEntitlements(input.planId);
+  const priceSnapshot = entitlements ? { entitlements } : null;
 
   return insertInvoice({
     ...input,
@@ -598,8 +700,9 @@ export async function createTaxInvoice(input: CreateInvoiceInput) {
     buyerEmail: draft.buyer_email,
     buyerGstin: draft.buyer_gstin,
     buyerAddress: draft.buyer_address,
-    sellerGstin: SELLER_GSTIN || null,
-    invoiceHtml: buildInvoiceHtml(draft, planDisplayName),
+    sellerGstin: seller.gstin || null,
+    invoiceHtml: buildInvoiceHtml(draft, planDisplayName, seller, entitlements),
+    priceSnapshot,
   });
 }
 
@@ -667,19 +770,105 @@ export async function getCustomerInvoice(customerUid: string, invoiceUid: string
 export async function getCustomerInvoiceHtml(customerUid: string, invoiceUid: string) {
   const invoice = await getInvoiceForCustomer(customerUid, invoiceUid);
   if (!invoice) return null;
-  // Issued invoices are immutable legal records. Fall back only for pre-snapshot legacy rows.
-  if (invoice.invoice_html) return invoice.invoice_html;
-  const planDisplayName = await resolvePlanDisplayName(invoice.plan_id);
-  return buildInvoiceHtml(invoice, planDisplayName);
+  const [planDisplayName, seller, entitlements] = await Promise.all([
+    resolvePlanDisplayName(invoice.plan_id),
+    resolveInvoiceSellerProfile(),
+    resolveInvoicePlanEntitlements(invoice),
+  ]);
+  return buildInvoiceHtml(invoice, planDisplayName, seller, entitlements);
 }
 
 export async function getMasterInvoiceHtml(invoiceUid: string) {
-  const { getInvoiceByUid } = await import("./invoice.repository");
-  const invoice = await getInvoiceByUid(invoiceUid);
+  const { resolveCanonicalInvoice } = await import("./invoice.repository");
+  const invoice = await resolveCanonicalInvoice(invoiceUid);
   if (!invoice) return null;
-  if (invoice.invoice_html) return invoice.invoice_html;
+  const [planDisplayName, seller, entitlements] = await Promise.all([
+    resolvePlanDisplayName(invoice.plan_id),
+    resolveInvoiceSellerProfile(),
+    resolveInvoicePlanEntitlements(invoice),
+  ]);
+  return buildInvoiceHtml(invoice, planDisplayName, seller, entitlements);
+}
+
+/** Email-client safe invoice (hosted logo + table layout). Never reuse print HTML / data-URI logos. */
+export function buildInvoiceEmailHtml(
+  invoice: InvoiceRow,
+  planDisplayName?: string,
+  entitlements?: InvoicePlanEntitlements | null,
+) {
+  const invoiceNo = invoice.invoice_number || invoice.invoice_uid;
+  const planLabel = planDisplayName || formatPlanLabel(invoice.plan_id);
+  const periodLabel = formatPeriodLabel(invoice.period);
+  const entitlementLine = formatPlanEntitlementLine(entitlements);
+  const status = statusMeta(invoice.status);
+  const issued = formatInvoiceDate(invoice.created_at);
+  const paidAt = formatInvoiceDate(invoice.paid_at);
+  const subtotal = invoice.subtotal_paise ?? invoice.amount_paise;
+  const cgst = invoice.cgst_paise || 0;
+  const sgst = invoice.sgst_paise || 0;
+  const igst = invoice.igst_paise || 0;
+  const taxPaise = (invoice.tax_paise ?? 0) || cgst + sgst + igst;
+  const billingUrl = absoluteUrl(billingInvoiceViewPath(invoice.invoice_uid));
+  const pdfUrl = absoluteUrl(`/api/billing/invoices/${invoice.invoice_uid}/download?format=pdf`);
+
+  const details = [
+    { label: "Invoice", value: invoiceNo },
+    { label: "Plan", value: `${planLabel} · ${periodLabel}` },
+    ...(entitlementLine ? [{ label: "Included", value: entitlementLine }] : []),
+    { label: "Issued", value: issued },
+    ...(invoice.paid_at ? [{ label: "Paid on", value: paidAt }] : [{ label: "Status", value: status.label }]),
+    { label: "Subtotal", value: formatMoney(subtotal) },
+    ...(taxPaise > 0 ? [{ label: `GST (${GST_RATE}%)`, value: formatMoney(taxPaise) }] : []),
+    { label: invoice.status === "paid" ? "Amount paid" : "Amount due", value: `${formatMoney(invoice.total_paise)} INR` },
+  ];
+
+  const bodyHtml = [
+    emailGreeting(invoice.buyer_name || "there"),
+    emailHeading("Your invoice is ready"),
+    emailParagraph(
+      invoice.status === "paid"
+        ? `Thanks for your payment. Invoice ${invoiceNo} is attached below for your records.`
+        : `Invoice ${invoiceNo} is ready. You can review the details below or open billing in your dashboard.`,
+    ),
+    emailDetails(details),
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 18px;background:#0A0B14;border-radius:12px;">
+      <tr>
+        <td style="padding:18px 20px;">
+          <p style="margin:0 0 4px;color:#B9FF2C;font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;">Total</p>
+          <p style="margin:0;color:#FAFAFA;font-size:28px;line-height:1.2;font-weight:700;">${escapeHtml(formatMoney(invoice.total_paise))} <span style="font-size:14px;font-weight:600;color:#A3A3A3;">INR</span></p>
+          <p style="margin:8px 0 0;color:#A3A3A3;font-size:12px;">${escapeHtml(status.label)}${invoice.razorpay_payment_id ? ` · ${escapeHtml(invoice.razorpay_payment_id)}` : ""}</p>
+        </td>
+      </tr>
+    </table>`,
+    emailButton("View invoice", billingUrl),
+    `<p style="margin:0 0 16px;font-size:13px;line-height:1.6;color:#737373;"><a href="${escapeHtml(pdfUrl)}" style="color:#0A0B14;font-weight:600;text-decoration:underline;">Download PDF invoice</a></p>`,
+    emailSignOff(),
+  ].join("");
+
+  return renderPremiumEmail({
+    preheader: `Invoice ${invoiceNo} · ${formatMoney(invoice.total_paise)} INR`,
+    bodyHtml,
+    bodyText: [
+      `Hi ${invoice.buyer_name || "there"},`,
+      "",
+      "Your invoice is ready",
+      `Invoice ${invoiceNo}`,
+      `Plan: ${planLabel} · ${periodLabel}`,
+      ...(entitlementLine ? [`Included: ${entitlementLine}`] : []),
+      `Total: ${formatMoney(invoice.total_paise)} INR`,
+      `View invoice: ${billingUrl}`,
+      `PDF: ${pdfUrl}`,
+    ].join("\n"),
+  });
+}
+
+export async function getMasterInvoiceEmailHtml(invoiceUid: string) {
+  const { resolveCanonicalInvoice } = await import("./invoice.repository");
+  const invoice = await resolveCanonicalInvoice(invoiceUid);
+  if (!invoice) return null;
   const planDisplayName = await resolvePlanDisplayName(invoice.plan_id);
-  return buildInvoiceHtml(invoice, planDisplayName);
+  const entitlements = await resolveInvoicePlanEntitlements(invoice);
+  return buildInvoiceEmailHtml(invoice, planDisplayName, entitlements);
 }
 
 export async function getMasterInvoices() {

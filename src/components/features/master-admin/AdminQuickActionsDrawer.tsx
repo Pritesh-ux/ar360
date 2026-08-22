@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowRight, Mail, X, Zap } from "lucide-react";
 import type { MasterAdminQuickAction } from "./nav";
+import ViewportPortal from "@/components/shared/ViewportPortal";
 
 type Props = {
   open: boolean;
@@ -15,7 +16,8 @@ export default function AdminQuickActionsDrawer({ open, onClose, actions, onComp
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[70]">
+    <ViewportPortal>
+    <div className="fixed inset-0 z-[99999]">
       <button
         type="button"
         className="absolute inset-0 bg-slate-900/40 backdrop-blur-[1px]"
@@ -94,5 +96,6 @@ export default function AdminQuickActionsDrawer({ open, onClose, actions, onComp
         </div>
       </aside>
     </div>
+    </ViewportPortal>
   );
 }

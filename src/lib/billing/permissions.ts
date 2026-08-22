@@ -12,6 +12,7 @@ import {
   checkEmbedEntitlement,
   checkEnterpriseModelEntitlement,
   checkEnterpriseArExperienceEntitlement,
+  planAllowsProductContact,
   type EntitlementResult,
   type UsageSnapshot,
 } from "@/lib/billing/plan-enforcement";
@@ -36,7 +37,8 @@ export type PermissionAction =
   | "custom_branding"
   | "custom_domain"
   | "analytics"
-  | "object_capture";
+  | "object_capture"
+  | "product_contact";
 
 export type AssertCanResult =
   | { allowed: true; context: SubscriptionContext }
@@ -124,9 +126,7 @@ export async function assertCan(
   const planId = context.planId;
 
   if (action === "access_dashboard") {
-    if (!context.subscription.active) {
-      return denyInactive(context);
-    }
+    // Soft lock: expired trial/plan may still browse the panel; mutations stay gated below.
     return { allowed: true, context };
   }
 
@@ -176,7 +176,29 @@ export async function assertCan(
     return { allowed: true, context };
   }
 
+  if (action === "product_contact") {
+    if (!planAllowsProductContact(plan)) {
+      return deny(context, {
+        allowed: false,
+        reason: "Enquire and WhatsApp are available on Trial, Business, and Enterprise plans.",
+        upgradeRequired: true,
+        limitType: "status",
+      });
+    }
+    return { allowed: true, context };
+  }
+
   if (action === "object_capture") {
+    const { getPlatformSettings } = await import("@/lib/master-admin-settings");
+    const settings = await getPlatformSettings();
+    if (settings.objectCaptureEnabled === false) {
+      return deny(context, {
+        allowed: false,
+        reason: "Object Capture is currently disabled by the platform administrator.",
+        upgradeRequired: false,
+        limitType: "status",
+      });
+    }
     if (plan.allowObjectCapture === false) {
       return deny(context, {
         allowed: false,

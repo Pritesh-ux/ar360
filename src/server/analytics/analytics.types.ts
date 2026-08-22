@@ -13,15 +13,21 @@ export type AnalyticsEventName =
   | "ar_launch_failed"
   | "screenshot"
   | "share_native"
+  | "share_view"
   | "copy_link"
   | "download_qr"
+  | "qr_scan"
   | "open_embed"
+  | "embed_open"
   | "hotspot_click"
   | "logo_click"
   | "variant_change"
   | "material_change"
   | "poster_download"
-  | "cta_click";
+  | "cta_click"
+  | "enquiry_open"
+  | "enquiry_submit"
+  | "whatsapp_click";
 
 // ─── Device / browser detection ──────────────────────────────────────────────
 
@@ -125,6 +131,7 @@ export interface DashboardSummary {
   shareViews?: number;
   embedViews?: number;
   ctaClicks?: number;
+  arButtonClicks?: number;
   avgSessionDuration: number; // seconds
   bounceRate: number; // 0-100
 }
@@ -134,13 +141,14 @@ export interface DashboardData {
   daily: DailyPoint[];
   topProducts: TopProduct[];
   topCountries: TopCountry[];
+  topCities?: TopCity[];
   devices: DeviceBreakdown[];
   browsers: BrowserBreakdown[];
   operatingSystems: OSBreakdown[];
   referrers: ReferrerBreakdown[];
   growth?: {
     trafficSources: Array<{ source: string; count: number }>;
-    insights?: Array<{ title: string; body: string }>;
+    insights?: Array<{ title?: string; body?: string; message?: string; category?: string }>;
   };
 }
 
@@ -161,6 +169,14 @@ export interface TopProduct {
 
 export interface TopCountry {
   country: string;
+  views: number;
+  percent: number;
+}
+
+export interface TopCity {
+  city: string;
+  country: string;
+  label: string;
   views: number;
   percent: number;
 }
@@ -204,4 +220,4 @@ export interface AnalyticsFilter {
 
 // ─── Export formats ───────────────────────────────────────────────────────────
 
-export type ExportFormat = "csv" | "json" | "excel";
+export type ExportFormat = "excel";

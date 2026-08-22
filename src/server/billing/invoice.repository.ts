@@ -70,13 +70,14 @@ export async function insertInvoice(input: CreateInvoiceInput & {
   buyerAddress?: string | null;
   sellerGstin?: string | null;
   invoiceHtml?: string | null;
+  priceSnapshot?: unknown;
 }) {
   await query(
     `INSERT INTO billing_invoices
       (invoice_uid, invoice_number, customer_uid, subscription_id, plan_id, period, amount_paise, subtotal_paise,
        tax_paise, cgst_paise, sgst_paise, igst_paise, total_paise, currency, status, razorpay_payment_id, paid_at,
-       buyer_name, buyer_email, buyer_gstin, buyer_address, seller_gstin, invoice_html)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'INR', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       buyer_name, buyer_email, buyer_gstin, buyer_address, seller_gstin, invoice_html, price_snapshot)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'INR', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       input.invoiceUid,
       input.invoiceNumber,
@@ -100,6 +101,7 @@ export async function insertInvoice(input: CreateInvoiceInput & {
       input.buyerAddress || null,
       input.sellerGstin || null,
       input.invoiceHtml || null,
+      input.priceSnapshot ? JSON.stringify(input.priceSnapshot) : null,
     ],
   );
   return getInvoiceByUid(input.invoiceUid);
@@ -112,10 +114,62 @@ export async function getInvoiceByUid(invoiceUid: string) {
 
 export async function getInvoiceByRazorpayPaymentId(razorpayPaymentId: string) {
   const rows = await query<InvoiceRow>(
-    "SELECT * FROM billing_invoices WHERE razorpay_payment_id = ? ORDER BY created_at DESC LIMIT 1",
+    `SELECT * FROM billing_invoices
+      WHERE razorpay_payment_id = ?
+      ORDER BY
+        CASE
+          WHEN invoice_number LIKE 'AR360/%' THEN 0
+          WHEN invoice_uid REGEXP '^INV_' THEN 1
+          ELSE 2
+        END,
+        created_at DESC
+      LIMIT 1`,
     [razorpayPaymentId],
   );
   return rows[0] || null;
+}
+
+/**
+ * Resolve a downloadable/canonical invoice from invoice UID, payment UID,
+ * Razorpay payment id, or legacy display ids like `INV-pay_...`.
+ */
+export async function resolveCanonicalInvoice(id: string) {
+  const raw = String(id || "").trim();
+  if (!raw) return null;
+
+  const direct = await getInvoiceByUid(raw);
+  if (direct && !String(direct.invoice_number || "").startsWith("RZP-") && !String(direct.invoice_uid).startsWith("inv_rzp_")) {
+    return direct;
+  }
+
+  const paymentKey = raw.replace(/^INV-/i, "");
+  const payments = await query<{
+    payment_uid: string;
+    invoice_uid: string | null;
+    razorpay_payment_id: string | null;
+  }>(
+    `SELECT payment_uid, invoice_uid, razorpay_payment_id
+       FROM billing_payments
+      WHERE payment_uid = ? OR razorpay_payment_id = ?
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [paymentKey, paymentKey],
+  ).catch(() => []);
+
+  const payment = payments[0];
+  if (payment?.invoice_uid) {
+    const linked = await getInvoiceByUid(payment.invoice_uid);
+    if (linked && !String(linked.invoice_number || "").startsWith("RZP-") && !String(linked.invoice_uid).startsWith("inv_rzp_")) {
+      return linked;
+    }
+  }
+  if (payment?.razorpay_payment_id) {
+    const byRzp = await getInvoiceByRazorpayPaymentId(payment.razorpay_payment_id);
+    if (byRzp) return byRzp;
+  }
+
+  if (direct) return direct;
+  return getInvoiceByRazorpayPaymentId(raw);
 }
 
 export async function getCustomerFallbackProfile(customerUid: string) {
