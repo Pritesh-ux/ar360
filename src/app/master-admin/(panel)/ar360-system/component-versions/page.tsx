@@ -339,12 +339,25 @@ export default function Ar360ComponentVersionsPage() {
         </label>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
-        <div className="dash-premium-card overflow-hidden p-0">
+      <div className="grid gap-3 lg:grid-cols-[minmax(280px,0.8fr)_minmax(420px,1.2fr)]">
+        <div className="dash-premium-card min-w-0 overflow-hidden p-0">
           {loading ? (
             <AdminLoadingState label="Loading products…" />
           ) : products.length === 0 ? (
-            <AdminEmptyState title="No products" description="No products matched the search." />
+            <AdminEmptyState
+              title="No products"
+              description="No products matched the current search."
+              action={
+                <button
+                  type="button"
+                  className="dash-premium-btn-secondary h-10 px-3 text-[12px]"
+                  onClick={() => void loadList(q)}
+                >
+                  <RefreshCw size={15} />
+                  Refresh
+                </button>
+              }
+            />
           ) : (
             <div className="max-h-[560px] overflow-auto">
               <table className="min-w-full text-left text-[13px]">
@@ -382,10 +395,13 @@ export default function Ar360ComponentVersionsPage() {
           )}
         </div>
 
-        <div className="space-y-3">
+        <div className="min-w-0 space-y-3">
           {!selectedId ? (
-            <div className="dash-premium-card p-4 text-[13px] text-[#6B7280]">
-              Select a product to view component revisions.
+            <div className="dash-premium-card flex min-h-[280px] items-center justify-center p-6">
+              <AdminEmptyState
+                title="No product selected"
+                description="Select a product from the list to view component revisions."
+              />
             </div>
           ) : (
             COMPONENT_KINDS.map((kind) => {

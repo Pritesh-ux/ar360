@@ -123,10 +123,13 @@ export default function Ar360ReleasesPage() {
         {loading ? (
           <AdminLoadingState label="Loading releases…" />
         ) : releases.length === 0 ? (
-          <AdminEmptyState title="No releases yet" description="Create a draft Preview/Beta/Stable release record." />
+          <AdminEmptyState
+            title="No releases yet"
+            description="Create a draft Preview/Beta/Stable release record to get started."
+          />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-[13px]">
+          <div className="ma-table-scroll">
+            <table className="min-w-[900px] w-full text-left text-[13px]">
               <thead>
                 <tr className={adminTableHeadClass}>
                   <th className="px-4 py-3">Version</th>

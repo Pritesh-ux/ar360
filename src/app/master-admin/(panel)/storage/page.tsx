@@ -389,15 +389,15 @@ export default function StoragePage() {
 
   return (
     <div className="master-admin-panel">
-      <div className="flex flex-col gap-5 xl:flex-row">
-        <div className="min-w-0 flex-1 space-y-5">
+      <div className="ma-split-layout">
+        <div className="ma-main-col space-y-5">
           <AdminPageHeader
             title="Storage Manager"
             subtitle="Live Hostinger/VPS disk & bandwidth, plus per-customer storage usage."
             actions={
               <>
-                <div className="flex max-w-full items-stretch gap-2">
-                  <label className="flex min-w-[142px] items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 transition hover:border-slate-300">
+                <div className="flex max-w-full flex-wrap items-stretch gap-2">
+                  <label className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 transition hover:border-slate-300 sm:min-w-[142px] sm:flex-none">
                     <CalendarDays size={15} className="shrink-0 text-slate-400" />
                     <span className="min-w-0">
                       <span className="block text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">From</span>
@@ -409,11 +409,11 @@ export default function StoragePage() {
                           setPage(1);
                         }}
                         aria-label="Storage report start date"
-                        className="block h-5 min-w-0 w-[104px] appearance-none !border-0 bg-transparent !p-0 text-[11px] font-bold text-slate-700 !shadow-none !outline-none !ring-0"
+                        className="block h-5 min-w-0 w-full appearance-none !border-0 bg-transparent !p-0 text-[11px] font-bold text-slate-700 !shadow-none !outline-none !ring-0 sm:w-[104px]"
                       />
                     </span>
                   </label>
-                  <label className="flex min-w-[142px] items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 transition hover:border-slate-300">
+                  <label className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 transition hover:border-slate-300 sm:min-w-[142px] sm:flex-none">
                     <CalendarDays size={15} className="shrink-0 text-slate-400" />
                     <span className="min-w-0">
                       <span className="block text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">To</span>
@@ -425,7 +425,7 @@ export default function StoragePage() {
                           setPage(1);
                         }}
                         aria-label="Storage report end date"
-                        className="block h-5 min-w-0 w-[104px] appearance-none !border-0 bg-transparent !p-0 text-[11px] font-bold text-slate-700 !shadow-none !outline-none !ring-0"
+                        className="block h-5 min-w-0 w-full appearance-none !border-0 bg-transparent !p-0 text-[11px] font-bold text-slate-700 !shadow-none !outline-none !ring-0 sm:w-[104px]"
                       />
                     </span>
                   </label>
@@ -734,13 +734,13 @@ export default function StoragePage() {
             </div>
           </section>
 
-          <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 min-[1600px]:grid-cols-4">
             {actionCards.map((card) => {
               const Icon = card.icon;
               return (
                 <div
                   key={card.title}
-                  className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm"
+                  className="min-w-0 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm"
                 >
                   <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-[#A6FF2E]/15 text-[#4D9A00]">
                     <Icon size={18} />
@@ -750,7 +750,7 @@ export default function StoragePage() {
                   {"href" in card && card.href ? (
                     <Link
                       href={card.href}
-                      className="mt-4 block w-full rounded-xl border border-slate-200 py-2.5 text-center text-[12px] font-bold text-slate-700 transition hover:border-[#A6FF2E]/60 hover:bg-[#A6FF2E]/5"
+                      className="mt-4 block w-full whitespace-normal rounded-xl border border-slate-200 py-2.5 text-center text-[12px] font-bold text-slate-700 transition hover:border-[#A6FF2E]/60 hover:bg-[#A6FF2E]/5"
                     >
                       {card.button}
                     </Link>
@@ -758,7 +758,7 @@ export default function StoragePage() {
                     <button
                       type="button"
                       onClick={card.action}
-                      className="mt-4 w-full rounded-xl border border-slate-200 py-2.5 text-[12px] font-bold text-slate-700 transition hover:border-[#A6FF2E]/60 hover:bg-[#A6FF2E]/5"
+                      className="mt-4 w-full whitespace-normal rounded-xl border border-slate-200 py-2.5 text-[12px] font-bold text-slate-700 transition hover:border-[#A6FF2E]/60 hover:bg-[#A6FF2E]/5"
                     >
                       {card.button}
                     </button>
@@ -769,7 +769,7 @@ export default function StoragePage() {
           </section>
         </div>
 
-        <aside className="w-full shrink-0 space-y-4 xl:w-[300px]">
+        <aside className="ma-side-col space-y-4">
           <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
             <h3 className="text-[13px] font-black text-slate-900">Quick Actions</h3>
             <div className="mt-3 space-y-1">

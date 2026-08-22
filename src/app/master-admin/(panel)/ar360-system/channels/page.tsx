@@ -71,28 +71,39 @@ export default function Ar360ChannelsPage() {
         {loading ? (
           <AdminLoadingState label="Loading channels…" />
         ) : channels.length === 0 ? (
-          <AdminEmptyState title="No channels" description="Run Phase 1 migration to seed channels." />
+          <AdminEmptyState
+            title="No channels"
+            description="Run Phase 1 migration to seed stable / beta / preview channels."
+            action={
+              <button type="button" onClick={load} className="dash-premium-btn-secondary h-10 px-3 text-[12px]">
+                <RefreshCw size={15} />
+                Refresh
+              </button>
+            }
+          />
         ) : (
-          <table className="min-w-full text-left text-[13px]">
-            <thead>
-              <tr className={adminTableHeadClass}>
-                <th className="px-4 py-3">Code</th>
-                <th className="px-4 py-3">Name</th>
-                <th className="px-4 py-3">Default</th>
-                <th className="px-4 py-3">Customer facing</th>
-              </tr>
-            </thead>
-            <tbody>
-              {channels.map((channel) => (
-                <tr key={channel.id} className={adminTableRowClass}>
-                  <td className="px-4 py-3 font-semibold">{channel.code}</td>
-                  <td className="px-4 py-3">{channel.displayName}</td>
-                  <td className="px-4 py-3">{channel.isDefault ? "Yes" : "No"}</td>
-                  <td className="px-4 py-3">{channel.isCustomerFacing ? "Yes" : "No"}</td>
+          <div className="ma-table-scroll">
+            <table className="min-w-[560px] w-full text-left text-[13px]">
+              <thead>
+                <tr className={adminTableHeadClass}>
+                  <th className="px-4 py-3.5">Code</th>
+                  <th className="px-4 py-3.5">Name</th>
+                  <th className="px-4 py-3.5">Default</th>
+                  <th className="px-4 py-3.5">Customer facing</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {channels.map((channel) => (
+                  <tr key={channel.id} className={adminTableRowClass}>
+                    <td className="px-4 py-3.5 font-semibold capitalize">{channel.code}</td>
+                    <td className="px-4 py-3.5">{channel.displayName}</td>
+                    <td className="px-4 py-3.5">{channel.isDefault ? "Yes" : "No"}</td>
+                    <td className="px-4 py-3.5">{channel.isCustomerFacing ? "Yes" : "No"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>

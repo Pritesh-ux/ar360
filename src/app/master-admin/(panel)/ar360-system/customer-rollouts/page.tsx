@@ -220,9 +220,12 @@ export default function Ar360CustomerRolloutsPage() {
         {loading ? (
           <AdminLoadingState label="Loading rollouts…" />
         ) : rollouts.length === 0 ? (
-          <AdminEmptyState title="No rollouts" description="Create a one-client selected-product rollout." />
+          <AdminEmptyState
+            title="No rollouts"
+            description="Create a one-client selected-product rollout to begin."
+          />
         ) : (
-          <div className="overflow-x-auto">
+          <div className="ma-table-scroll">
             <table className="min-w-full text-left text-[12px]">
               <thead>
                 <tr className={adminTableHeadClass}>

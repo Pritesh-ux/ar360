@@ -2051,10 +2051,19 @@ html[data-portal-theme="lime"] .customer-portal [class*="QrCenterClient_bottomSa
   }
 }
 
-/* Responsive layout pass: customer dashboard, product editor, and admin surfaces. */
+/* Responsive layout pass: customer dashboard, product editor, and admin surfaces.
+   IMPORTANT: never set min-width:0 on every descendant — that collapses flex/grid
+   children to ~0px and causes character-by-character text wrapping (Storage bug).
+   Only allow shrink on intentional flex/grid children. */
 html[data-portal-theme="lime"] .customer-portal *:not(img):not(svg):not(video):not(canvas),
-html[data-portal-theme="lime"] .product-editor-shell *:not(img):not(svg):not(video):not(canvas),
-.master-admin-shell *:not(img):not(svg):not(video):not(canvas) {
+html[data-portal-theme="lime"] .product-editor-shell *:not(img):not(svg):not(video):not(canvas) {
+  min-width: 0;
+}
+
+.master-admin-shell main,
+.master-admin-shell .master-admin-panel,
+.master-admin-shell .ma-main-col,
+.master-admin-shell .min-w-0 {
   min-width: 0;
 }
 
@@ -3255,16 +3264,12 @@ html[data-portal-theme="cyan"] .customer-portal :is(header, main, aside, section
   border-color: transparent !important;
 }
 
-/* Master admin panel surfaces */
-[class*="master-admin"] :is(header, main, aside, section, article, div[class*="rounded-[22px]"], div[class*="rounded-[24px]"], div[class*="rounded-[26px]"], div[class*="rounded-[28px]"], div[class*="rounded-[32px]"], div[class*="rounded-3xl"]),
-body:has([href^="/master-admin"]) :is(header, main, aside, section, article, div[class*="rounded-[22px]"], div[class*="rounded-[24px]"], div[class*="rounded-[26px]"], div[class*="rounded-[28px]"], div[class*="rounded-[32px]"], div[class*="rounded-3xl"]) {
-  border-color: transparent !important;
-}
+/* Master admin keeps subtle SaaS borders — do NOT strip them (layout + visual clarity).
+   Customer portal / editor still use the no-border panel treatment above. */
 
-/* Remove separator lines inside panels, keep form/input focus borders usable. */
+/* Remove separator lines inside customer/editor panels only. */
 .customer-portal :is([class*="border-t"], [class*="border-b"], [class*="border-l"], [class*="border-r"]),
-.product-editor-shell :is([class*="border-t"], [class*="border-b"], [class*="border-l"], [class*="border-r"]),
-[class*="master-admin"] :is([class*="border-t"], [class*="border-b"], [class*="border-l"], [class*="border-r"]) {
+.product-editor-shell :is([class*="border-t"], [class*="border-b"], [class*="border-l"], [class*="border-r"]) {
   border-color: transparent !important;
 }
 
@@ -3379,10 +3384,15 @@ input::placeholder, textarea::placeholder {
 }
 
 .master-admin-panel {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   min-height: 100%;
   padding: 1rem;
   padding-bottom: 2.5rem;
   color: var(--color-text);
+  overflow-x: clip;
 }
 
 @media (min-width: 768px) {
@@ -3395,6 +3405,91 @@ input::placeholder, textarea::placeholder {
 @media (min-width: 1536px) {
   .master-admin-panel {
     padding: 2rem;
+  }
+}
+
+/* Stable two-column page layout (Storage, Billing, Coupons, etc.) —
+   CSS grid avoids flex + width:100% aside collapsing the main column. */
+.master-admin-shell .ma-split-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.25rem;
+  width: 100%;
+  max-width: 100%;
+  align-items: start;
+}
+
+.master-admin-shell .ma-split-layout > .ma-main-col,
+.master-admin-shell .ma-split-layout > .ma-side-col {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.master-admin-shell .ma-side-col {
+  width: 100%;
+}
+
+@media (min-width: 1280px) {
+  .master-admin-shell .ma-split-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
+  }
+}
+
+/* Prevent accidental vertical/character wrapping from collapsed boxes */
+.master-admin-shell p,
+.master-admin-shell span,
+.master-admin-shell label,
+.master-admin-shell li,
+.master-admin-shell td,
+.master-admin-shell th,
+.master-admin-shell a,
+.master-admin-shell button,
+.master-admin-shell h1,
+.master-admin-shell h2,
+.master-admin-shell h3,
+.master-admin-shell h4 {
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
+.master-admin-shell table {
+  table-layout: auto;
+}
+
+.master-admin-shell .ma-table-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Contain legacy overflow-x-auto table wrappers the same way —
+   scroll stays inside the card, never on the page body. */
+.master-admin-shell main .overflow-x-auto {
+  max-width: 100%;
+  min-width: 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.master-admin-shell .ma-stat-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.master-admin-shell .ma-stat-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 88px;
+  height: 100%;
+}
+
+/* Header action wrap safety below tablet widths */
+@media (max-width: 1023px) {
+  .master-admin-shell header .flex.w-full.min-w-0.shrink-0,
+  .master-admin-shell header [class*="lg:max-w"] {
+    max-width: 100%;
   }
 }
 

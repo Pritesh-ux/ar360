@@ -370,7 +370,7 @@ function MasterAdminShellContent({ children }: { children: React.ReactNode }) {
           }}
           unreadCount={unreadCount}
         />
-        <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[#F8F9FA] pb-24 lg:pb-0">
+        <main className="min-h-0 min-w-0 w-full flex-1 overflow-y-auto overflow-x-hidden bg-[#F8F9FA] pb-24 lg:pb-0">
           {children}
         </main>
       </div>

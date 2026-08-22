@@ -24,8 +24,8 @@ export default function AdminPageHeader({
   highlighted = true,
 }: Props) {
   const content = (
-    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-      <div className="min-w-0">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div className="min-w-0 flex-1">
         {backHref ? (
           <Link
             href={backHref}
@@ -36,10 +36,10 @@ export default function AdminPageHeader({
           </Link>
         ) : null}
         {breadcrumbs && breadcrumbs.length > 0 && (
-          <nav className="mb-2 flex flex-wrap items-center gap-1.5 text-[12px] font-semibold text-[#9CA3AF]">
+          <nav className="mb-2 flex flex-wrap items-center gap-1.5 text-[12px] font-semibold text-[#9CA3AF]" aria-label="Breadcrumb">
             {breadcrumbs.map((crumb, index) => (
               <span key={`${crumb.label}-${index}`} className="flex items-center gap-1.5">
-                {index > 0 && <span>/</span>}
+                {index > 0 && <span aria-hidden>/</span>}
                 {crumb.href ? (
                   <Link href={crumb.href} className="transition hover:text-[#6B7280]">
                     {crumb.label}
@@ -59,7 +59,9 @@ export default function AdminPageHeader({
         ) : null}
       </div>
       {actions ? (
-        <div className="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end">{actions}</div>
+        <div className="flex w-full min-w-0 shrink-0 flex-wrap items-center gap-2 lg:w-auto lg:max-w-[48%] lg:justify-end">
+          {actions}
+        </div>
       ) : null}
     </div>
   );

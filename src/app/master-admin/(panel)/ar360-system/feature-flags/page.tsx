@@ -134,9 +134,23 @@ export default function Ar360FeatureFlagsPage() {
         {loading ? (
           <AdminLoadingState label="Loading feature flags…" />
         ) : flags.length === 0 ? (
-          <AdminEmptyState title="No flags" description="Create a flag or re-run Phase 1 seed." />
+          <AdminEmptyState
+            title="No flags"
+            description="Create a flag or re-run Phase 1 seed."
+            action={
+              <button
+                type="button"
+                onClick={() => setShowCreate(true)}
+                className="dash-premium-btn-primary h-10 px-3 text-[12px]"
+              >
+                <Plus size={15} />
+                New Flag
+              </button>
+            }
+          />
         ) : (
-          <table className="min-w-full text-left text-[13px]">
+          <div className="ma-table-scroll">
+            <table className="min-w-[720px] w-full text-left text-[13px]">
             <thead>
               <tr className={adminTableHeadClass}>
                 <th className="px-4 py-3">Name</th>
@@ -177,6 +191,7 @@ export default function Ar360FeatureFlagsPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

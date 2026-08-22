@@ -229,46 +229,61 @@ export default function Ar360MigrationsPage() {
         {loading ? (
           <AdminLoadingState label="Loading migration plans…" />
         ) : plans.length === 0 ? (
-          <AdminEmptyState title="No plans" description="Create a selected-product migration plan." />
+          <AdminEmptyState
+            title="No migration plans yet"
+            description="Create a selected-product migration plan. Geometry migrations remain blocked."
+            action={
+              <button
+                type="button"
+                className="dash-premium-btn-primary h-10 px-4 text-[12px]"
+                onClick={() => setShowCreate(true)}
+              >
+                <Plus size={15} />
+                Create Plan
+              </button>
+            }
+          />
         ) : (
-          <table className="min-w-full text-left text-[13px]">
-            <thead>
-              <tr className={adminTableHeadClass}>
-                <th className="px-4 py-3">Plan</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Components</th>
-                <th className="px-4 py-3">Batch</th>
-                <th className="px-4 py-3">Created</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody>
-              {plans.map((p) => (
-                <tr key={p.id} className={adminTableRowClass}>
-                  <td className="px-4 py-3">
-                    <div className="font-semibold">#{p.id} · {p.title}</div>
-                    {p.releaseId ? (
-                      <div className="text-[11px] text-[#6B7280]">Release #{p.releaseId}</div>
-                    ) : null}
-                  </td>
-                  <td className="px-4 py-3 font-bold">{p.status}</td>
-                  <td className="px-4 py-3 uppercase text-[12px]">{(p.components || []).join(", ")}</td>
-                  <td className="px-4 py-3">{p.batchSize}</td>
-                  <td className="px-4 py-3 text-[#6B7280]">
-                    {new Date(p.createdAt).toLocaleString()}
-                  </td>
-                  <td className="px-4 py-3">
-                    <Link
-                      href={`/master-admin/ar360-system/migrations/${p.id}`}
-                      className="font-semibold text-[var(--color-primary)] hover:underline"
-                    >
-                      Open
-                    </Link>
-                  </td>
+          <div className="ma-table-scroll">
+            <table className="min-w-[720px] w-full text-left text-[13px]">
+              <thead>
+                <tr className={adminTableHeadClass}>
+                  <th className="px-4 py-3">Plan</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Components</th>
+                  <th className="px-4 py-3">Batch</th>
+                  <th className="px-4 py-3">Created</th>
+                  <th className="px-4 py-3" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {plans.map((p) => (
+                  <tr key={p.id} className={adminTableRowClass}>
+                    <td className="px-4 py-3">
+                      <div className="font-semibold">#{p.id} · {p.title}</div>
+                      {p.releaseId ? (
+                        <div className="text-[11px] text-[#6B7280]">Release #{p.releaseId}</div>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-3 font-bold">{p.status}</td>
+                    <td className="px-4 py-3 text-[12px] uppercase">{(p.components || []).join(", ")}</td>
+                    <td className="px-4 py-3">{p.batchSize}</td>
+                    <td className="px-4 py-3 text-[#6B7280]">
+                      {new Date(p.createdAt).toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Link
+                        href={`/master-admin/ar360-system/migrations/${p.id}`}
+                        className="font-semibold text-[var(--color-primary)] hover:underline"
+                      >
+                        Open
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>

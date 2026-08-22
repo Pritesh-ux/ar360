@@ -485,7 +485,7 @@ export default function LandingCmsEditor() {
         </div>
       </div>
 
-      <div className="flex gap-2 lg:hidden">
+      <div className="flex gap-2 xl:hidden">
         <button
           type="button"
           onClick={() => setMobilePane("preview")}
@@ -502,9 +502,9 @@ export default function LandingCmsEditor() {
         </button>
       </div>
 
-      <div className="grid min-h-[70vh] flex-1 gap-3 lg:grid-cols-[220px_minmax(0,1fr)_340px]">
+      <div className="grid min-h-[70vh] flex-1 gap-3 xl:grid-cols-[minmax(180px,220px)_minmax(0,1fr)_minmax(280px,340px)]">
         {/* Navigator */}
-        <aside className="hidden min-h-0 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 lg:block">
+        <aside className="hidden min-h-0 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 xl:block">
           <p className="px-2 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Sections</p>
           {LANDING_NAVIGATOR_SECTIONS.map((item) => (
             <button
@@ -540,7 +540,7 @@ export default function LandingCmsEditor() {
         {/* Preview */}
         <section
           className={`min-h-[60vh] overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 ${
-            mobilePane === "preview" ? "block" : "hidden lg:block"
+            mobilePane === "preview" ? "block" : "hidden xl:block"
           }`}
         >
           <div className="flex h-full justify-center overflow-auto p-2 sm:p-3">
@@ -566,7 +566,7 @@ export default function LandingCmsEditor() {
         {/* Inspector */}
         <aside
           className={`min-h-0 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3 ${
-            mobilePane === "inspector" ? "block" : "hidden lg:block"
+            mobilePane === "inspector" ? "block" : "hidden xl:block"
           }`}
         >
           {!resolved ? (

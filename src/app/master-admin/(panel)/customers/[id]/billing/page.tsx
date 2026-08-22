@@ -328,7 +328,7 @@ export default function CustomerBillingControlPage() {
           />
         ) : null}
 
-        <section className="grid gap-3 lg:grid-cols-[1fr_360px]">
+        <section className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
           <div className="dash-premium-card p-4 md:p-6">
             <div className="flex items-center gap-3">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-lime-50 text-[#5AA700]">

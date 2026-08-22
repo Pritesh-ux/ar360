@@ -21,6 +21,7 @@ import {
 } from "@/components/features/master-admin/AdminSparkline";
 import { AdminActionMessage, AdminLoadingState } from "@/components/ui/admin";
 import AdminMetricCard from "@/components/ui/admin/AdminMetricCard";
+import ViewportPortal from "@/components/shared/ViewportPortal";
 import UserDateRangePicker, {
   defaultDateRange,
   type DateRangeValue,
@@ -739,42 +740,55 @@ export default function WebAnalyticsPage() {
       )}
 
       {drawer ? (
-        <div className="fixed inset-0 z-[80] flex justify-end bg-black/40">
-          <div className="flex h-full w-full max-w-md flex-col bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b border-[#ECECEC] px-4 py-3">
-              <h3 className="text-[15px] font-bold">{drawer.label}</h3>
-              <button type="button" onClick={() => setDrawer(null)} aria-label="Close">
-                <X size={18} />
-              </button>
-            </div>
-            <div className="space-y-3 overflow-y-auto p-4 text-[13px]">
-              <Row label="First seen" value={new Date(drawer.firstSeenAt).toLocaleString()} />
-              <Row label="Last active" value={new Date(drawer.lastActiveAt).toLocaleString()} />
-              <Row label="Location" value={drawer.location} />
-              <Row label="Device" value={drawer.device} />
-              <Row label="Browser" value={drawer.browser} />
-              <Row label="OS" value={drawer.os} />
-              <div>
-                <p className="mb-2 font-semibold text-[#111827]">Page history</p>
-                <div className="space-y-2">
-                  {drawer.pages.length === 0 ? (
-                    <p className="text-[#9CA3AF]">No pages recorded.</p>
-                  ) : (
-                    drawer.pages.map((p, i) => (
-                      <div key={`${p.path}-${i}`} className="rounded-lg bg-[#F9FAFB] px-3 py-2">
-                        <p className="font-medium">{p.path}</p>
-                        <p className="text-[11px] text-[#6B7280]">
-                          {fmtTime(p.viewedAt)}
-                          {p.durationSeconds != null ? ` · ${fmtDuration(p.durationSeconds)}` : ""}
-                        </p>
-                      </div>
-                    ))
-                  )}
+        <ViewportPortal>
+          <div className="fixed inset-0 z-[99999] flex justify-end bg-black/40" role="presentation">
+            <button
+              type="button"
+              className="absolute inset-0 cursor-default"
+              aria-label="Close visitor details"
+              onClick={() => setDrawer(null)}
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label={drawer.label}
+              className="relative flex h-full w-full max-w-md flex-col bg-white shadow-xl"
+            >
+              <div className="flex items-center justify-between border-b border-[#ECECEC] px-4 py-3">
+                <h3 className="min-w-0 truncate text-[15px] font-bold">{drawer.label}</h3>
+                <button type="button" onClick={() => setDrawer(null)} aria-label="Close">
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="min-h-0 space-y-3 overflow-y-auto p-4 text-[13px]">
+                <Row label="First seen" value={new Date(drawer.firstSeenAt).toLocaleString()} />
+                <Row label="Last active" value={new Date(drawer.lastActiveAt).toLocaleString()} />
+                <Row label="Location" value={drawer.location} />
+                <Row label="Device" value={drawer.device} />
+                <Row label="Browser" value={drawer.browser} />
+                <Row label="OS" value={drawer.os} />
+                <div>
+                  <p className="mb-2 font-semibold text-[#111827]">Page history</p>
+                  <div className="space-y-2">
+                    {drawer.pages.length === 0 ? (
+                      <p className="text-[#9CA3AF]">No pages recorded.</p>
+                    ) : (
+                      drawer.pages.map((p, i) => (
+                        <div key={`${p.path}-${i}`} className="rounded-lg bg-[#F9FAFB] px-3 py-2">
+                          <p className="break-words font-medium">{p.path}</p>
+                          <p className="text-[11px] text-[#6B7280]">
+                            {fmtTime(p.viewedAt)}
+                            {p.durationSeconds != null ? ` · ${fmtDuration(p.durationSeconds)}` : ""}
+                          </p>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        </ViewportPortal>
       ) : null}
     </div>
   );

@@ -93,7 +93,7 @@ export default function Ar360ClientUpdatesPage() {
       ) : null}
 
       {summary ? (
-        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {(
             [
               ["Clients", summary.clients],
@@ -104,9 +104,18 @@ export default function Ar360ClientUpdatesPage() {
               ["Up To Date", summary.upToDate],
             ] as const
           ).map(([label, value]) => (
-            <div key={label} className="dash-premium-card p-3">
-              <div className="text-[11px] font-bold uppercase text-[#6B7280]">{label}</div>
-              <div className="text-[20px] font-black">{value}</div>
+            <div key={label} className="dash-premium-card ma-stat-card min-w-0 p-4">
+              <div className="text-[11px] font-bold uppercase tracking-wide text-[#6B7280]">{label}</div>
+              <div className="mt-2 text-[22px] font-black tabular-nums leading-none text-[#111827]">{value}</div>
+            </div>
+          ))}
+        </div>
+      ) : loading ? (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="dash-premium-card ma-stat-card animate-pulse bg-slate-50 p-4">
+              <div className="h-3 w-16 rounded bg-slate-200" />
+              <div className="mt-3 h-6 w-10 rounded bg-slate-200" />
             </div>
           ))}
         </div>
@@ -116,10 +125,19 @@ export default function Ar360ClientUpdatesPage() {
         {loading ? (
           <AdminLoadingState label="Loading clients…" />
         ) : clients.length === 0 ? (
-          <AdminEmptyState title="No clients" description="No customers found." />
+          <AdminEmptyState
+            title="No clients"
+            description="No customers matched this client-update view."
+            action={
+              <button type="button" className="dash-premium-btn-secondary h-10 px-3 text-[12px]" onClick={() => void load()}>
+                <RefreshCw size={15} />
+                Refresh
+              </button>
+            }
+          />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-[12px]">
+          <div className="ma-table-scroll">
+            <table className="min-w-[960px] w-full text-left text-[12px]">
               <thead>
                 <tr className={adminTableHeadClass}>
                   <th className="px-4 py-3">Client</th>

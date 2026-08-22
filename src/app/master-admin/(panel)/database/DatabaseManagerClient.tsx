@@ -150,8 +150,8 @@ export default function DatabaseManagerClient() {
         subtitle={`${totalTables} tables · Browse data and run read-only queries.`}
       />
 
-      <div className="flex gap-3" style={{ height: "calc(100vh - 220px)", minHeight: "500px" }}>
-        <aside className="dash-premium-card w-60 shrink-0 overflow-y-auto">
+      <div className="flex min-h-[420px] flex-col gap-3 lg:h-[calc(100vh-220px)] lg:min-h-[500px] lg:flex-row">
+        <aside className="dash-premium-card max-h-[260px] w-full shrink-0 overflow-y-auto lg:max-h-none lg:w-60">
           {loading ? (
             <div className="flex items-center justify-center p-8">
               <Loader2 size={20} className="animate-spin text-slate-400" />
@@ -210,9 +210,9 @@ export default function DatabaseManagerClient() {
           )}
         </aside>
 
-        <main className="dash-premium-card flex min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="flex items-center gap-3 border-b border-[#ECECEC] bg-white px-5 py-3">
-            <div className="flex gap-1 rounded-[14px] border border-[#ECECEC] bg-[#FAFAFB] p-1">
+        <main className="dash-premium-card flex min-h-[360px] min-w-0 flex-1 flex-col overflow-hidden">
+          <div className="flex min-w-0 flex-wrap items-center gap-2 border-b border-[#ECECEC] bg-white px-4 py-3 sm:gap-3 sm:px-5">
+            <div className="flex shrink-0 gap-1 rounded-[14px] border border-[#ECECEC] bg-[#FAFAFB] p-1">
               <button
                 type="button"
                 onClick={() => setView("browser")}
@@ -237,19 +237,19 @@ export default function DatabaseManagerClient() {
 
             {view === "browser" && selectedTable ? (
               <>
-                <span className="text-[13px] font-black text-slate-900">{selectedTable}</span>
-                <span className="text-[11px] font-semibold text-slate-400">
+                <span className="min-w-0 truncate text-[13px] font-black text-slate-900">{selectedTable}</span>
+                <span className="shrink-0 text-[11px] font-semibold text-slate-400">
                   {pagination.total.toLocaleString()} rows
                 </span>
-                <div className="ml-auto flex items-center gap-2">
-                  <div className="relative">
+                <div className="ml-auto flex min-w-0 flex-wrap items-center gap-2">
+                  <div className="relative min-w-0 flex-1 sm:flex-none">
                     <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                     <input
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                       placeholder="Search rows..."
-                      className={`${adminInputClass} w-56 pl-8`}
+                      className={`${adminInputClass} w-full pl-8 sm:w-56`}
                     />
                   </div>
                   <button type="button" onClick={handleSearch} className={adminSecondaryButtonClass + " !px-3 !py-2 !text-[12px]"}>
@@ -258,7 +258,9 @@ export default function DatabaseManagerClient() {
                 </div>
               </>
             ) : view === "browser" ? (
-              <span className="ml-2 text-[13px] font-medium text-slate-400">Select a table from the sidebar</span>
+              <span className="min-w-0 flex-1 basis-[12rem] text-[13px] font-medium leading-snug text-slate-400">
+                Select a table from the list to browse data
+              </span>
             ) : null}
           </div>
 
@@ -309,11 +311,12 @@ export default function DatabaseManagerClient() {
                 <Loader2 size={24} className="animate-spin text-slate-400" />
               </div>
             ) : displayRows.length > 0 ? (
-              <table className="w-full text-left text-[12px]">
+              <div className="ma-table-scroll">
+              <table className="w-full min-w-[640px] text-left text-[12px]">
                 <thead>
                   <tr className={adminTableHeadClass}>
                     {displayColumns.map((col) => (
-                      <th key={col} className="whitespace-nowrap px-3 py-2.5">
+                      <th key={col} scope="col" className="whitespace-nowrap px-3 py-2.5">
                         {col}
                       </th>
                     ))}
@@ -350,14 +353,17 @@ export default function DatabaseManagerClient() {
                   ))}
                 </tbody>
               </table>
+              </div>
             ) : selectedTable ? (
-              <div className="flex items-center justify-center p-12 text-[13px] font-medium text-slate-400">
+              <div className="flex min-h-[160px] items-center justify-center p-12 text-[13px] font-medium text-slate-400">
                 No rows found
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center p-16 text-center">
+              <div className="flex min-h-[200px] flex-col items-center justify-center p-10 text-center sm:p-16">
                 <Database size={40} className="text-slate-200" />
-                <p className="mt-4 text-[13px] font-semibold text-slate-400">Select a table from the sidebar to browse data</p>
+                <p className="mt-4 max-w-sm text-[13px] font-semibold leading-relaxed text-slate-400">
+                  Select a table from the list to browse data
+                </p>
               </div>
             )}
           </div>

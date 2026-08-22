@@ -448,8 +448,8 @@ export default function SubscriptionsPage() {
 
   return (
     <div className="master-admin-panel dash-premium animate-dash-fade-in flex min-h-0 flex-1 flex-col gap-3">
-      <div className="flex flex-col gap-3 xl:flex-row">
-        <div className="min-w-0 flex-1 flex flex-col gap-3">
+      <div className="ma-split-layout">
+        <div className="ma-main-col flex flex-col gap-3">
           <AdminPageHeader
             title="Subscriptions"
             subtitle="Manage all customer subscriptions and billing information."
@@ -862,7 +862,7 @@ export default function SubscriptionsPage() {
           </section>
         </div>
 
-        <aside className="hidden w-[280px] shrink-0 space-y-3 xl:block">
+        <aside className="ma-side-col space-y-3">
           <div className="dash-premium-card p-4">
             <h3 className="text-[13px] font-black text-slate-900">Renewals in 7 Days</h3>
             <div className="mt-3 space-y-3">

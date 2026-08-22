@@ -119,9 +119,9 @@ export default function Ar360PlatformCompatibilityPage() {
         {loading ? (
           <AdminLoadingState label="Loading compatibility…" />
         ) : rows.length === 0 ? (
-          <AdminEmptyState title="No products" description="No products matched the filter." />
+          <AdminEmptyState title="No products" description="No products matched the current filter." />
         ) : (
-          <div className="overflow-x-auto">
+          <div className="ma-table-scroll">
             <table className="min-w-full text-left text-[12px]">
               <thead>
                 <tr className={adminTableHeadClass}>

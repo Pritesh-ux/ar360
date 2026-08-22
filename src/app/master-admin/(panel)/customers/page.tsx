@@ -487,28 +487,29 @@ export default function CustomersPage() {
         {loading ? (
           <AdminLoadingState label="Loading customers..." />
         ) : (
-          <div className="overflow-x-auto">
+          <div className="ma-table-scroll">
             <table className="w-full min-w-[1280px] text-left">
               <thead>
                 <tr className="border-b border-[#ECECEC] bg-[#FAFAFB] text-[10px] font-bold uppercase tracking-wide text-[#9CA3AF]">
-                  <th className="w-10 px-3 py-3">
+                  <th scope="col" className="w-10 px-3 py-3">
                     <input
                       type="checkbox"
                       checked={allPageSelected}
                       onChange={toggleAllPage}
                       className="h-4 w-4 rounded border-[#D1D5DB] accent-[#84D400]"
+                      aria-label="Select all customers on this page"
                     />
                   </th>
-                  <th className="px-3 py-3">Customer</th>
-                  <th className="px-3 py-3">Company</th>
-                  <th className="px-3 py-3">Plan</th>
-                  <th className="px-3 py-3">Projects</th>
-                  <th className="px-3 py-3">Storage</th>
-                  <th className="px-3 py-3">Bandwidth</th>
-                  <th className="px-3 py-3">Revenue</th>
-                  <th className="px-3 py-3">Last Login</th>
-                  <th className="px-3 py-3">Status</th>
-                  <th className="w-40 px-3 py-3">Actions</th>
+                  <th scope="col" className="px-3 py-3">Customer</th>
+                  <th scope="col" className="px-3 py-3">Company</th>
+                  <th scope="col" className="px-3 py-3">Plan</th>
+                  <th scope="col" className="px-3 py-3">Projects</th>
+                  <th scope="col" className="px-3 py-3">Storage</th>
+                  <th scope="col" className="px-3 py-3">Bandwidth</th>
+                  <th scope="col" className="px-3 py-3">Revenue</th>
+                  <th scope="col" className="px-3 py-3">Last Login</th>
+                  <th scope="col" className="px-3 py-3">Status</th>
+                  <th scope="col" className="w-40 px-3 py-3">Actions</th>
                 </tr>
               </thead>
               <tbody>

@@ -453,8 +453,8 @@ export default function BillingPage() {
 
   return (
     <div className="master-admin-panel dash-premium animate-dash-fade-in flex min-h-0 flex-1 flex-col gap-3">
-      <div className="flex flex-col gap-3 xl:flex-row">
-        <div className="min-w-0 flex-1 flex flex-col gap-3">
+      <div className="ma-split-layout">
+        <div className="ma-main-col flex flex-col gap-3">
           <AdminPageHeader
             title="Billing & Invoices"
             subtitle="Track all payments, invoices and refunds."
@@ -736,7 +736,7 @@ export default function BillingPage() {
           </section>
         </div>
 
-        <aside className="w-full shrink-0 space-y-3 xl:w-[320px]">
+        <aside className="ma-side-col space-y-3">
           <div className="dash-premium-card p-4">
             <h3 className="text-[13px] font-black text-slate-900">Payment Status</h3>
             <p className="mt-0.5 text-[11px] font-semibold text-slate-400">

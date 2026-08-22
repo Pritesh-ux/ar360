@@ -244,7 +244,10 @@ export default function Ar360ProductResolutionPage() {
           {loading ? (
             <AdminLoadingState label="Loading products…" />
           ) : products.length === 0 ? (
-            <AdminEmptyState title="No products" description="No products matched the search." />
+            <AdminEmptyState
+              title="No products"
+              description="No products matched the current search."
+            />
           ) : (
             <div className="max-h-[480px] overflow-auto">
               <table className="min-w-full text-left text-[13px]">

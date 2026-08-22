@@ -177,9 +177,13 @@ export default function Ar360StableReleasesPage() {
 
           <div className="dash-premium-card overflow-hidden p-0">
             {status.releases.length === 0 ? (
-              <AdminEmptyState title="No releases" description="Create a platform release first." />
+              <AdminEmptyState
+                title="No releases"
+                description="Create a platform release first."
+              />
             ) : (
-              <table className="min-w-full text-left text-[12px]">
+              <div className="ma-table-scroll">
+                <table className="min-w-[900px] w-full text-left text-[12px]">
                 <thead>
                   <tr className={adminTableHeadClass}>
                     <th className="px-4 py-3">Release</th>
@@ -231,6 +235,7 @@ export default function Ar360StableReleasesPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         </>
