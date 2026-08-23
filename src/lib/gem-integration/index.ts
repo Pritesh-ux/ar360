@@ -14,6 +14,7 @@ export {
   getGemBridgeState,
   getGemIntegrationDiagnostics,
   isGemRendererActiveForProduct,
+  isGemRendererOverlayReady,
   subscribeGemBridge,
   syncGemEnvironment,
 } from "./gemModelViewerBridge";

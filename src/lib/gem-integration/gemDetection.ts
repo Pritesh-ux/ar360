@@ -50,7 +50,9 @@ export function analyzeGemCandidatesFromGlbScene(
       hints.has(prim.meshName) ||
       GEM_NAME.test(prim.meshName) ||
       hintGemFromMeshNames([prim.meshName]);
-    if (!nameHint && METAL_NAME.test(prim.meshName)) continue;
+    // Never treat arbitrary meshes (e.g. whole ring) as gems without a name hint.
+    if (!nameHint) continue;
+    if (METAL_NAME.test(prim.meshName)) continue;
 
     const suitability = evaluateGemSuitability(prim);
     if (suitability.status === "UNSUPPORTED") continue;

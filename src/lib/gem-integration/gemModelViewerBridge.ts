@@ -38,6 +38,10 @@ type SessionEntry = {
   candidates: GemCandidateMesh[];
   primaryKey: string;
   hiddenMeshes: Array<{ mesh: Mesh; wasVisible: boolean }>;
+  overlayReady: boolean;
+  scene: import("three").Object3D;
+  syncOkFrames: number;
+  syncMissFrames: number;
   dispose: () => void;
 };
 
@@ -77,10 +81,11 @@ function pickQualityTier() {
   return "medium" as const;
 }
 
-function applyProductionQuality(gem: GemRenderer) {
+function applyProductionQuality(gem: GemRenderer, exposure?: number) {
   const tier = pickQualityTier();
   gem.applyQualityTier(tier === "low" ? "low" : "medium");
   const contracts = tier === "low" ? QUALITY_MOBILE_LOW : QUALITY_DESKTOP_MEDIUM;
+  const exp = typeof exposure === "number" && Number.isFinite(exposure) ? exposure : 1;
   gem.setParams({
     ...paramsForQualityTier(tier === "low" ? "low" : "medium"),
     ...splitContractsFromLegacy({
@@ -98,11 +103,35 @@ function applyProductionQuality(gem: GemRenderer) {
       qualityTier: contracts.qualityTier,
       environmentIntensity: 1,
       environmentRotation: 0,
-      exposure: 1,
+      exposure: exp,
     }).quality,
     autoRotate: false,
     debugMode: "beauty",
   });
+}
+
+function publishGemState(session: SessionEntry, productId: string) {
+  bridgeState = {
+    mode: "gem",
+    productId,
+    candidates: session.candidates,
+    primaryKey: session.primaryKey,
+    overlayReady: session.overlayReady,
+  };
+  emit();
+}
+
+function fallbackSessionToPbr(
+  session: SessionEntry,
+  productId: string,
+  reason: string,
+) {
+  restoreHiddenMeshes(session);
+  session.overlayReady = false;
+  disposeSessionEntry(session);
+  if (activeSession === session) activeSession = null;
+  bridgeState = { mode: "pbr", productId, reason };
+  emit();
 }
 
 function stopRenderLoop() {
@@ -111,13 +140,40 @@ function stopRenderLoop() {
   activeSession?.renderer.stop();
 }
 
-function startRenderLoop(viewer: HTMLElement, session: SessionEntry) {
+function startRenderLoop(
+  viewer: HTMLElement,
+  session: SessionEntry,
+  productId: string,
+) {
   stopRenderLoop();
+  session.syncOkFrames = 0;
+  session.syncMissFrames = 0;
+  session.overlayReady = false;
   session.renderer.start();
   const tick = () => {
     if (activeSession !== session) return;
     const cam = getViewerThreeCamera(viewer);
-    if (cam) session.renderer.syncExternalCamera(cam);
+    if (cam) {
+      session.syncMissFrames = 0;
+      session.syncOkFrames++;
+      session.renderer.syncExternalCamera(cam);
+      if (!session.overlayReady && session.syncOkFrames >= 3) {
+        session.overlayReady = true;
+        hideGemMeshes(session, session.scene, session.primaryKey);
+        publishGemState(session, productId);
+      }
+    } else {
+      session.syncOkFrames = 0;
+      session.syncMissFrames++;
+      if (session.syncMissFrames > 120) {
+        fallbackSessionToPbr(
+          session,
+          productId,
+          "Camera sync failed — using PBR fallback",
+        );
+        return;
+      }
+    }
     const canvas = session.renderer.getDomElement();
     if (canvas?.parentElement) {
       const w = canvas.clientWidth;
@@ -158,7 +214,9 @@ function disposeSessionEntry(entry: SessionEntry) {
 export function subscribeGemBridge(fn: (s: GemBridgeState) => void) {
   listeners.add(fn);
   fn(bridgeState);
-  return () => listeners.delete(fn);
+  return () => {
+    listeners.delete(fn);
+  };
 }
 
 export function getGemBridgeState() {
@@ -166,7 +224,12 @@ export function getGemBridgeState() {
 }
 
 export function isGemRendererActiveForProduct(productId?: string) {
-  if (bridgeState.mode !== "gem") return false;
+  return isGemRendererOverlayReady(productId);
+}
+
+/** True only when overlay camera is synced and gem mesh is actually replaced. */
+export function isGemRendererOverlayReady(productId?: string) {
+  if (bridgeState.mode !== "gem" || !bridgeState.overlayReady) return false;
   if (!productId) return true;
   return bridgeState.productId === productId;
 }
@@ -223,13 +286,14 @@ export async function attachGemBridge(
   const cached = sessionCache.get(ck);
   if (cached) {
     activeSession = cached;
-    hideGemMeshes(cached, input.scene, cached.primaryKey);
-    startRenderLoop(input.viewer, cached);
+    cached.scene = input.scene;
+    startRenderLoop(input.viewer, cached, input.productKey.productId);
     bridgeState = {
       mode: "gem",
       productId: input.productKey.productId,
       candidates: cached.candidates,
       primaryKey: cached.primaryKey,
+      overlayReady: cached.overlayReady,
     };
     emit();
     return bridgeState;
@@ -279,7 +343,7 @@ export async function attachGemBridge(
         }
 
         await gem.applyFromAr360Environment(input.environment);
-        applyProductionQuality(gem);
+        applyProductionQuality(gem, input.environment.exposure);
 
         try {
           gem.packFromSceneMesh(
@@ -298,10 +362,13 @@ export async function attachGemBridge(
           candidates,
           primaryKey: primary.meshKey,
           hiddenMeshes: [],
+          overlayReady: false,
+          scene: input.scene,
+          syncOkFrames: 0,
+          syncMissFrames: 0,
           dispose: () => disposeSessionEntry(session),
         };
 
-        hideGemMeshes(session, input.scene, primary.meshKey);
         return session;
       },
     );
@@ -318,13 +385,14 @@ export async function attachGemBridge(
 
     sessionCache.set(ck, input.productKey.productId, entry, 32 * 1024 * 1024);
     activeSession = entry;
-    startRenderLoop(input.viewer, entry);
+    startRenderLoop(input.viewer, entry, input.productKey.productId);
 
     bridgeState = {
       mode: "gem",
       productId: input.productKey.productId,
       candidates: entry.candidates,
       primaryKey: entry.primaryKey,
+      overlayReady: false,
     };
     emit();
     return bridgeState;

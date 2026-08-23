@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   attachGemBridge,
   buildAr360EnvironmentSource,
   deactivateGemProduct,
   isGemRendererIntegrationEnabled,
+  subscribeGemBridge,
 } from "@/lib/gem-integration";
 import type { ActiveProductKey } from "@/lib/gem-integration/types";
 
@@ -53,6 +54,18 @@ export default function GemRendererOverlay({
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const lastAttachRef = useRef("");
+  const [overlayVisible, setOverlayVisible] = useState(false);
+
+  useEffect(() => {
+    if (!enabled || !isGemRendererIntegrationEnabled()) return;
+    return subscribeGemBridge((state) => {
+      setOverlayVisible(
+        state.mode === "gem" &&
+          state.overlayReady === true &&
+          (!productId || state.productId === productId),
+      );
+    });
+  }, [enabled, productId]);
 
   useEffect(() => {
     if (!enabled || !isGemRendererIntegrationEnabled()) return;
@@ -67,6 +80,7 @@ export default function GemRendererOverlay({
     const attachKey = `${productId}::${variantId || ""}::${modelUrl}::${hintSig}`;
     if (lastAttachRef.current === attachKey) return;
     lastAttachRef.current = attachKey;
+    setOverlayVisible(false);
 
     const origin =
       typeof window !== "undefined" ? window.location.origin : undefined;
@@ -94,6 +108,7 @@ export default function GemRendererOverlay({
     return () => {
       deactivateGemProduct(productId);
       lastAttachRef.current = "";
+      setOverlayVisible(false);
     };
   }, [
     enabled,
@@ -116,7 +131,11 @@ export default function GemRendererOverlay({
       ref={canvasRef}
       aria-hidden="true"
       className="pointer-events-none absolute inset-0 z-[1] h-full w-full"
-      style={{ background: "transparent" }}
+      style={{
+        background: "transparent",
+        opacity: overlayVisible ? 1 : 0,
+        visibility: overlayVisible ? "visible" : "hidden",
+      }}
     />
   );
 }

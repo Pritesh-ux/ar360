@@ -1,4 +1,4 @@
-import type { PerspectiveCamera } from "three";
+import type { Object3D, PerspectiveCamera } from "three";
 
 type ModelViewerCameraHost = {
   getCameraOrbit?: () => { theta: number; phi: number; radius: number } | null;
@@ -7,16 +7,34 @@ type ModelViewerCameraHost = {
   getFieldOfView?: () => number;
 };
 
-/** Read model-viewer's internal Three.js camera via private symbol (same pattern as scene). */
-export function getViewerThreeCamera(viewer: unknown): PerspectiveCamera | null {
+type ModelSceneLike = Object3D & {
+  getCamera?: () => PerspectiveCamera;
+  camera?: PerspectiveCamera;
+};
+
+/** Read model-viewer's internal Three.js scene (Symbol('scene')). */
+export function getViewerThreeScene(viewer: unknown): Object3D | null {
   if (!viewer || typeof viewer !== "object") return null;
   try {
-    const sym = Object.getOwnPropertySymbols(viewer).find(
-      (s) => s.description === "camera",
+    const sceneSymbol = Object.getOwnPropertySymbols(viewer).find(
+      (symbol) => symbol.description === "scene",
     );
-    const cam = sym ? (viewer as Record<symbol, unknown>)[sym] : null;
-    if (cam && typeof cam === "object" && "isPerspectiveCamera" in cam) {
-      return cam as PerspectiveCamera;
+    if (!sceneSymbol) return null;
+    const scene = (viewer as Record<symbol, unknown>)[sceneSymbol];
+    return scene && typeof scene === "object" ? (scene as Object3D) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Model-viewer camera lives on ModelScene.getCamera(), not on the element. */
+export function getViewerThreeCamera(viewer: unknown): PerspectiveCamera | null {
+  const scene = getViewerThreeScene(viewer) as ModelSceneLike | null;
+  if (!scene) return null;
+  try {
+    const cam = scene.getCamera?.() ?? scene.camera ?? null;
+    if (cam && "isPerspectiveCamera" in cam && cam.isPerspectiveCamera) {
+      return cam;
     }
   } catch {
     /* ignore */

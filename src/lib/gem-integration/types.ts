@@ -36,6 +36,8 @@ export type GemBridgeState =
       productId: string;
       candidates: GemCandidateMesh[];
       primaryKey: string;
+      /** True once camera sync is validated and overlay replaces PBR gem. */
+      overlayReady: boolean;
     }
   | { mode: "error"; productId: string; message: string };
 
