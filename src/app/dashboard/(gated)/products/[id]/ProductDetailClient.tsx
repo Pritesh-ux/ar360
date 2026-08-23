@@ -3217,6 +3217,9 @@ export default function ProductEditorPage({ session: initialSession }: Props = {
               <ModelViewer
                 key={id}
                 ref={viewerRef}
+                productId={id}
+                variantId={activeVariantId}
+                environmentRotation={environmentRotation}
                 src={modelSrc}
                 poster={product?.poster}
                 showLoadProgress={false}

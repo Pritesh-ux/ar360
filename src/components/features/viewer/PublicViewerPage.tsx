@@ -843,6 +843,9 @@ export default function PublicViewerPage() {
             <ModelViewer
               key={`${modelIdentity}-${modelRetryKey}`}
               ref={viewerRef}
+              productId={String(product.id || product.productUid || id)}
+              variantId={previewVariantId || undefined}
+              environmentRotation={settings.environmentRotation}
               src={modelSrc}
               poster={normalizeViewerAssetUrl(settings.poster)}
               exposure={settings.exposure ?? 0.9}

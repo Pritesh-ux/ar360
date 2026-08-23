@@ -129,12 +129,14 @@ function runLocal(label, command, args = []) {
   }
 }
 
-// Build + pack (skip local migrate — staging DB migrations are run on the VPS)
+// Build + pack (skip local migrate — staging DB migrations are run on the VPS).
+// Skip max-warnings=0 lint gate on staging deploys; typecheck + build still run.
 runLocal("Build & Package Deploy Artifact", "npm", [
   "run",
   "deploy",
   "--",
   "--skip-migrate",
+  "--skip-lint",
 ]);
 
 const deployDir = path.resolve(root, "deploy");

@@ -99,6 +99,8 @@ export type GemRendererOptions = {
   environmentUrl?: string;
   onDiagnostics?: (d: GemPocDiagnostics) => void;
   onDeviceDebug?: () => void;
+  /** AR360 Canvas overlay — transparent, no procedural bootstrap. */
+  integration?: boolean;
 };
 
 export type PerfSampleResult = {
@@ -250,24 +252,30 @@ export class GemRenderer {
   private firstRenderLogged = false;
   private firstDrawLogged = false;
   private onDeviceDebug?: () => void;
+  private integrationMode = false;
+  private externalCameraMode = false;
 
   constructor(options: GemRendererOptions) {
     this.onDiagnostics = options.onDiagnostics;
     this.onDeviceDebug = options.onDeviceDebug;
+    this.integrationMode = options.integration === true;
     this.deviceDebug.setStage("boot", "ok", "GemRenderer V5 constructing");
     this.deviceDebug.subscribe(() => this.onDeviceDebug?.());
 
     this.renderer = new WebGLRenderer({
       canvas: options.canvas,
       antialias: false,
-      alpha: false,
+      alpha: this.integrationMode,
       powerPreference: "high-performance",
       preserveDrawingBuffer: true,
     });
     this.renderer.outputColorSpace = SRGBColorSpace;
     this.renderer.toneMapping = AgXToneMapping;
     this.renderer.toneMappingExposure = 1;
-    this.renderer.setClearColor(0x0b0d10, 1);
+    this.renderer.setClearColor(
+      0x0b0d10,
+      this.integrationMode ? 0 : 1,
+    );
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
     this.renderer.debug.checkShaderErrors = true;
 
@@ -339,7 +347,88 @@ export class GemRenderer {
     this.controls.maxDistance = 8;
 
     this.material.setParams(this.params);
-    void this.bootstrap(options.environmentUrl || "/hdr/studio.hdr");
+    if (this.integrationMode) {
+      this.controls.enabled = false;
+      this.cameraLocked = true;
+      this.externalCameraMode = true;
+    } else {
+      void this.bootstrap(options.environmentUrl || "/hdr/studio.hdr");
+    }
+  }
+
+  /** Integration path — env + shaders only; geometry comes from ModelViewer scene. */
+  async prepareForIntegration(envUrl: string) {
+    try {
+      await this.loadEnvironment(envUrl);
+      this.probeShaderCompile();
+      this.ready = true;
+      this.deviceDebug.log("integration prepare complete");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.deviceDebug.setStage("boot", "fail", `integration prepare failed: ${msg}`);
+      throw err;
+    }
+  }
+
+  /**
+   * Pack a mesh already loaded in ModelViewer (no second GLB fetch).
+   * Preserves world transform — no POC view-fit normalization.
+   */
+  packFromSceneMesh(
+    sourceMesh: Mesh,
+    meshKey: string,
+    label: string,
+    reportPrim: MeshPrimitiveReport,
+  ): GemSuitabilityResult {
+    const suitability = evaluateGemSuitability(reportPrim);
+    this.lastSuitability = suitability;
+    this.deviceDebug.asset.selectedMesh = meshKey;
+    this.deviceDebug.asset.suitability = suitability.status;
+    this.deviceDebug.setStage(
+      "suitability",
+      suitability.status === "UNSUPPORTED" ? "fail" : "ok",
+      `${suitability.status} · tris=${suitability.triangleCount}`,
+    );
+
+    if (suitability.status === "UNSUPPORTED") {
+      this.fallbackActive = true;
+      this.fallbackReason = suitability.summary;
+      disposePackedGem(this.packed);
+      this.packed = null;
+      this.sourceLabel = `REJECTED:${meshKey}`;
+      throw new Error(suitability.summary);
+    }
+
+    sourceMesh.updateWorldMatrix(true, false);
+    this.fallbackActive = false;
+    this.fallbackReason =
+      suitability.status === "SUPPORTED_WITH_WARNING"
+        ? suitability.warnings[0] || suitability.summary
+        : null;
+
+    disposePackedGem(this.packed);
+    this.packed = adaptMeshToGem(sourceMesh, `${label}:${meshKey}`);
+    this.sourceLabel = this.packed.sourceLabel;
+    this.pushTrianglesToShader();
+    return suitability;
+  }
+
+  /** Copy camera matrices from model-viewer Three.js camera each frame. */
+  syncExternalCamera(source: PerspectiveCamera) {
+    this.externalCameraMode = true;
+    this.camera.position.copy(source.position);
+    this.camera.quaternion.copy(source.quaternion);
+    this.camera.projectionMatrix.copy(source.projectionMatrix);
+    this.camera.projectionMatrixInverse.copy(source.projectionMatrixInverse);
+    this.camera.updateMatrixWorld(true);
+  }
+
+  isIntegrationMode() {
+    return this.integrationMode;
+  }
+
+  getDomElement() {
+    return this.renderer.domElement;
   }
 
   private async bootstrap(envUrl: string) {
@@ -1083,21 +1172,27 @@ export class GemRenderer {
     const t0 = performance.now();
     const dt = this.clock.getDelta();
     const t = this.clock.elapsedTime;
-    if (!this.cameraLocked) this.controls.update();
+    if (!this.externalCameraMode && !this.cameraLocked) this.controls.update();
 
     const canvas = this.renderer.domElement;
     this.deviceDebug.render.canvasCss = `${canvas.clientWidth}x${canvas.clientHeight}`;
     this.deviceDebug.render.canvasBuffer = `${canvas.width}x${canvas.height}`;
 
     if (!this.packed) {
-      // Suitability rejection / fallback — keep page alive with clear color
       this.renderer.setRenderTarget(null);
+      if (this.integrationMode) {
+        this.renderer.setClearColor(0x000000, 0);
+      }
       this.renderer.clear();
       this.frameTimeMs = performance.now() - t0;
       return;
     }
 
-    if (this.params.autoRotate && !this.cameraLocked) {
+    if (
+      this.params.autoRotate &&
+      !this.cameraLocked &&
+      !this.externalCameraMode
+    ) {
       this.gemAngle += dt * this.params.autoRotateSpeed;
     }
     this.gemRotation.makeRotationY(this.gemAngle);

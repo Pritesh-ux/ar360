@@ -69,6 +69,9 @@ import { hideBackdropPlanes } from "@/lib/model/backdrop-plane";
 import { ensureStudioFormLights } from "@/lib/model/studio-form-lights";
 import { applyEnvironmentGrade } from "@/lib/model/environment-grade";
 import { startModelViewerTransparentClearLoop } from "@/lib/model/viewer-transparent-clear";
+import { isGemRendererActiveForProduct } from "@/lib/gem-integration";
+import GemRendererOverlay from "@/components/shared/GemRendererOverlay";
+import { deactivateGemProduct } from "@/lib/gem-integration";
 import { planWhiteProductDepth } from "@/lib/materials/white-product-depth";
 import {
   formatModelViewerScale,
@@ -306,6 +309,11 @@ type Props = {
   onModelError?: (event: Event) => void;
   /** Skip editor material/texture overrides (landing page previews). */
   disableMaterialOverrides?: boolean;
+  /** Active product id — enables internal GemRenderer path when flagged. */
+  productId?: string;
+  variantId?: string;
+  /** Product-level environment Y rotation (degrees) for gem HDRI bridge. */
+  environmentRotation?: number;
   /**
    * Show the in-viewer progress pill. Set false when a parent already owns
    * loading UI (editor / hero) so users don't see stacked spinners.
@@ -2316,22 +2324,24 @@ async function applyMaterialSettingToSlot(
         gemstoneType: setting.gemstoneType,
         viewer,
       });
-      // Option B + debug modes via window.__AR360_GEM_DEBUG__
-      const scene = getViewerThreeScene(viewer);
-      applyGemstoneOpticalApproximationToBacking(
-        material,
-        resolveGemstoneOpticsApproxParams({
-          gemstoneType: setting.gemstoneType,
-          ior: setting.ior ?? ior,
-          transmission: appliedTransmission,
-          attenRgb,
-          baseRgb: [r, g, b],
-        }),
-        {
-          sceneEnvironment: scene?.environment ?? null,
-          viewer,
-        },
-      );
+      // When GemRenderer owns the mesh, skip legacy optical approximation.
+      if (!isGemRendererActiveForProduct()) {
+        const scene = getViewerThreeScene(viewer);
+        applyGemstoneOpticalApproximationToBacking(
+          material,
+          resolveGemstoneOpticsApproxParams({
+            gemstoneType: setting.gemstoneType,
+            ior: setting.ior ?? ior,
+            transmission: appliedTransmission,
+            attenRgb,
+            baseRgb: [r, g, b],
+          }),
+          {
+            sceneEnvironment: scene?.environment ?? null,
+            viewer,
+          },
+        );
+      }
       if (typeof window !== "undefined") {
         (window as any).__AR360_PROBE_GEM__ = () =>
           probeGemstoneOpticalBacking(material, {
@@ -2701,6 +2711,9 @@ const ModelViewer = forwardRef<any, Props>(function ModelViewer(
     onModelError,
     disableMaterialOverrides = false,
     showLoadProgress = true,
+    productId,
+    variantId,
+    environmentRotation,
     forwardedRef,
   },
   ref,
@@ -2714,6 +2727,9 @@ const ModelViewer = forwardRef<any, Props>(function ModelViewer(
   const [loadProgress, setLoadProgress] = useState(0);
   const [modelLoading, setModelLoading] = useState(true);
   const [resolvedScale, setResolvedScale] = useState(1);
+  const [gemMeshHintsState, setGemMeshHintsState] = useState<string[]>([]);
+  const [materialNamesState, setMaterialNamesState] = useState<string[]>([]);
+  const [threeScene, setThreeScene] = useState<any>(null);
   // Drop missing posters so model-viewer does not spam 404s in the console.
   const [safePoster, setSafePoster] = useState<string | undefined>(poster);
   const onMaterialsLoadedRef = useRef(onMaterialsLoaded);
@@ -2775,7 +2791,17 @@ const ModelViewer = forwardRef<any, Props>(function ModelViewer(
     setModelLoading(true);
     setLoadProgress(0);
     setResolvedScale(1);
-  }, [runtimeSrc]);
+    if (productId) deactivateGemProduct(productId);
+    setGemMeshHintsState([]);
+    setMaterialNamesState([]);
+    setThreeScene(null);
+  }, [runtimeSrc, productId]);
+
+  useEffect(() => {
+    return () => {
+      if (productId) deactivateGemProduct(productId);
+    };
+  }, [productId]);
 
   const setRef = useCallback(
     (node: any) => {
@@ -3184,6 +3210,13 @@ const ModelViewer = forwardRef<any, Props>(function ModelViewer(
       if (materialsSignature !== lastMaterialsSignatureRef.current) {
         lastMaterialsSignatureRef.current = materialsSignature;
         nativeMaterialsRef.current = nativeSettings;
+        setGemMeshHintsState(gemMeshHints);
+        setMaterialNamesState(list.map((m) => m.name));
+        try {
+          setThreeScene(getViewerThreeScene(viewer));
+        } catch {
+          setThreeScene(null);
+        }
         onMaterialsLoadedRef.current?.(list, nativeSettings, { gemMeshHints });
       }
 
@@ -3670,7 +3703,8 @@ const ModelViewer = forwardRef<any, Props>(function ModelViewer(
     Boolean(safeSkyboxImage && isProtectedAssetUrl(safeSkyboxImage));
 
   return (
-<model-viewer
+    <div className="relative h-full w-full min-h-full min-w-full">
+    <model-viewer
       ref={setRef}
       src={absoluteModelSrc}
       poster={safePoster}
@@ -3826,6 +3860,19 @@ const ModelViewer = forwardRef<any, Props>(function ModelViewer(
         </button>
       ))}
     </model-viewer>
+    <GemRendererOverlay
+      viewer={viewerElement}
+      scene={threeScene}
+      productId={productId}
+      variantId={variantId}
+      modelUrl={absoluteModelSrc}
+      gemMeshHints={gemMeshHintsState}
+      materialNames={materialNamesState}
+      environmentImage={safeEnvironmentImage}
+      exposure={exposure}
+      environmentRotation={environmentRotation}
+    />
+    </div>
   );
 });
 
