@@ -189,7 +189,10 @@ const remoteCommands = [
   `test -d "${REQUIRED_DIR}"`,
   `cd "${REQUIRED_DIR}"`,
   `test -f deploy-new.tar`,
-  `if [ -f deploy/scripts/vps/swap-deploy-staging.sh ]; then bash deploy/scripts/vps/swap-deploy-staging.sh; elif [ -f scripts/vps/swap-deploy-staging.sh ]; then bash scripts/vps/swap-deploy-staging.sh; else echo "Missing swap-deploy-staging.sh"; exit 1; fi`,
+  `rm -rf /tmp/ar360-staging-swap-bootstrap`,
+  `mkdir -p /tmp/ar360-staging-swap-bootstrap`,
+  `tar -xf deploy-new.tar -C /tmp/ar360-staging-swap-bootstrap scripts/vps/swap-deploy-staging.sh scripts/vps/verify-staging-runtime.sh`,
+  `bash /tmp/ar360-staging-swap-bootstrap/scripts/vps/swap-deploy-staging.sh`,
 ].join(" && ");
 
 console.log("\n▶ Running staging swap on VPS...");
