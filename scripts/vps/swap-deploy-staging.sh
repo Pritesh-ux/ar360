@@ -127,13 +127,19 @@ rsync -a "$ROOT/deploy/public/uploads/" "$SHARED/public/uploads/"
 cd "$ROOT/deploy"
 test -f server.js || die "Missing server.js after swap"
 test -f .env || die "Missing .env after swap"
+test -f ecosystem.staging.config.js || die "Missing ecosystem.staging.config.js after swap"
+
+SIGNUP_ROUTE="$ROOT/deploy/.next/server/app/api/auth/signup/route.js"
+test -f "$SIGNUP_ROUTE" || die "Missing compiled signup route after swap"
+grep -q "staging_signup_blocked" "$SIGNUP_ROUTE" \
+  || die "Deployed signup route missing staging gate — refuse to start unsafe build"
+grep -q "STAGING_SIGNUP_DISABLED" "$SIGNUP_ROUTE" \
+  || die "Deployed signup route missing STAGING_SIGNUP_DISABLED handling"
 
 # Never restart production PM2 name
 if [ "$PM2_NAME" = "$FORBIDDEN_PM2" ]; then
   die "Refusing to restart $FORBIDDEN_PM2"
 fi
 
-pm2 restart "$PM2_NAME" --update-env
-sleep 4
-curl -s -o /dev/null -w "login=%{http_code}\n" --max-time 20 "http://127.0.0.1:${HEALTH_PORT}/login"
+bash "$ROOT/deploy/scripts/vps/verify-staging-runtime.sh"
 echo "Staging swap done $STAMP (root=$ROOT pm2=$PM2_NAME port=$HEALTH_PORT)"

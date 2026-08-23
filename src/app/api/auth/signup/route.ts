@@ -74,7 +74,10 @@ export async function POST(request: NextRequest) {
           reason: "staging_signup_blocked",
           ...meta,
         }).catch(() => {});
-        return NextResponse.json({ error: signup.message }, { status: 403 });
+        return NextResponse.json(
+          { error: signup.message, code: OnboardingErrorCode.STAGING_SIGNUP_DISABLED },
+          { status: 403 },
+        );
       }
       if (signup.code === OnboardingErrorCode.EMAIL_ALREADY_EXISTS) {
         return NextResponse.json(

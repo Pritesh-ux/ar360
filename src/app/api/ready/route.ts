@@ -156,10 +156,15 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  const deployTarget = String(process.env.AR360_DEPLOY_TARGET || "")
+    .trim()
+    .toLowerCase();
+
   return NextResponse.json(
     {
       ok,
       status: ok ? "ready" : "degraded",
+      deployTarget: deployTarget || "unset",
       checks,
       timestamp,
     },

@@ -129,17 +129,48 @@ function runLocal(label, command, args = []) {
   }
 }
 
+// Force staging target for build artifacts and fail-closed local validation.
+process.env.AR360_DEPLOY_TARGET = "staging";
+
 // Build + pack (skip local migrate — staging DB migrations are run on the VPS)
 runLocal("Build & Package Deploy Artifact", "npm", [
   "run",
   "deploy",
   "--",
   "--skip-migrate",
+  "--skip-lint",
 ]);
 
 const deployDir = path.resolve(root, "deploy");
 if (!fs.existsSync(path.join(deployDir, "server.js"))) {
   die("deploy/server.js missing after pack");
+}
+
+const signupRoute = path.join(
+  deployDir,
+  ".next",
+  "server",
+  "app",
+  "api",
+  "auth",
+  "signup",
+  "route.js",
+);
+if (!fs.existsSync(signupRoute)) {
+  die("deploy signup route missing — build incomplete");
+}
+const signupSource = fs.readFileSync(signupRoute, "utf8");
+if (!signupSource.includes("staging_signup_blocked")) {
+  die("Deploy artifact missing staging signup gate — refuse upload");
+}
+if (!signupSource.includes("STAGING_SIGNUP_DISABLED")) {
+  die("Deploy artifact missing STAGING_SIGNUP_DISABLED handling — refuse upload");
+}
+if (!fs.existsSync(path.join(deployDir, "ecosystem.staging.config.js"))) {
+  die("Deploy artifact missing ecosystem.staging.config.js");
+}
+if (!fs.existsSync(path.join(deployDir, "scripts/vps/verify-staging-runtime.sh"))) {
+  die("Deploy artifact missing scripts/vps/verify-staging-runtime.sh");
 }
 
 const tarName = "deploy-new.tar";
@@ -176,5 +207,15 @@ const remoteCommands = [
 
 console.log("\n▶ Running staging swap on VPS...");
 runLocal("SSH Staging Swap", "ssh", [...sshArgs, `${user}@${host}`, remoteCommands]);
+
+console.log("\n▶ Verifying staging signup is blocked (HTTP)...");
+const verifySignup = spawnSync(
+  "node",
+  [path.join(root, "scripts", "verify-staging-signup-block.mjs"), `https://staging.ar360studio.com`],
+  { cwd: root, stdio: "inherit", shell: true },
+);
+if (verifySignup.status !== 0) {
+  die("Staging signup block HTTP verification failed");
+}
 
 console.log("\n✔ Staging deploy finished (production /var/www/ar360 was not targeted).");

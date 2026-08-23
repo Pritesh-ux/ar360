@@ -77,7 +77,8 @@ function injectStandaloneEnvLoader(serverPath) {
       if (eq <= 0) continue;
       var key = t.slice(0, eq).trim();
       if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
-      if (process.env[key] !== undefined) continue;
+      // AR360_DEPLOY_TARGET must come from deploy/.env — authoritative for staging gates.
+      if (process.env[key] !== undefined && key !== "AR360_DEPLOY_TARGET") continue;
       var value = t.slice(eq + 1).trim();
       if (
         (value.charAt(0) === '"' && value.charAt(value.length - 1) === '"') ||

@@ -64,6 +64,7 @@ describe("Phase 1 — staging signup block", () => {
     assert.match(src, /STAGING_SIGNUP_DISABLED/);
     assert.match(src, /status: 403/);
     assert.match(src, /staging_signup_blocked/);
+    assert.match(src, /code: OnboardingErrorCode\.STAGING_SIGNUP_DISABLED/);
   });
 
   it("signup server action cannot bypass API gate", async () => {
@@ -255,5 +256,32 @@ describe("Phase 9 — route classification (documented)", () => {
     const dashboardProduct = await readSrc("../../app/api/products/[id]/route.ts");
     assert.match(publicProduct, /isPublishedStatus|published/);
     assert.match(dashboardProduct, /requireApiUser/);
+  });
+});
+
+describe("Phase 13 — deployment script hardening", () => {
+  it("26. env loader always applies AR360_DEPLOY_TARGET from deploy .env", async () => {
+    const src = await readSrc("../../../scripts/deploy.mjs");
+    assert.match(src, /AR360_DEPLOY_TARGET must come from deploy/);
+    assert.match(src, /key !== "AR360_DEPLOY_TARGET"/);
+  });
+
+  it("27. swap script verifies signup gate before PM2 start", async () => {
+    const src = await readSrc("../../../scripts/vps/swap-deploy-staging.sh");
+    assert.match(src, /staging_signup_blocked/);
+    assert.match(src, /verify-staging-runtime\.sh/);
+  });
+
+  it("27. vps deploy helper validates artifact and signup probe", async () => {
+    const src = await readSrc("../../../scripts/vps-deploy-staging.mjs");
+    assert.match(src, /staging_signup_blocked/);
+    assert.match(src, /verify-staging-signup-block\.mjs/);
+    assert.match(src, /process\.env\.AR360_DEPLOY_TARGET = "staging"/);
+  });
+
+  it("PM2 staging ecosystem pins deploy target", async () => {
+    const src = await readSrc("../../../ecosystem.staging.config.js");
+    assert.match(src, /AR360_DEPLOY_TARGET: "staging"/);
+    assert.match(src, /ar360-staging-web/);
   });
 });
