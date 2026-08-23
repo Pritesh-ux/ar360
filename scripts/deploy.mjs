@@ -13,6 +13,7 @@ const args = new Set(process.argv.slice(2));
 const packOnly = args.has("--pack-only");
 const skipMigrate = args.has("--skip-migrate");
 const skipTests = args.has("--skip-tests");
+const skipLint = args.has("--skip-lint");
 
 function run(label, command, env = {}) {
   console.log(`\n▶ ${label}`);
@@ -140,6 +141,36 @@ function packDeploy() {
   fs.mkdirSync(path.join(deploy, "storage", "Customers"), { recursive: true });
   fs.mkdirSync(path.join(deploy, "storage", "private", "object-capture"), { recursive: true });
 
+  // Staging-only: pack Jewelry Gem#0 fixture into deploy public (not production).
+  // Lives under public so staging swap's storage preserve cannot drop it.
+  const deployTarget = (process.env.AR360_DEPLOY_TARGET || "").trim().toLowerCase();
+  if (deployTarget === "staging") {
+    const pocGlbSrc = path.join(
+      root,
+      "storage",
+      "Customers",
+      "CUS-169432",
+      "Products",
+      "PRD_AE4ZBKQY",
+      "model.glb",
+    );
+    const pocGlbDst = path.join(
+      deploy,
+      "public",
+      "experiments",
+      "gem-renderer",
+      "fixtures",
+      "jewelry.glb",
+    );
+    if (fs.existsSync(pocGlbSrc)) {
+      fs.mkdirSync(path.dirname(pocGlbDst), { recursive: true });
+      fs.copyFileSync(pocGlbSrc, pocGlbDst);
+      console.log("  · packed staging POC jewelry.glb into deploy/public/experiments/…");
+    } else {
+      console.warn("  · WARN: local jewelry GLB missing — Gem#0 may 404 on staging");
+    }
+  }
+
   copyFileIfExists(path.join(root, ".env.example"), path.join(deploy, ".env.example"));
   copyFileIfExists(path.join(root, ".env.staging.example"), path.join(deploy, ".env.staging.example"));
   copyFileIfExists(path.join(root, "package-lock.json"), path.join(deploy, "package-lock.json"));
@@ -181,7 +212,11 @@ async function main() {
   if (!packOnly) {
     run("Install dependencies", "npm ci");
     run("Typecheck", "npm run typecheck");
-    run("Lint", "npm run lint");
+    if (!skipLint) {
+      run("Lint", "npm run lint");
+    } else {
+      console.log("\n▶ Lint (skipped via --skip-lint)");
+    }
 
     if (!skipTests) {
       run("Unit tests", "npm run test:unit");
