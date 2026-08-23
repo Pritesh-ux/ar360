@@ -9,6 +9,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { spawnSync } from "child_process";
+import { assertStagingSignupGateInArtifact } from "./lib/staging-artifact-guards.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
@@ -146,26 +147,12 @@ if (!fs.existsSync(path.join(deployDir, "server.js"))) {
   die("deploy/server.js missing after pack");
 }
 
-const signupRoute = path.join(
-  deployDir,
-  ".next",
-  "server",
-  "app",
-  "api",
-  "auth",
-  "signup",
-  "route.js",
-);
-if (!fs.existsSync(signupRoute)) {
-  die("deploy signup route missing — build incomplete");
+try {
+  assertStagingSignupGateInArtifact(deployDir);
+} catch (error) {
+  die(error instanceof Error ? error.message : String(error));
 }
-const signupSource = fs.readFileSync(signupRoute, "utf8");
-if (!signupSource.includes("staging_signup_blocked")) {
-  die("Deploy artifact missing staging signup gate — refuse upload");
-}
-if (!signupSource.includes("STAGING_SIGNUP_DISABLED")) {
-  die("Deploy artifact missing STAGING_SIGNUP_DISABLED handling — refuse upload");
-}
+
 if (!fs.existsSync(path.join(deployDir, "ecosystem.staging.config.js"))) {
   die("Deploy artifact missing ecosystem.staging.config.js");
 }

@@ -26,14 +26,14 @@ test -f ecosystem.staging.config.js || die "Missing ecosystem.staging.config.js"
 grep -Eq '^[[:space:]]*AR360_DEPLOY_TARGET[[:space:]]*=[[:space:]]*staging[[:space:]]*$' .env \
   || die ".env must set AR360_DEPLOY_TARGET=staging"
 
-SIGNUP_ROUTE=".next/server/app/api/auth/signup/route.js"
-test -f "$SIGNUP_ROUTE" || die "Missing compiled signup route"
+SIGNUP_SERVER="$DEPLOY/.next/server"
+test -d "$SIGNUP_SERVER" || die "Missing compiled .next/server"
 
-grep -q "staging_signup_blocked" "$SIGNUP_ROUTE" \
-  || die "Signup route missing staging_signup_blocked guard (old build deployed?)"
+grep -rq "staging_signup_blocked" "$SIGNUP_SERVER" \
+  || die "Signup server bundle missing staging_signup_blocked guard (old build deployed?)"
 
-grep -q "STAGING_SIGNUP_DISABLED" "$SIGNUP_ROUTE" \
-  || die "Signup route missing STAGING_SIGNUP_DISABLED handling"
+grep -rq "STAGING_SIGNUP_DISABLED" "$SIGNUP_SERVER" \
+  || die "Signup server bundle missing STAGING_SIGNUP_DISABLED handling"
 
 # Ensure PM2 uses staging ecosystem (sets AR360_DEPLOY_TARGET=staging in process env).
 if pm2 describe "$PM2_NAME" >/dev/null 2>&1; then

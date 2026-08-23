@@ -129,12 +129,12 @@ test -f server.js || die "Missing server.js after swap"
 test -f .env || die "Missing .env after swap"
 test -f ecosystem.staging.config.js || die "Missing ecosystem.staging.config.js after swap"
 
-SIGNUP_ROUTE="$ROOT/deploy/.next/server/app/api/auth/signup/route.js"
-test -f "$SIGNUP_ROUTE" || die "Missing compiled signup route after swap"
-grep -q "staging_signup_blocked" "$SIGNUP_ROUTE" \
-  || die "Deployed signup route missing staging gate — refuse to start unsafe build"
-grep -q "STAGING_SIGNUP_DISABLED" "$SIGNUP_ROUTE" \
-  || die "Deployed signup route missing STAGING_SIGNUP_DISABLED handling"
+SIGNUP_SERVER="$ROOT/deploy/.next/server"
+test -d "$SIGNUP_SERVER" || die "Missing compiled .next/server after swap"
+grep -rq "staging_signup_blocked" "$SIGNUP_SERVER" \
+  || die "Deployed server bundle missing staging gate — refuse to start unsafe build"
+grep -rq "STAGING_SIGNUP_DISABLED" "$SIGNUP_SERVER" \
+  || die "Deployed server bundle missing STAGING_SIGNUP_DISABLED handling"
 
 # Never restart production PM2 name
 if [ "$PM2_NAME" = "$FORBIDDEN_PM2" ]; then
