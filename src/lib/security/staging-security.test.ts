@@ -274,7 +274,7 @@ describe("Phase 13 — deployment script hardening", () => {
 
   it("27. vps deploy helper validates artifact and signup probe", async () => {
     const src = await readSrc("../../../scripts/vps-deploy-staging.mjs");
-    assert.match(src, /staging_signup_blocked/);
+    assert.match(src, /assertStagingSignupGateInArtifact/);
     assert.match(src, /verify-staging-signup-block\.mjs/);
     assert.match(src, /process\.env\.AR360_DEPLOY_TARGET = "staging"/);
   });
