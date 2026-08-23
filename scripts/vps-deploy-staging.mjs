@@ -117,11 +117,11 @@ console.log(`- PM2 App Name: ${pm2Name}`);
 if (keyPath) console.log("- Private Key: (set)");
 console.log("------------------------------------\n");
 
-function runLocal(label, command, args = []) {
+function runLocal(label, command, args = [], options = {}) {
   console.log(`▶ Running: ${label}`);
   console.log(`  $ ${command} ${args.join(" ")}`);
   const result = spawnSync(command, args, {
-    shell: true,
+    shell: options.shell ?? true,
     cwd: root,
     stdio: "inherit",
   });
@@ -183,7 +183,7 @@ if (keyPath) {
 
 const remoteTar = `${user}@${host}:${dir}/deploy-new.tar`;
 console.log("\n▶ Uploading deploy-new.tar to staging VPS...");
-runLocal("SCP Upload Artifact", "scp", [...scpArgs, tarName, remoteTar]);
+runLocal("SCP Upload Artifact", "scp", [...scpArgs, tarName, remoteTar], { shell: false });
 
 const remoteCommands = [
   `test -d "${REQUIRED_DIR}"`,
@@ -193,7 +193,7 @@ const remoteCommands = [
 ].join(" && ");
 
 console.log("\n▶ Running staging swap on VPS...");
-runLocal("SSH Staging Swap", "ssh", [...sshArgs, `${user}@${host}`, remoteCommands]);
+runLocal("SSH Staging Swap", "ssh", [...sshArgs, `${user}@${host}`, remoteCommands], { shell: false });
 
 console.log("\n▶ Verifying staging signup is blocked (HTTP)...");
 const verifySignup = spawnSync(
