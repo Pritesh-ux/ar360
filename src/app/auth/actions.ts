@@ -240,6 +240,16 @@ export async function signupAction(formData: FormData) {
   }
 
   if (signup!.ok === false) {
+    if (signup!.code === OnboardingErrorCode.STAGING_SIGNUP_DISABLED) {
+      void writeLoginLog({
+        actorType: "customer",
+        email,
+        status: "failed",
+        reason: "staging_signup_blocked",
+        ...(await requestMeta()),
+      }).catch(() => {});
+      withError(signupPath, signup!.message);
+    }
     if (signup!.code === OnboardingErrorCode.EMAIL_ALREADY_EXISTS) {
       withError(signupPath, "An account with this email already exists. Please log in instead.");
     }

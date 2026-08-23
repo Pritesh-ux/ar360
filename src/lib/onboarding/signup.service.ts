@@ -9,6 +9,7 @@ import { ensureOnboardingSchema, initializeCustomerOnboarding } from "@/lib/onbo
 import { createWelcomeNotification } from "@/lib/onboarding/notifications";
 import { logOnboardingEvent } from "@/lib/onboarding/activity";
 import { sendWelcomeEmail } from "@/lib/email/customer-lifecycle.service";
+import { evaluatePublicSignupPolicy } from "@/lib/security/staging-policy";
 
 export type SignupResult =
   | {
@@ -50,6 +51,15 @@ export async function registerCustomerAccount(input: SignupFormInput): Promise<S
   }
 
   const { name, normalizedEmail, password, companyName, phone, website } = validation.data;
+
+  const signupPolicy = evaluatePublicSignupPolicy({ email: normalizedEmail });
+  if (signupPolicy.allowed === false) {
+    return {
+      ok: false,
+      code: OnboardingErrorCode.STAGING_SIGNUP_DISABLED,
+      message: signupPolicy.message,
+    };
+  }
 
   const defaultPlan = await resolveDefaultSignupPlan();
   if (!defaultPlan) {

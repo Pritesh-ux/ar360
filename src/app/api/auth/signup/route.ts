@@ -66,6 +66,16 @@ export async function POST(request: NextRequest) {
     });
 
     if (signup.ok === false) {
+      if (signup.code === OnboardingErrorCode.STAGING_SIGNUP_DISABLED) {
+        await writeLoginLog({
+          actorType: "customer",
+          email,
+          status: "failed",
+          reason: "staging_signup_blocked",
+          ...meta,
+        }).catch(() => {});
+        return NextResponse.json({ error: signup.message }, { status: 403 });
+      }
       if (signup.code === OnboardingErrorCode.EMAIL_ALREADY_EXISTS) {
         return NextResponse.json(
           { error: "An account with this email already exists. Please log in instead." },

@@ -1,6 +1,7 @@
 export const OnboardingErrorCode = {
   SIGNUP_VALIDATION_FAILED: "SIGNUP_VALIDATION_FAILED",
   EMAIL_ALREADY_EXISTS: "EMAIL_ALREADY_EXISTS",
+  STAGING_SIGNUP_DISABLED: "STAGING_SIGNUP_DISABLED",
   SIGNUP_FAILED: "SIGNUP_FAILED",
   DEFAULT_PLAN_NOT_CONFIGURED: "DEFAULT_PLAN_NOT_CONFIGURED",
   ONBOARDING_NOT_FOUND: "ONBOARDING_NOT_FOUND",
@@ -16,6 +17,7 @@ export type OnboardingErrorCode = (typeof OnboardingErrorCode)[keyof typeof Onbo
 const MESSAGES: Record<OnboardingErrorCode, string> = {
   SIGNUP_VALIDATION_FAILED: "Please check your signup details and try again.",
   EMAIL_ALREADY_EXISTS: "An account with this email already exists. Please log in instead.",
+  STAGING_SIGNUP_DISABLED: "Registration is currently disabled on staging.",
   SIGNUP_FAILED: "We could not create your account. Please try again.",
   DEFAULT_PLAN_NOT_CONFIGURED: "Signup is temporarily unavailable. Please contact support.",
   ONBOARDING_NOT_FOUND: "Onboarding state not found.",
