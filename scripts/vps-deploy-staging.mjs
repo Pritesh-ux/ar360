@@ -191,7 +191,9 @@ const remoteCommands = [
   `test -f deploy-new.tar`,
   `rm -rf /tmp/ar360-staging-swap-bootstrap`,
   `mkdir -p /tmp/ar360-staging-swap-bootstrap`,
-  `tar -xf deploy-new.tar -C /tmp/ar360-staging-swap-bootstrap scripts/vps/swap-deploy-staging.sh scripts/vps/verify-staging-runtime.sh`,
+  // Windows-created tars often prefix members with "./"
+  `tar -xf deploy-new.tar -C /tmp/ar360-staging-swap-bootstrap ./scripts/vps/swap-deploy-staging.sh ./scripts/vps/verify-staging-runtime.sh || tar -xf deploy-new.tar -C /tmp/ar360-staging-swap-bootstrap scripts/vps/swap-deploy-staging.sh scripts/vps/verify-staging-runtime.sh`,
+  `sed -i 's/\\r$//' /tmp/ar360-staging-swap-bootstrap/scripts/vps/*.sh`,
   `bash /tmp/ar360-staging-swap-bootstrap/scripts/vps/swap-deploy-staging.sh`,
 ].join(" && ");
 
