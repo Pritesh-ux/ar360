@@ -38,6 +38,9 @@ function buildContentSecurityPolicy() {
       "https://checkout.razorpay.com",
       "https://cdn.razorpay.com",
       "https://www.gstatic.com",
+      "https://www.google-analytics.com",
+      "https://www.googletagmanager.com",
+      "https://analytics.google.com",
       "wss:",
       connectExtra,
     ]
@@ -57,7 +60,7 @@ const securityHeaders = [
   { key: "X-Frame-Options", value: "SAMEORIGIN" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=()" },
+  { key: "Permissions-Policy", value: "camera=(self), accelerometer=(self), gyroscope=(self), magnetometer=(self), xr-spatial-tracking=(self), microphone=(), geolocation=()" },
   ...(process.env.NODE_ENV === "production"
     ? [
         {
@@ -78,7 +81,7 @@ const nextConfig: NextConfig = {
   // (bundling breaks __dirname → .next/.../vendor-chunks/data/Helvetica.afm).
   // sharp ships platform-specific binaries; keep it external and install it on
   // the target machine instead of shipping the build host's native build.
-  serverExternalPackages: ["pdfkit", "fontkit", "linebreak", "png-js", "sharp", "geoip-lite"],
+  serverExternalPackages: ["pdfkit", "fontkit", "linebreak", "png-js", "sharp", "geoip-lite", "@gltf-transform/core", "@gltf-transform/extensions"],
   outputFileTracingIncludes: {
     "/api/billing/invoices/*/download": ["./node_modules/pdfkit/js/data/**/*"],
     "/api/master-admin/billing/invoices/*/download": ["./node_modules/pdfkit/js/data/**/*"],

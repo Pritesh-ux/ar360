@@ -79,6 +79,9 @@ export class GemEnvironment implements GemEnvironmentContract {
   }
 
   async load(url: string): Promise<GemEnvironmentHandle> {
+    if (this.current?.url === url) {
+      return this.current;
+    }
     const loader = new RGBELoader();
     const raw = (await loader.loadAsync(url)) as DataTexture;
     raw.mapping = EquirectangularReflectionMapping;

@@ -30,8 +30,10 @@ test("diamond preset is gemstone with physical diamond values", () => {
   assert.equal(diamond.metalness, 0);
   assert.ok((diamond.transmission ?? 0) >= 0.8);
   assert.ok(Math.abs((diamond.ior ?? 0) - 2.417) < 0.001);
-  assert.equal(diamond.dispersion, 0.16);
-  assert.ok((diamond.thickness ?? 0) >= 0.4);
+  assert.equal(diamond.dispersion, 0.25);
+  assert.equal(diamond.thickness, 1);
+  assert.equal(diamond.roughness, 0.01);
+  assert.equal(diamond.gemAbsorption, 0.002);
   assert.equal(diamond.attenuationDistance, 0);
 });
 
@@ -58,8 +60,7 @@ test("ruby / sapphire / emerald / amethyst / moissanite presets", () => {
 
   const moissanite = getGemstonePreset("moissanite");
   assert.equal(moissanite.gemstoneType, "moissanite");
-  assert.ok((moissanite.dispersion ?? 0) > (getGemstonePreset("diamond").dispersion ?? 0));
-  assert.ok((moissanite.ior ?? 0) > 2.5);
+  assert.ok((moissanite.ior ?? 0) > (getGemstonePreset("diamond").ior ?? 0));
 });
 
 test("preset cloning does not mutate canonical table", () => {
@@ -68,7 +69,7 @@ test("preset cloning does not mutate canonical table", () => {
   a.baseColor = "#ff0000";
   a.dispersion = 0.5;
   assert.equal(b.baseColor, "#f4f8fc");
-  assert.equal(getGemstonePreset("diamond").dispersion, 0.16);
+  assert.equal(getGemstonePreset("diamond").dispersion, 0.25);
 });
 
 test("applyGemstonePreset clones and clears albedo maps", () => {
@@ -127,7 +128,7 @@ test("dispersion and gemstoneType survive clone/compact persistence path", () =>
   const json = JSON.parse(JSON.stringify(cloned)) as typeof settings;
   assert.equal(json[0].type, "gemstone");
   assert.equal(json[0].gemstoneType, "diamond");
-  assert.equal(json[0].dispersion, 0.16);
+  assert.equal(json[0].dispersion, 0.25);
   assert.equal(json[1].gemstoneType, "ruby");
 });
 

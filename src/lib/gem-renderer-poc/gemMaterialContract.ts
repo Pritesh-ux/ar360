@@ -1,7 +1,7 @@
 /**
  * Production-facing GemMaterial contracts (POC V5).
  * Physical parameters are separated from render-quality parameters.
- * Not wired into ModelViewer yet.
+ * Wired via gem-integration/gemMaterialSync.ts → gemModelViewerBridge.
  */
 
 import type { AccelMode, QualityTier, WavelengthMode } from "./types";
