@@ -15,9 +15,13 @@ import {
   applyGemstonePreset,
   applyStandardMaterialCategory,
   clampDispersion,
+  getGemstonePreset,
   isGemstoneType,
   resolveMaterialCategory,
 } from "@/lib/materials/gemstone-presets";
+import { isGemRendererIntegrationEnabled } from "@/lib/gem-integration/featureFlags";
+import { shouldUseGemRendererForSetting } from "@/lib/gem-integration/gemMaterialSync";
+import { DIAMOND_PHYSICAL_DEFAULTS } from "@/lib/gem-renderer-poc/gemMaterialContract";
 import BaseColorMapPlacement from "@/components/features/editor/panels/BaseColorMapPlacement";
 import TextureTransformControls from "@/components/features/editor/panels/TextureTransformControls";
 import type { TextureTransform } from "@/lib/materials/texture-transform";
@@ -83,6 +87,16 @@ export default function MaterialsInspectorPanel({
   const activeGemstone: GemstoneType = isGemstoneType(setting.gemstoneType)
     ? setting.gemstoneType
     : "diamond";
+  const gemRendererUi =
+    isGemstone &&
+    isGemRendererIntegrationEnabled() &&
+    shouldUseGemRendererForSetting(setting);
+  const diamondDefaults = DIAMOND_PHYSICAL_DEFAULTS;
+  const gemPreset = getGemstonePreset(activeGemstone);
+  const clearGemDefaults =
+    activeGemstone === "diamond" || activeGemstone === "moissanite"
+      ? diamondDefaults
+      : null;
 
   function toggleSection(section: MaterialInspectorSection, nextOpen?: boolean) {
     setOpenSection((prev) => {
@@ -180,70 +194,145 @@ export default function MaterialsInspectorPanel({
           />
           <MaterialSliderRow
             label="Roughness"
-            tooltip="Keep near 0 for polished facets"
-            value={num(setting.roughness, 0.01)}
+            tooltip={
+              gemRendererUi
+                ? "GemRenderer env-cone roughness (polished facets ≈ 0.01–0.03)"
+                : "Keep near 0 for polished facets"
+            }
+            value={num(
+              setting.roughness,
+              gemRendererUi
+                ? (clearGemDefaults?.roughness ?? gemPreset.roughness ?? 0.02)
+                : 0.01,
+            )}
             onChange={(v) => onChange({ roughness: v })}
-            onReset={() => resetField("roughness", 0.01)}
+            onReset={() =>
+              resetField(
+                "roughness",
+                gemRendererUi
+                  ? (clearGemDefaults?.roughness ?? gemPreset.roughness ?? 0.02)
+                  : 0.01,
+              )
+            }
             min={0}
-            max={0.5}
-            step={0.01}
+            max={gemRendererUi ? 0.2 : 0.5}
+            step={0.001}
           />
-          <MaterialSliderRow
-            label="Transmission"
-            tooltip="Dielectric transmission (jewelry soft-capped on thin shells)"
-            value={num(setting.transmission, 1)}
-            onChange={(v) => onChange({ transmission: v, opacity: 1, alphaMode: "OPAQUE" })}
-            onReset={() => resetField("transmission", 1)}
-            min={0}
-            max={1}
-            step={0.01}
-          />
+          {!gemRendererUi ? (
+            <MaterialSliderRow
+              label="Transmission"
+              tooltip="PBR dielectric transmission (legacy — not used by GemRenderer path)"
+              value={num(setting.transmission, 1)}
+              onChange={(v) => onChange({ transmission: v, opacity: 1, alphaMode: "OPAQUE" })}
+              onReset={() => resetField("transmission", 1)}
+              min={0}
+              max={1}
+              step={0.01}
+            />
+          ) : (
+            <p className="text-[11px] leading-snug text-slate-500">
+              Transmission is a legacy PBR control — GemRenderer uses physical
+              Fresnel/refraction internally.
+            </p>
+          )}
           <MaterialSliderRow
             label="IOR"
-            tooltip="Index of refraction (diamond ≈ 2.42)"
-            value={num(setting.ior, 2.417)}
+            tooltip={`Index of refraction (${activeGemstone} preset ≈ ${gemPreset.ior})`}
+            value={num(setting.ior, clearGemDefaults?.ior ?? gemPreset.ior ?? diamondDefaults.ior)}
             onChange={(v) => onChange({ ior: v })}
-            onReset={() => resetField("ior", 2.417)}
+            onReset={() =>
+              resetField("ior", clearGemDefaults?.ior ?? gemPreset.ior ?? diamondDefaults.ior)
+            }
             min={1}
             max={3.5}
             step={0.001}
           />
           <MaterialSliderRow
             label="Thickness"
-            tooltip="Optical path for refraction / absorption"
-            value={num(setting.thickness, 0.3)}
+            tooltip={
+              gemRendererUi && clearGemDefaults
+                ? "Relative optical path vs mesh size (GemRenderer — 1.0 = reference)"
+                : "Optical path for refraction / absorption"
+            }
+            value={num(
+              setting.thickness,
+              gemRendererUi && clearGemDefaults
+                ? clearGemDefaults.thickness
+                : gemPreset.thickness ?? 0.55,
+            )}
             onChange={(v) => onChange({ thickness: v })}
-            onReset={() => resetField("thickness", 0.3)}
+            onReset={() =>
+              resetField(
+                "thickness",
+                gemRendererUi && clearGemDefaults
+                  ? clearGemDefaults.thickness
+                  : gemPreset.thickness ?? 0.55,
+              )
+            }
             min={0}
             max={2}
             step={0.01}
           />
-          <MaterialColorRow
-            label="Attenuation Color"
-            tooltip="Volume absorption tint"
-            value={setting.attenuationColor || "#ffffff"}
-            onChange={(v) => onChange({ attenuationColor: v })}
-            onReset={() => resetField("attenuationColor", "#ffffff")}
-          />
-          <MaterialSliderRow
-            label="Attenuation Distance"
-            tooltip="0 = off (Infinity). Colored gems use low values."
-            value={num(setting.attenuationDistance, 0)}
-            onChange={(v) => onChange({ attenuationDistance: v })}
-            onReset={() => resetField("attenuationDistance", 0)}
-            min={0}
-            max={100}
-            step={0.01}
-          />
+          {gemRendererUi && clearGemDefaults ? (
+            <MaterialSliderRow
+              label="Absorption"
+              tooltip="Beer–Lambert σ (GemRenderer). Clear diamond ≈ 0.002"
+              value={num(setting.gemAbsorption, clearGemDefaults.absorption[0])}
+              onChange={(v) => onChange({ gemAbsorption: v })}
+              onReset={() => resetField("gemAbsorption", clearGemDefaults.absorption[0])}
+              min={0}
+              max={0.05}
+              step={0.0001}
+            />
+          ) : (
+            <>
+              <MaterialColorRow
+                label="Attenuation Color"
+                tooltip={
+                  gemRendererUi
+                    ? "Volume absorption tint (maps to GemRenderer σ RGB)"
+                    : "Volume absorption tint"
+                }
+                value={setting.attenuationColor || "#ffffff"}
+                onChange={(v) => onChange({ attenuationColor: v })}
+                onReset={() => resetField("attenuationColor", "#ffffff")}
+              />
+              <MaterialSliderRow
+                label="Attenuation Distance"
+                tooltip={
+                  gemRendererUi
+                    ? "Shorter = deeper color (maps to GemRenderer absorption)"
+                    : "0 = off (Infinity). Colored gems use low values."
+                }
+                value={num(setting.attenuationDistance, 0)}
+                onChange={(v) => onChange({ attenuationDistance: v })}
+                onReset={() => resetField("attenuationDistance", 0)}
+                min={0}
+                max={100}
+                step={0.01}
+              />
+            </>
+          )}
           <MaterialSliderRow
             label="Dispersion"
-            tooltip="Subtle spectral fire (MeshPhysicalMaterial.dispersion)"
-            value={clampDispersion(setting.dispersion)}
+            tooltip={
+              gemRendererUi
+                ? `GemRenderer spectral fire (${activeGemstone} preset ≈ ${gemPreset.dispersion})`
+                : "Subtle spectral fire (MeshPhysicalMaterial.dispersion)"
+            }
+            value={clampDispersion(
+              setting.dispersion ??
+                (gemRendererUi
+                  ? (clearGemDefaults?.dispersion ?? gemPreset.dispersion ?? 0)
+                  : 0),
+            )}
             onChange={(v) => onChange({ dispersion: clampDispersion(v) })}
             onReset={() =>
               onChange({
                 dispersion: clampDispersion(
-                  applyGemstonePreset(setting, activeGemstone).dispersion,
+                  gemRendererUi
+                    ? (clearGemDefaults?.dispersion ?? gemPreset.dispersion ?? 0)
+                    : applyGemstonePreset(setting, activeGemstone).dispersion,
                 ),
               })
             }

@@ -17,9 +17,20 @@ export function hintGemFromMeshNames(meshNames: string[]): boolean {
 function guessMaterialIndex(
   meshName: string,
   materialIndexByName: Map<string, number>,
+  materialNames?: string[],
 ): number | null {
   for (const [name, idx] of materialIndexByName) {
     if (meshName.includes(name) || name.includes(meshName)) return idx;
+  }
+  // Jewelry GLBs often use "fallback Material" for Gem + side-stone meshes.
+  if (/^gem$/i.test(meshName.trim()) && materialNames?.length) {
+    const fallbackIdx = materialNames.findIndex((n) => /fallback/i.test(String(n || "")));
+    if (fallbackIdx >= 0) return fallbackIdx;
+    return 0;
+  }
+  if (/stone|diamond|brilliant|solitaire/i.test(meshName) && materialNames?.length) {
+    const fallbackIdx = materialNames.findIndex((n) => /fallback/i.test(String(n || "")));
+    if (fallbackIdx >= 0) return fallbackIdx;
   }
   return null;
 }
@@ -61,7 +72,7 @@ export function analyzeGemCandidatesFromGlbScene(
       meshKey: key,
       meshName: prim.meshName,
       primitiveIndex: prim.primitiveIndex,
-      materialIndex: guessMaterialIndex(prim.meshName, materialIndexByName),
+      materialIndex: guessMaterialIndex(prim.meshName, materialIndexByName, options?.materialNames),
       suitability,
     });
   }

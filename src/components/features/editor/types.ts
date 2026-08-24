@@ -21,10 +21,15 @@ export type MaterialSetting = {
   /** Set when type === "gemstone". */
   gemstoneType?: GemstoneType;
   /**
-   * Spectral dispersion / fire (Three MeshPhysicalMaterial.dispersion).
-   * Diamond ~0.16; stronger for moissanite; low for colored gems.
+   * Spectral dispersion / fire.
+   * PBR (Three.js): diamond ~0.16. GemRenderer diamond: calibrated ~0.25.
    */
   dispersion?: number;
+  /**
+   * GemRenderer Beer–Lambert σ (linear). Used when diamond drives GemRenderer.
+   * Default 0.002 for clear diamond.
+   */
+  gemAbsorption?: number;
 
   baseColor: string;
   metalness: number;

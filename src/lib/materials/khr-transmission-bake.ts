@@ -207,24 +207,6 @@ export async function bakeKhrTransmissionIntoGlb(
 /**
  * Ensure model-viewer material APIs write transmission (activates Physical path).
  * Returns true when a transmission setter was invoked.
+ * @deprecated Import from khr-transmission-viewer.ts in client code.
  */
-export function ensureModelViewerKhrTransmission(material: any, factor: number): boolean {
-  const next = clamp01(Number(factor) || 0);
-  try {
-    if (typeof material?.setTransmissionFactor === "function") {
-      material.setTransmissionFactor(next);
-      return true;
-    }
-    if (typeof material?.transmission?.setTransmissionFactor === "function") {
-      material.transmission.setTransmissionFactor(next);
-      return true;
-    }
-    if (material && "transmissionFactor" in material) {
-      material.transmissionFactor = next;
-      return true;
-    }
-  } catch {
-    // Optional — Three backing path still applies transmission.
-  }
-  return false;
-}
+export { ensureModelViewerKhrTransmission } from "./khr-transmission-viewer";

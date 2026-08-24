@@ -7,14 +7,12 @@ export type ProductAssetMetadata = {
   thumbnailUrl?: string;
   title?: string;
   variantIds?: string[];
-  /** Cached from prior open — optional hint only. */
   gemSuitabilityHint?: "unknown" | "supported" | "unsupported";
   gemMeshKeys?: string[];
 };
 
 export type ActiveProductKey = {
   productId: string;
-  /** Variant id when known — geometry reuse when same GLB. */
   variantId?: string;
   modelUrl: string;
 };
@@ -27,19 +25,30 @@ export type GemCandidateMesh = {
   suitability: GemSuitabilityResult;
 };
 
+/** Overlay lifecycle — diagnostics only; never gates pixel visibility on luminance. */
+export type GemOverlayPhase =
+  | "idle"
+  | "off"
+  | "detected"
+  | "loading"
+  | "active"
+  | "fallback"
+  | "error";
+
 export type GemBridgeState =
-  | { mode: "idle" }
-  | { mode: "loading"; productId: string }
-  | { mode: "pbr"; productId: string; reason: string }
+  | { mode: "idle"; phase: "idle" | "off" }
+  | { mode: "loading"; productId: string; phase: "loading" }
   | {
-      mode: "gem";
+      mode: "active";
       productId: string;
+      phase: "active";
       candidates: GemCandidateMesh[];
       primaryKey: string;
-      /** True once camera sync is validated and overlay replaces PBR gem. */
-      overlayReady: boolean;
+      primaryMeshName: string;
+      cameraSyncOk: boolean;
     }
-  | { mode: "error"; productId: string; message: string };
+  | { mode: "fallback"; productId: string; phase: "fallback"; reason: string }
+  | { mode: "error"; productId: string; phase: "error"; message: string };
 
 export type GemIntegrationDiagnostics = {
   bridgeState: GemBridgeState;

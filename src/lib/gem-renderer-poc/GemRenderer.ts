@@ -56,6 +56,8 @@ import {
 } from "./gemSuitability";
 import {
   adaptMeshToGem,
+  adaptMeshToGemFromScene,
+  buildIntegrationGemInvMatrix,
   disposePackedGem,
   type PackedGemMesh,
 } from "./GemMeshAdapter";
@@ -196,7 +198,10 @@ uniform sampler2D uTex;
 in vec2 vUv;
 out vec4 fragColor;
 void main() {
-  fragColor = texture(uTex, vUv);
+  vec4 c = texture(uTex, vUv);
+  // Integration overlay: fully transparent misses must not paint over model-viewer metal.
+  if (c.a < 0.004) discard;
+  fragColor = c;
 }
 `;
 
@@ -254,6 +259,8 @@ export class GemRenderer {
   private onDeviceDebug?: () => void;
   private integrationMode = false;
   private externalCameraMode = false;
+  /** Live ModelViewer gem mesh — matrixWorld updated each integration frame. */
+  private sourceMesh: Mesh | null = null;
 
   constructor(options: GemRendererOptions) {
     this.onDiagnostics = options.onDiagnostics;
@@ -330,6 +337,8 @@ export class GemRenderer {
       depthTest: false,
       depthWrite: false,
       toneMapped: false,
+      transparent: true,
+      premultipliedAlpha: false,
     });
     this.blitQuad = new Mesh(geom.clone(), this.blitMaterial);
     this.blitScene.add(this.blitQuad);
@@ -351,6 +360,7 @@ export class GemRenderer {
       this.controls.enabled = false;
       this.cameraLocked = true;
       this.externalCameraMode = true;
+      this.material.shader.setOverlayMode(true);
     } else {
       void this.bootstrap(options.environmentUrl || "/hdr/studio.hdr");
     }
@@ -407,10 +417,33 @@ export class GemRenderer {
         : null;
 
     disposePackedGem(this.packed);
-    this.packed = adaptMeshToGem(sourceMesh, `${label}:${meshKey}`);
+    this.packed = adaptMeshToGemFromScene(sourceMesh, `${label}:${meshKey}`);
     this.sourceLabel = this.packed.sourceLabel;
+    this.sourceMesh = sourceMesh;
+    this.gemAngle = 0;
     this.pushTrianglesToShader();
     return suitability;
+  }
+
+  /** Build gem-local matrix: S * T(-localCenter) * inv(meshWorld). */
+  private updateGemInvMatrix() {
+    if (
+      this.integrationMode &&
+      this.packed?.localCenter &&
+      this.sourceMesh
+    ) {
+      this.sourceMesh.updateWorldMatrix(true, false);
+      this.invGemRotation.copy(
+        buildIntegrationGemInvMatrix(
+          this.sourceMesh.matrixWorld,
+          this.packed.localCenter,
+          this.packed.normalizationScale ?? 1,
+        ),
+      );
+      return;
+    }
+    this.gemRotation.makeRotationY(this.gemAngle);
+    this.invGemRotation.copy(this.gemRotation).invert();
   }
 
   /** Copy camera matrices from model-viewer Three.js camera each frame. */
@@ -420,7 +453,16 @@ export class GemRenderer {
     this.camera.quaternion.copy(source.quaternion);
     this.camera.projectionMatrix.copy(source.projectionMatrix);
     this.camera.projectionMatrixInverse.copy(source.projectionMatrixInverse);
+    this.camera.near = source.near;
+    this.camera.far = source.far;
+    this.camera.fov = source.fov;
+    this.camera.aspect = source.aspect;
     this.camera.updateMatrixWorld(true);
+  }
+
+  /** Keep integration gem aligned when model-viewer target/pan moves the GLB. */
+  syncExternalGemMesh(mesh: Mesh) {
+    if (this.integrationMode) this.sourceMesh = mesh;
   }
 
   isIntegrationMode() {
@@ -429,6 +471,40 @@ export class GemRenderer {
 
   getDomElement() {
     return this.renderer.domElement;
+  }
+
+  /** Integration gate — sample overlay center pixel (requires preserveDrawingBuffer). */
+  probeCenterPixel(): {
+    r: number;
+    g: number;
+    b: number;
+    a: number;
+    luminous: boolean;
+  } | null {
+    try {
+      const gl = this.renderer.getContext();
+      const canvas = this.renderer.domElement;
+      if (!gl || canvas.width < 2 || canvas.height < 2) return null;
+      gl.readPixels(
+        Math.floor(canvas.width / 2),
+        Math.floor(canvas.height / 2),
+        1,
+        1,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        this.pixelReadBuf,
+      );
+      const [r, g, b, a] = this.pixelReadBuf;
+      return {
+        r,
+        g,
+        b,
+        a,
+        luminous: r + g + b > 24 && a > 8,
+      };
+    } catch {
+      return null;
+    }
   }
 
   private async bootstrap(envUrl: string) {
@@ -1195,12 +1271,12 @@ export class GemRenderer {
     ) {
       this.gemAngle += dt * this.params.autoRotateSpeed;
     }
-    this.gemRotation.makeRotationY(this.gemAngle);
-    this.invGemRotation.copy(this.gemRotation).invert();
 
     this.camera.updateMatrixWorld();
     this.invProjection.copy(this.camera.projectionMatrix).invert();
     this.invView.copy(this.camera.matrixWorld);
+
+    this.updateGemInvMatrix();
 
     const scale = Math.min(
       1,
@@ -1238,13 +1314,24 @@ export class GemRenderer {
     try {
       if (scale >= 0.999) {
         this.renderer.setRenderTarget(null);
+        if (this.integrationMode) {
+          this.renderer.setClearColor(0x000000, 0);
+          this.renderer.clear();
+        }
         this.renderer.render(this.quadScene, this.quadCamera);
       } else {
         const target = this.ensureGemTarget(iw, ih);
         this.renderer.setRenderTarget(target);
+        if (this.integrationMode) {
+          this.renderer.setClearColor(0x000000, 0);
+        }
         this.renderer.clear();
         this.renderer.render(this.quadScene, this.quadCamera);
         this.renderer.setRenderTarget(null);
+        if (this.integrationMode) {
+          this.renderer.setClearColor(0x000000, 0);
+          this.renderer.clear(true, true, true);
+        }
         this.blitMaterial.uniforms.uTex.value = target.texture;
         this.renderer.render(this.blitScene, this.quadCamera);
       }

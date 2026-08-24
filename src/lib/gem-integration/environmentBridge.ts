@@ -1,4 +1,5 @@
 import type { Ar360EnvironmentSource } from "@/lib/gem-renderer-poc/gemHdriContract";
+import { JEWELRY_STUDIO_LIGHTING } from "@/lib/render/jewelry-studio-lighting";
 
 const LEGACY_PACKED = new Set([
   "sunset",
@@ -8,25 +9,26 @@ const LEGACY_PACKED = new Set([
   "forest",
   "apartment",
   "default",
+  "neutral",
 ]);
 
-/** Resolve model-viewer environment-image prop → raw HDR URL for GemRenderer. */
+/** Resolve model-viewer / editor environment-image → raw HDR URL for GemRenderer. */
 export function resolveGemEnvironmentUrl(
   environmentImage?: string,
   origin?: string,
 ): string {
-  const value = String(environmentImage || "neutral").trim();
-  if (!value || value === "default" || LEGACY_PACKED.has(value)) {
-    return "/hdr/neutral.hdr";
+  const value = String(environmentImage || "default").trim();
+  if (!value || LEGACY_PACKED.has(value)) {
+    return JEWELRY_STUDIO_LIGHTING.environmentImage;
   }
-  if (value === "neutral") return "/hdr/neutral.hdr";
   if (value.startsWith("blob:") || value.startsWith("data:") || value.length > 2048) {
-    return "/hdr/neutral.hdr";
+    return JEWELRY_STUDIO_LIGHTING.environmentImage;
   }
   if (value.startsWith("/") && origin) {
     return `${origin.replace(/\/$/, "")}${value}`;
   }
-  return value;
+  if (value.startsWith("/")) return value;
+  return JEWELRY_STUDIO_LIGHTING.environmentImage;
 }
 
 export function buildAr360EnvironmentSource(input: {
@@ -34,11 +36,30 @@ export function buildAr360EnvironmentSource(input: {
   exposure?: number;
   environmentRotation?: number;
   origin?: string;
+  intensity?: number;
+  /** Use jewelry studio exposure when editor still on default-ish values. */
+  preferJewelryStudioExposure?: boolean;
 }): Ar360EnvironmentSource {
+  const editorDefault = 0.9;
+  let exposure =
+    typeof input.exposure === "number" && Number.isFinite(input.exposure)
+      ? input.exposure
+      : editorDefault;
+
+  if (
+    input.preferJewelryStudioExposure !== false &&
+    Math.abs(exposure - editorDefault) <= 0.051
+  ) {
+    exposure = JEWELRY_STUDIO_LIGHTING.exposure;
+  }
+
   return {
     url: resolveGemEnvironmentUrl(input.environmentImage, input.origin),
-    intensity: 1,
+    intensity:
+      typeof input.intensity === "number" && Number.isFinite(input.intensity)
+        ? Math.min(3, Math.max(0.1, input.intensity))
+        : 1,
     rotationRadians: ((input.environmentRotation ?? 0) * Math.PI) / 180,
-    exposure: input.exposure,
+    exposure,
   };
 }

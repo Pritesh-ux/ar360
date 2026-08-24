@@ -1,14 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   attachGemBridge,
   buildAr360EnvironmentSource,
   deactivateGemProduct,
+  getGemIntegrationDebugOverlay,
+  getGemUiRendererDiagnostic,
   isGemRendererIntegrationEnabled,
   subscribeGemBridge,
 } from "@/lib/gem-integration";
-import type { ActiveProductKey } from "@/lib/gem-integration/types";
+import { isGemRendererDebugOverlayEnabled } from "@/lib/gem-integration/featureFlags";
+import type { MaterialSetting } from "@/components/features/editor/types";
+import type { ActiveProductKey, GemBridgeState } from "@/lib/gem-integration/types";
 
 type Props = {
   viewer: HTMLElement | null;
@@ -22,6 +26,7 @@ type Props = {
   exposure?: number;
   environmentRotation?: number;
   enabled?: boolean;
+  allMaterialSettings?: Record<number, MaterialSetting>;
 };
 
 function getViewerThreeScene(viewer: unknown): import("three").Object3D | null {
@@ -39,6 +44,10 @@ function getViewerThreeScene(viewer: unknown): import("three").Object3D | null {
   }
 }
 
+function overlayVisibleForState(state: GemBridgeState): boolean {
+  return state.mode === "active" && state.cameraSyncOk;
+}
+
 export default function GemRendererOverlay({
   viewer,
   scene: sceneProp,
@@ -51,19 +60,40 @@ export default function GemRendererOverlay({
   exposure,
   environmentRotation,
   enabled = true,
+  allMaterialSettings,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const lastAttachRef = useRef("");
   const [overlayVisible, setOverlayVisible] = useState(false);
+  const [bridgeState, setBridgeState] = useState<GemBridgeState>({ mode: "idle", phase: "idle" });
+  const [devDiag, setDevDiag] = useState<ReturnType<typeof getGemUiRendererDiagnostic> | null>(
+    null,
+  );
+  const [integrationDebug, setIntegrationDebug] = useState(
+    getGemIntegrationDebugOverlay(),
+  );
+
+  const gemEnvironment = useMemo(() => {
+    const origin = typeof window !== "undefined" ? window.location.origin : undefined;
+    return buildAr360EnvironmentSource({
+      environmentImage,
+      exposure,
+      environmentRotation,
+      origin,
+      intensity: 1,
+    });
+  }, [environmentImage, exposure, environmentRotation]);
 
   useEffect(() => {
     if (!enabled || !isGemRendererIntegrationEnabled()) return;
     return subscribeGemBridge((state) => {
+      setBridgeState(state);
       setOverlayVisible(
-        state.mode === "gem" &&
-          state.overlayReady === true &&
-          (!productId || state.productId === productId),
+        overlayVisibleForState(state) &&
+          (!productId || (state.mode === "active" && state.productId === productId)),
       );
+      setDevDiag(getGemUiRendererDiagnostic());
+      setIntegrationDebug(getGemIntegrationDebugOverlay());
     });
   }, [enabled, productId]);
 
@@ -82,8 +112,6 @@ export default function GemRendererOverlay({
     lastAttachRef.current = attachKey;
     setOverlayVisible(false);
 
-    const origin =
-      typeof window !== "undefined" ? window.location.origin : undefined;
     const productKey: ActiveProductKey = {
       productId,
       variantId,
@@ -97,12 +125,8 @@ export default function GemRendererOverlay({
       productKey,
       gemMeshHints,
       materialNames,
-      environment: buildAr360EnvironmentSource({
-        environmentImage,
-        exposure,
-        environmentRotation,
-        origin,
-      }),
+      allMaterialSettings,
+      environment: gemEnvironment,
     });
 
     return () => {
@@ -119,23 +143,58 @@ export default function GemRendererOverlay({
     modelUrl,
     gemMeshHints,
     materialNames,
-    environmentImage,
-    exposure,
-    environmentRotation,
+    gemEnvironment,
+    allMaterialSettings,
   ]);
 
   if (!enabled || !isGemRendererIntegrationEnabled()) return null;
 
+  const showDebug = isGemRendererDebugOverlayEnabled();
+
   return (
-    <canvas
-      ref={canvasRef}
-      aria-hidden="true"
-      className="pointer-events-none absolute inset-0 z-[1] h-full w-full"
-      style={{
-        background: "transparent",
-        opacity: overlayVisible ? 1 : 0,
-        visibility: overlayVisible ? "visible" : "hidden",
-      }}
-    />
+    <>
+      <canvas
+        ref={canvasRef}
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 z-[1] h-full w-full"
+        style={{
+          background: "transparent",
+          opacity: overlayVisible ? 1 : 0,
+          visibility: overlayVisible ? "visible" : "hidden",
+        }}
+      />
+      {showDebug ? (
+        <div
+          className="pointer-events-none absolute bottom-2 left-2 z-[2] max-w-[280px] rounded border border-emerald-800/60 bg-black/80 p-2 font-mono text-[10px] leading-snug text-emerald-100 shadow-lg"
+          aria-hidden
+        >
+          <div className="mb-1 font-semibold text-emerald-300">V5 DIAG · Integration</div>
+          <div>state: {integrationDebug.gemMode}</div>
+          <div>phase: {integrationDebug.phase}</div>
+          <div>mesh: {integrationDebug.gemMeshName} ({integrationDebug.gemMesh})</div>
+          <div>tris: {String(integrationDebug.triangleCount)}</div>
+          <div>material: {integrationDebug.materialName}</div>
+          <div>gem type: {integrationDebug.gemType}</div>
+          <div>contract: {integrationDebug.gemContract}</div>
+          <div>renderer active: {String(integrationDebug.gemRendererActive)}</div>
+          <div>mesh hidden: {String(integrationDebug.originalMeshHidden)}</div>
+          <div>camera sync: {String(integrationDebug.cameraSyncOk)}</div>
+          <div>environment: {integrationDebug.environmentSynced}</div>
+          <div>quality: {String(integrationDebug.qualityTier)}</div>
+          <div>cache: {integrationDebug.cacheEntries} q:{integrationDebug.queuePending}/{integrationDebug.queueActive}</div>
+          {devDiag ? (
+            <div className="mt-1 border-t border-emerald-900/60 pt-1 text-lime-300">
+              UI→RENDERER · {devDiag.rendererMode}
+              <br />
+              IOR {devDiag.ior} · disp {devDiag.dispersion}
+              <br />
+              abs {devDiag.absorption} · thick {devDiag.thickness}
+              <br />
+              rough {devDiag.roughness}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </>
   );
 }

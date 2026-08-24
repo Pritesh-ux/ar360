@@ -8,6 +8,7 @@ import AppImage from "@/components/shared/AppImage";
 import {
   forwardRef,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useCallback,
@@ -38,7 +39,7 @@ import {
 import { isClearedMaterialTexture, resolveRuntimeGemstoneSetting } from "@/lib/materials/diamond-look";
 import { clampDispersion } from "@/lib/materials/gemstone-presets";
 import { resolveGemstoneOpticsApproxParams } from "@/lib/materials/gemstone-optics-approx";
-import { ensureModelViewerKhrTransmission } from "@/lib/materials/khr-transmission-bake";
+import { ensureModelViewerKhrTransmission } from "@/lib/materials/khr-transmission-viewer";
 import { softenTextureUri } from "@/lib/materials/soften-texture";
 import {
   resolveViewerBumpScale,
@@ -69,9 +70,18 @@ import { hideBackdropPlanes } from "@/lib/model/backdrop-plane";
 import { ensureStudioFormLights } from "@/lib/model/studio-form-lights";
 import { applyEnvironmentGrade } from "@/lib/model/environment-grade";
 import { startModelViewerTransparentClearLoop } from "@/lib/model/viewer-transparent-clear";
-import { isGemRendererActiveForProduct } from "@/lib/gem-integration";
+import {
+  buildAr360EnvironmentSource,
+  shouldSkipPbrGemForMaterialSlot,
+  syncGemEnvironment,
+  syncGemMaterialFromSettings,
+} from "@/lib/gem-integration";
 import GemRendererOverlay from "@/components/shared/GemRendererOverlay";
 import { deactivateGemProduct } from "@/lib/gem-integration";
+import {
+  resolveJewelryStudioPresentation,
+  shouldUseJewelryStudioLighting,
+} from "@/lib/render/jewelry-studio-lighting";
 import { planWhiteProductDepth } from "@/lib/materials/white-product-depth";
 import {
   formatModelViewerScale,
@@ -129,6 +139,8 @@ type MaterialSetting = {
     | "amethyst"
     | "moissanite";
   dispersion?: number;
+  /** GemRenderer Beer–Lambert σ (diamond path). */
+  gemAbsorption?: number;
   baseColor: string;
   metalness: number;
   roughness: number;
@@ -2324,8 +2336,8 @@ async function applyMaterialSettingToSlot(
         gemstoneType: setting.gemstoneType,
         viewer,
       });
-      // When GemRenderer owns the mesh, skip legacy optical approximation.
-      if (!isGemRendererActiveForProduct()) {
+      const gemSlotReplaced = shouldSkipPbrGemForMaterialSlot(index, setting);
+      if (!gemSlotReplaced) {
         const scene = getViewerThreeScene(viewer);
         applyGemstoneOpticalApproximationToBacking(
           material,
@@ -2514,6 +2526,7 @@ function fingerprintMaterialSettings(
         key,
         s.type === "gemstone" ? "gem" : "std",
         s.gemstoneType || "",
+        s.gemAbsorption ?? "",
         s.dispersion ?? "",
         s.baseColor || "",
         s.metalness ?? "",
@@ -2730,6 +2743,35 @@ const ModelViewer = forwardRef<any, Props>(function ModelViewer(
   const [gemMeshHintsState, setGemMeshHintsState] = useState<string[]>([]);
   const [materialNamesState, setMaterialNamesState] = useState<string[]>([]);
   const [threeScene, setThreeScene] = useState<any>(null);
+  const studioPresentation = useMemo(
+    () =>
+      resolveJewelryStudioPresentation({
+        enabled: shouldUseJewelryStudioLighting({
+          gemMeshHints: gemMeshHintsState,
+          materials: Object.values(allMaterialSettings || {}),
+        }),
+        environmentImage,
+        exposure,
+        environmentSaturation,
+        environmentTint,
+        shadowIntensity,
+        shadowSoftness,
+        toneMapping,
+        useSkybox: Boolean(skyboxImage),
+      }),
+    [
+      gemMeshHintsState,
+      allMaterialSettings,
+      environmentImage,
+      exposure,
+      environmentSaturation,
+      environmentTint,
+      shadowIntensity,
+      shadowSoftness,
+      toneMapping,
+      skyboxImage,
+    ],
+  );
   // Drop missing posters so model-viewer does not spam 404s in the console.
   const [safePoster, setSafePoster] = useState<string | undefined>(poster);
   const onMaterialsLoadedRef = useRef(onMaterialsLoaded);
@@ -3515,6 +3557,31 @@ const ModelViewer = forwardRef<any, Props>(function ModelViewer(
     viewerElement,
   ]);
 
+  // Material UI → GemRenderer live sync (no GLB re-fetch).
+  useEffect(() => {
+    if (disableMaterialOverrides || !productId) return;
+    void syncGemMaterialFromSettings(allMaterialSettings);
+  }, [disableMaterialOverrides, productId, materialSettingsFingerprint, allMaterialSettings]);
+
+  useEffect(() => {
+    if (!productId) return;
+    const origin = typeof window !== "undefined" ? window.location.origin : undefined;
+    void syncGemEnvironment(
+      buildAr360EnvironmentSource({
+        environmentImage: studioPresentation.environmentImage,
+        exposure: studioPresentation.exposure,
+        environmentRotation,
+        origin,
+        intensity: 1,
+      }),
+    );
+  }, [
+    productId,
+    studioPresentation.environmentImage,
+    studioPresentation.exposure,
+    environmentRotation,
+  ]);
+
   // Material-select highlight pulse removed — concurrent emissive writes raced
   // material re-apply and could trigger WebGL "program not valid" storms.
   useEffect(() => {
@@ -3690,12 +3757,19 @@ const ModelViewer = forwardRef<any, Props>(function ModelViewer(
     return value;
   };
 
-  const safeEnvironmentImage = resolveEnvUrl(environmentImage);
+  const safeEnvironmentImage = resolveEnvUrl(studioPresentation.environmentImage);
   const safeSkyboxImage = skyboxImage
     ? resolveEnvUrl(
         skyboxImage === "neutral" ? "/hdr/neutral.hdr" : skyboxImage,
       )
     : undefined;
+
+  const resolvedExposure = studioPresentation.exposure;
+  const resolvedToneMapping = studioPresentation.toneMapping;
+  const resolvedShadowIntensity = studioPresentation.shadowIntensity;
+  const resolvedShadowSoftness = studioPresentation.shadowSoftness;
+  const resolvedEnvironmentSaturation = studioPresentation.environmentSaturation;
+  const resolvedEnvironmentTint = studioPresentation.environmentTint;
 
   const sendCredentials =
     isProtectedAssetUrl(absoluteModelSrc) ||
@@ -3730,11 +3804,11 @@ const ModelViewer = forwardRef<any, Props>(function ModelViewer(
       ar-placement={arPlacement === "wall" ? "wall" : "floor"}
       ar-scale={realScale === true ? "fixed" : "auto"}
       scale={formatModelViewerScale(resolvedScale)}
-      exposure={String(exposure)}
-      tone-mapping={toneMapping}
+      exposure={String(resolvedExposure)}
+      tone-mapping={resolvedToneMapping}
       environment-image={safeEnvironmentImage}
-      shadow-intensity={String(shadowIntensity)}
-      shadow-softness={String(shadowSoftness)}
+      shadow-intensity={String(resolvedShadowIntensity)}
+      shadow-softness={String(resolvedShadowSoftness)}
       field-of-view={`${fov}deg`}
       max-camera-orbit="auto 180deg 900%"
       min-camera-orbit="auto 0deg 95%"
@@ -3868,7 +3942,8 @@ const ModelViewer = forwardRef<any, Props>(function ModelViewer(
       modelUrl={absoluteModelSrc}
       gemMeshHints={gemMeshHintsState}
       materialNames={materialNamesState}
-      environmentImage={safeEnvironmentImage}
+      allMaterialSettings={allMaterialSettings}
+      environmentImage={environmentImage}
       exposure={exposure}
       environmentRotation={environmentRotation}
     />

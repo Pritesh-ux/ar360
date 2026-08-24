@@ -2,17 +2,17 @@
  * ModelViewer ↔ GemRenderer bridge — smallest integration boundary.
  * Uses geometry already loaded by model-viewer (no second GLB fetch).
  */
+import type { MaterialSetting } from "@/components/features/editor/types";
 import { analyzeObject3D } from "@/lib/gem-renderer-poc/analyzeGemGeometry";
 import { GemRenderer } from "@/lib/gem-renderer-poc/GemRenderer";
-import {
-  QUALITY_DESKTOP_MEDIUM,
-  QUALITY_MOBILE_LOW,
-  splitContractsFromLegacy,
-} from "@/lib/gem-renderer-poc/gemMaterialContract";
 import type { Ar360EnvironmentSource } from "@/lib/gem-renderer-poc/gemHdriContract";
-import { probeDeviceCapabilities } from "@/lib/gem-renderer-poc/deviceCapabilities";
-import { paramsForQualityTier } from "@/lib/gem-renderer-poc/qualityPresets";
+import {
+  applyIntegrationMaterialParams,
+  applyIntegrationQualityShell,
+  resolveIntegrationExposure,
+} from "./integrationPipeline";
 import type { Mesh } from "three";
+import { isGemRendererIntegrationEnabled } from "./featureFlags";
 import { globalAssetLoadQueue } from "./assetLoadQueue";
 import { BoundedResourceCache } from "./boundedResourceCache";
 import { getViewerThreeCamera } from "./gemCameraSync";
@@ -20,6 +20,13 @@ import {
   analyzeGemCandidatesFromGlbScene,
   pickPrimaryGemCandidate,
 } from "./gemDetection";
+import {
+  buildGemUiRendererDiagnostic,
+  formatGemContractSummary,
+  materialSettingGemSignature,
+  resolvePrimaryGemMaterialSetting,
+  shouldUseGemRendererForSetting,
+} from "./gemMaterialSync";
 import { findSceneMeshByKey } from "./sceneMeshLookup";
 import type { ActiveProductKey, GemBridgeState, GemCandidateMesh } from "./types";
 
@@ -31,18 +38,32 @@ export type GemBridgeAttachInput = {
   gemMeshHints?: string[];
   materialNames?: string[];
   environment: Ar360EnvironmentSource;
+  /** Material UI — primary gem slot drives GemRenderer eligibility + params. */
+  allMaterialSettings?: Record<number, MaterialSetting>;
 };
 
 type SessionEntry = {
   renderer: GemRenderer;
   candidates: GemCandidateMesh[];
   primaryKey: string;
+  primaryMeshName: string;
   hiddenMeshes: Array<{ mesh: Mesh; wasVisible: boolean }>;
-  overlayReady: boolean;
+  cameraSyncOk: boolean;
+  packedOk: boolean;
   scene: import("three").Object3D;
   syncOkFrames: number;
   syncMissFrames: number;
+  viewer: HTMLElement;
+  environment: Ar360EnvironmentSource;
+  materialSig: string;
+  gemRendererActive: boolean;
   dispose: () => void;
+};
+
+type PreparedAttach = {
+  input: GemBridgeAttachInput;
+  candidates: GemCandidateMesh[];
+  primaryKey: string;
 };
 
 const sessionCache = new BoundedResourceCache<SessionEntry>({
@@ -50,10 +71,14 @@ const sessionCache = new BoundedResourceCache<SessionEntry>({
   maxWarmBytes: 128 * 1024 * 1024,
 });
 
+const preparedAttachByKey = new Map<string, PreparedAttach>();
+
 let activeKey: ActiveProductKey | null = null;
 let activeSession: SessionEntry | null = null;
-let bridgeState: GemBridgeState = { mode: "idle" };
+let lastAttachInput: GemBridgeAttachInput | null = null;
+let bridgeState: GemBridgeState = { mode: "idle", phase: "idle" };
 let rafId = 0;
+let beforeRenderHandler: ((() => void) | null) = null;
 const listeners = new Set<(s: GemBridgeState) => void>();
 
 function cacheKey(k: ActiveProductKey) {
@@ -70,54 +95,33 @@ function emit() {
   }
 }
 
-function pickQualityTier() {
-  if (typeof window === "undefined") return "medium" as const;
-  const mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-  if (mobile) return "low" as const;
-  const caps = probeDeviceCapabilities(null, window.innerWidth * window.innerHeight);
-  if (caps.hardwareConcurrency <= 4 || (caps.deviceMemoryGb != null && caps.deviceMemoryGb <= 4)) {
-    return "low" as const;
-  }
-  return "medium" as const;
+function applyQualityShell(gem: GemRenderer) {
+  applyIntegrationQualityShell(gem);
 }
 
-function applyProductionQuality(gem: GemRenderer, exposure?: number) {
-  const tier = pickQualityTier();
-  gem.applyQualityTier(tier === "low" ? "low" : "medium");
-  const contracts = tier === "low" ? QUALITY_MOBILE_LOW : QUALITY_DESKTOP_MEDIUM;
-  const exp = typeof exposure === "number" && Number.isFinite(exposure) ? exposure : 1;
-  gem.setParams({
-    ...paramsForQualityTier(tier === "low" ? "low" : "medium"),
-    ...splitContractsFromLegacy({
-      ior: 2.417,
-      dispersion: 0.25,
-      absorption: [0.002, 0.002, 0.002],
-      thickness: 1,
-      roughness: 0.01,
-      samplesPerPixel: contracts.samplesPerPixel,
-      wavelengthMode: contracts.wavelengthMode,
-      internalBounces: contracts.internalBounces,
-      internalResolutionScale: contracts.internalResolutionScale,
-      accelMode: contracts.accelMode,
-      earlyTermination: contracts.earlyTermination,
-      qualityTier: contracts.qualityTier,
-      environmentIntensity: 1,
-      environmentRotation: 0,
-      exposure: exp,
-    }).quality,
-    autoRotate: false,
-    debugMode: "beauty",
-  });
+function applyMaterialParamsToRenderer(
+  gem: GemRenderer,
+  setting: Partial<MaterialSetting>,
+  env: Ar360EnvironmentSource,
+) {
+  applyIntegrationMaterialParams(gem, setting, env);
 }
 
-function publishGemState(session: SessionEntry, productId: string) {
+function publishActiveState(session: SessionEntry, productId: string) {
   bridgeState = {
-    mode: "gem",
+    mode: "active",
+    phase: "active",
     productId,
     candidates: session.candidates,
     primaryKey: session.primaryKey,
-    overlayReady: session.overlayReady,
+    primaryMeshName: session.primaryMeshName,
+    cameraSyncOk: session.cameraSyncOk,
   };
+  emit();
+}
+
+function publishFallbackState(productId: string, reason: string) {
+  bridgeState = { mode: "fallback", phase: "fallback", productId, reason };
   emit();
 }
 
@@ -127,17 +131,32 @@ function fallbackSessionToPbr(
   reason: string,
 ) {
   restoreHiddenMeshes(session);
-  session.overlayReady = false;
+  session.cameraSyncOk = false;
+  session.gemRendererActive = false;
   disposeSessionEntry(session);
   if (activeSession === session) activeSession = null;
-  bridgeState = { mode: "pbr", productId, reason };
-  emit();
+  publishFallbackState(productId, reason);
 }
 
 function stopRenderLoop() {
   if (rafId) cancelAnimationFrame(rafId);
   rafId = 0;
+  if (beforeRenderHandler && activeSession?.viewer) {
+    try {
+      activeSession.viewer.removeEventListener("before-render", beforeRenderHandler);
+    } catch {
+      /* ignore */
+    }
+  }
+  beforeRenderHandler = null;
   activeSession?.renderer.stop();
+}
+
+function syncSessionTransforms(session: SessionEntry, viewer: HTMLElement) {
+  const cam = getViewerThreeCamera(viewer);
+  const mesh = findSceneMeshByKey(session.scene, session.primaryKey);
+  if (cam) session.renderer.syncExternalCamera(cam);
+  if (mesh) session.renderer.syncExternalGemMesh(mesh);
 }
 
 function startRenderLoop(
@@ -145,22 +164,21 @@ function startRenderLoop(
   session: SessionEntry,
   productId: string,
 ) {
+  if (!session.gemRendererActive || !session.packedOk) return;
   stopRenderLoop();
   session.syncOkFrames = 0;
   session.syncMissFrames = 0;
-  session.overlayReady = false;
+  session.cameraSyncOk = false;
   session.renderer.start();
   const tick = () => {
-    if (activeSession !== session) return;
-    const cam = getViewerThreeCamera(viewer);
-    if (cam) {
+    if (activeSession !== session || !session.gemRendererActive) return;
+    syncSessionTransforms(session, viewer);
+    if (getViewerThreeCamera(viewer)) {
       session.syncMissFrames = 0;
       session.syncOkFrames++;
-      session.renderer.syncExternalCamera(cam);
-      if (!session.overlayReady && session.syncOkFrames >= 3) {
-        session.overlayReady = true;
-        hideGemMeshes(session, session.scene, session.primaryKey);
-        publishGemState(session, productId);
+      if (!session.cameraSyncOk && session.syncOkFrames >= 1) {
+        session.cameraSyncOk = true;
+        publishActiveState(session, productId);
       }
     } else {
       session.syncOkFrames = 0;
@@ -182,6 +200,17 @@ function startRenderLoop(
     }
     rafId = requestAnimationFrame(tick);
   };
+
+  beforeRenderHandler = () => {
+    if (activeSession !== session || !session.gemRendererActive) return;
+    syncSessionTransforms(session, viewer);
+  };
+  try {
+    viewer.addEventListener("before-render", beforeRenderHandler);
+  } catch {
+    /* ignore */
+  }
+
   rafId = requestAnimationFrame(tick);
 }
 
@@ -211,6 +240,96 @@ function disposeSessionEntry(entry: SessionEntry) {
   }
 }
 
+function pauseGemRendererSession(reason: string) {
+  if (!activeSession || !activeKey) {
+    if (activeKey) publishFallbackState(activeKey.productId, reason);
+    return;
+  }
+  restoreHiddenMeshes(activeSession);
+  stopRenderLoop();
+  activeSession.cameraSyncOk = false;
+  activeSession.gemRendererActive = false;
+  publishFallbackState(activeKey.productId, reason);
+}
+
+async function createGemRendererSession(
+  input: GemBridgeAttachInput,
+  candidates: GemCandidateMesh[],
+  primaryKey: string,
+  materialSetting: Partial<MaterialSetting>,
+): Promise<SessionEntry | null> {
+  const primary = candidates.find((c) => c.meshKey === primaryKey);
+  if (!primary) return null;
+
+  const sourceMesh = findSceneMeshByKey(input.scene, primaryKey);
+  if (!sourceMesh) return null;
+
+  const report = analyzeObject3D(input.scene, input.productKey.productId);
+  const reportPrim =
+    report.primitives.find(
+      (p) => `${p.meshName}#${p.primitiveIndex}` === primaryKey,
+    ) ?? report.primitives[0];
+
+  const gem = new GemRenderer({
+    canvas: input.canvas,
+    integration: true,
+  });
+
+  await gem.prepareForIntegration(input.environment.url);
+  await gem.applyFromAr360Environment(input.environment);
+
+  try {
+    gem.packFromSceneMesh(
+      sourceMesh,
+      primaryKey,
+      input.productKey.productId,
+      reportPrim,
+    );
+  } catch {
+    gem.dispose();
+    return null;
+  }
+
+  applyQualityShell(gem);
+  applyMaterialParamsToRenderer(gem, materialSetting, input.environment);
+
+  const session: SessionEntry = {
+    renderer: gem,
+    candidates,
+    primaryKey,
+    primaryMeshName: primary?.meshName ?? primaryKey,
+    hiddenMeshes: [],
+    cameraSyncOk: false,
+    packedOk: true,
+    scene: input.scene,
+    syncOkFrames: 0,
+    syncMissFrames: 0,
+    viewer: input.viewer,
+    environment: input.environment,
+    materialSig: materialSettingGemSignature(materialSetting),
+    gemRendererActive: true,
+    dispose: () => disposeSessionEntry(session),
+  };
+
+  hideGemMeshes(session, input.scene, primaryKey);
+
+  return session;
+}
+
+function resumeExistingSession(session: SessionEntry, productId: string) {
+  session.gemRendererActive = true;
+  session.packedOk = true;
+  activeSession = session;
+  hideGemMeshes(session, session.scene, session.primaryKey);
+  startRenderLoop(session.viewer, session, productId);
+  bridgeState = {
+    mode: "loading",
+    phase: "loading",
+    productId,
+  };
+  emit();
+}
+
 export function subscribeGemBridge(fn: (s: GemBridgeState) => void) {
   listeners.add(fn);
   fn(bridgeState);
@@ -227,20 +346,119 @@ export function isGemRendererActiveForProduct(productId?: string) {
   return isGemRendererOverlayReady(productId);
 }
 
-/** True only when overlay camera is synced and gem mesh is actually replaced. */
+/** True when overlay camera is synced and gem mesh is replaced. */
 export function isGemRendererOverlayReady(productId?: string) {
-  if (bridgeState.mode !== "gem" || !bridgeState.overlayReady) return false;
+  if (bridgeState.mode !== "active" || !bridgeState.cameraSyncOk) return false;
   if (!productId) return true;
   return bridgeState.productId === productId;
 }
 
-export function getGemIntegrationDiagnostics() {
+/** Primary gem slot — used to skip PBR approx when GemRenderer owns the stone. */
+export function getGemPrimaryMaterialIndex(): number | null {
+  if (
+    bridgeState.mode === "idle" ||
+    bridgeState.mode === "error" ||
+    bridgeState.mode === "fallback"
+  ) {
+    return null;
+  }
+
+  let candidates: GemCandidateMesh[] | undefined;
+  let primaryKey: string | undefined;
+
+  if (bridgeState.mode === "active") {
+    candidates = bridgeState.candidates;
+    primaryKey = bridgeState.primaryKey;
+  } else if (bridgeState.mode === "loading" && activeKey) {
+    const prepared = preparedAttachByKey.get(cacheKey(activeKey));
+    candidates = activeSession?.candidates ?? prepared?.candidates;
+    primaryKey = activeSession?.primaryKey ?? prepared?.primaryKey;
+  }
+
+  if (!candidates?.length || !primaryKey) return null;
+  const hit = candidates.find((c) => c.meshKey === primaryKey);
+  return hit?.materialIndex ?? null;
+}
+
+/** Skip legacy PBR gem optical approx on primary gem mesh slot while GemRenderer is active. */
+export function shouldSkipPbrGemForMaterialSlot(
+  materialIndex: number,
+  setting: Partial<MaterialSetting> | null | undefined,
+): boolean {
+  if (!isGemRendererIntegrationEnabled()) return false;
+  if (!shouldUseGemRendererForSetting(setting)) return false;
+  if (bridgeState.mode !== "active" && bridgeState.mode !== "loading") return false;
+  const primary = getGemPrimaryMaterialIndex();
+  if (primary != null) return primary === materialIndex;
+  return false;
+}
+
+/** @deprecated Mesh-level hide is authoritative — do not skip whole material slot apply. */
+export function shouldDeferGemSlotToRenderer(
+  materialIndex: number,
+  setting: Partial<MaterialSetting> | null | undefined,
+): boolean {
+  return shouldSkipPbrGemForMaterialSlot(materialIndex, setting);
+}
+
+export function isGemPrimaryMeshHidden(): boolean {
+  return Boolean(activeSession?.hiddenMeshes.length && activeSession.gemRendererActive);
+}
+
+export function getGemIntegrationDebugOverlay() {
+  const setting = activeSession
+    ? resolvePrimaryGemMaterialSetting(
+        lastAttachInput?.allMaterialSettings,
+        activeSession.candidates,
+        activeSession.primaryKey,
+      )
+    : null;
+  const env = activeSession?.environment ?? lastAttachInput?.environment ?? null;
+  const phase = bridgeState.phase ?? "idle";
+  const triCount = activeSession?.candidates.find(
+    (c) => c.meshKey === activeSession.primaryKey,
+  )?.suitability.triangleCount;
   return {
-    bridgeState,
+    phase,
+    gemMode:
+      bridgeState.mode === "active" && activeSession?.gemRendererActive
+        ? "GEM ACTIVE"
+        : bridgeState.mode === "loading"
+          ? "GEM SESSION LOADING"
+          : bridgeState.mode === "fallback"
+            ? "GEM FALLBACK"
+            : bridgeState.mode === "error"
+              ? "GEM ERROR"
+              : isGemRendererIntegrationEnabled()
+                ? preparedAttachByKey.size > 0
+                  ? "GEM DETECTED"
+                  : "GEM OFF"
+                : "GEM OFF",
+    gemType: setting?.gemstoneType ?? "—",
+    gemMesh: activeSession?.primaryKey ?? "—",
+    gemMeshName: activeSession?.primaryMeshName ?? "—",
+    triangleCount: triCount ?? "—",
+    materialName:
+      activeSession?.candidates.find((c) => c.meshKey === activeSession?.primaryKey)
+        ?.materialIndex != null
+        ? String(
+            lastAttachInput?.materialNames?.[
+              activeSession.candidates.find((c) => c.meshKey === activeSession!.primaryKey)!
+                .materialIndex!
+            ] ?? "—",
+          )
+        : "—",
+    gemContract: formatGemContractSummary(setting),
+    gemRendererActive: Boolean(activeSession?.gemRendererActive),
+    originalMeshHidden: isGemPrimaryMeshHidden(),
+    cameraSyncOk: Boolean(activeSession?.cameraSyncOk),
+    environmentSynced: env?.url ?? "—",
+    environmentIntensity: env?.intensity ?? null,
+    environmentExposure: env?.exposure ?? null,
+    qualityTier: activeSession?.renderer.getParams?.()?.qualityTier ?? "—",
     cacheEntries: sessionCache.stats().size,
     queuePending: globalAssetLoadQueue.getStats().pending,
     queueActive: globalAssetLoadQueue.getStats().active,
-    warmProductId: sessionCache.stats().pinned,
   };
 }
 
@@ -254,22 +472,123 @@ export function deactivateGemProduct(productId?: string) {
     activeSession = null;
   }
   if (!productId || activeKey?.productId === productId) {
-    bridgeState = { mode: "idle" };
+    if (activeKey) preparedAttachByKey.delete(cacheKey(activeKey));
+    bridgeState = { mode: "idle", phase: "idle" };
     activeKey = null;
+    lastAttachInput = null;
     emit();
   }
 }
 
 export function disposeAllGemSessions() {
   sessionCache.disposeAllExcept(null);
+  preparedAttachByKey.clear();
   if (activeSession) {
     restoreHiddenMeshes(activeSession);
     activeSession = null;
   }
   stopRenderLoop();
   activeKey = null;
-  bridgeState = { mode: "idle" };
+  lastAttachInput = null;
+  bridgeState = { mode: "idle", phase: "idle" };
   emit();
+}
+
+/**
+ * Live Material UI → GemRenderer sync. No GLB re-fetch; reuses cached session.
+ */
+export async function syncGemMaterialFromSettings(
+  allMaterialSettings: Record<number, MaterialSetting> | undefined,
+): Promise<void> {
+  if (!activeKey || !lastAttachInput) return;
+
+  lastAttachInput = { ...lastAttachInput, allMaterialSettings };
+  const ck = cacheKey(activeKey);
+  const prepared = preparedAttachByKey.get(ck);
+  const candidates = activeSession?.candidates ?? prepared?.candidates;
+  const primaryKey = activeSession?.primaryKey ?? prepared?.primaryKey;
+  if (!candidates?.length || !primaryKey) return;
+
+  const setting = resolvePrimaryGemMaterialSetting(
+    allMaterialSettings,
+    candidates,
+    primaryKey,
+  );
+
+  if (!shouldUseGemRendererForSetting(setting)) {
+    pauseGemRendererSession(
+      setting?.type === "standard"
+        ? "Standard material — PBR path"
+        : "Unsupported gem material configuration",
+    );
+    return;
+  }
+
+  const sig = materialSettingGemSignature(setting);
+  const env = lastAttachInput.environment;
+
+  if (activeSession?.renderer && activeSession.gemRendererActive) {
+    if (activeSession.materialSig !== sig) {
+      applyMaterialParamsToRenderer(activeSession.renderer, setting!, env);
+      activeSession.materialSig = sig;
+    }
+    return;
+  }
+
+  const cached = sessionCache.get(ck);
+  if (cached?.renderer) {
+    applyMaterialParamsToRenderer(cached.renderer, setting!, env);
+    cached.materialSig = sig;
+    cached.gemRendererActive = true;
+    cached.scene = lastAttachInput.scene;
+    cached.viewer = lastAttachInput.viewer;
+    cached.environment = lastAttachInput.environment;
+    activeSession = cached;
+    resumeExistingSession(cached, activeKey.productId);
+    return;
+  }
+
+  if (!prepared) return;
+
+  bridgeState = { mode: "loading", phase: "loading", productId: activeKey.productId };
+  emit();
+
+  try {
+    const entry = await globalAssetLoadQueue.enqueue(
+      activeKey.productId,
+      "gem-bridge-activate",
+      90,
+      async (signal) => {
+        if (signal.aborted) throw new DOMException("aborted", "AbortError");
+        return createGemRendererSession(
+          { ...prepared.input, allMaterialSettings },
+          candidates,
+          primaryKey,
+          setting!,
+        );
+      },
+    );
+
+    if (!entry) {
+      publishFallbackState(activeKey.productId, "Gem mesh unsuitable for GemRenderer");
+      return;
+    }
+
+    sessionCache.set(ck, activeKey.productId, entry, 32 * 1024 * 1024);
+    activeSession = entry;
+    startRenderLoop(lastAttachInput.viewer, entry, activeKey.productId);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!msg.includes("aborted")) {
+      bridgeState = {
+        mode: "error",
+        phase: "error",
+        productId: activeKey.productId,
+        message: msg,
+      };
+      emit();
+    }
+  }
 }
 
 /**
@@ -280,27 +599,74 @@ export async function attachGemBridge(
   input: GemBridgeAttachInput,
 ): Promise<GemBridgeState> {
   activeKey = input.productKey;
+  lastAttachInput = input;
   const ck = cacheKey(input.productKey);
   sessionCache.pinActive(ck);
 
-  const cached = sessionCache.get(ck);
-  if (cached) {
-    activeSession = cached;
-    cached.scene = input.scene;
-    startRenderLoop(input.viewer, cached, input.productKey.productId);
+  const candidates = analyzeGemCandidatesFromGlbScene(
+    input.scene,
+    input.productKey.productId,
+    {
+      gemMeshHints: input.gemMeshHints,
+      materialNames: input.materialNames,
+    },
+  );
+  const primary = pickPrimaryGemCandidate(candidates);
+
+  if (!primary) {
     bridgeState = {
-      mode: "gem",
+      mode: "fallback",
+      phase: "fallback",
       productId: input.productKey.productId,
-      candidates: cached.candidates,
-      primaryKey: cached.primaryKey,
-      overlayReady: cached.overlayReady,
+      reason: "No supported gemstone mesh",
     };
     emit();
     return bridgeState;
   }
 
-  bridgeState = { mode: "loading", productId: input.productKey.productId };
+  preparedAttachByKey.set(ck, {
+    input,
+    candidates,
+    primaryKey: primary.meshKey,
+  });
+
+  bridgeState = {
+    mode: "loading",
+    phase: "loading",
+    productId: input.productKey.productId,
+  };
   emit();
+
+  const materialSetting = resolvePrimaryGemMaterialSetting(
+    input.allMaterialSettings,
+    candidates,
+    primary.meshKey,
+  );
+
+  if (!shouldUseGemRendererForSetting(materialSetting)) {
+    bridgeState = {
+      mode: "fallback",
+      phase: "fallback",
+      productId: input.productKey.productId,
+      reason: "Primary gem slot is not a gemstone material",
+    };
+    emit();
+    return bridgeState;
+  }
+
+  const cached = sessionCache.get(ck);
+  if (cached) {
+    cached.scene = input.scene;
+    cached.viewer = input.viewer;
+    cached.environment = input.environment;
+    applyMaterialParamsToRenderer(cached.renderer, materialSetting!, input.environment);
+    cached.materialSig = materialSettingGemSignature(materialSetting);
+    cached.gemRendererActive = true;
+    activeSession = cached;
+    hideGemMeshes(cached, input.scene, cached.primaryKey);
+    startRenderLoop(input.viewer, cached, input.productKey.productId);
+    return bridgeState;
+  }
 
   try {
     const entry = await globalAssetLoadQueue.enqueue(
@@ -309,73 +675,19 @@ export async function attachGemBridge(
       100,
       async (signal) => {
         if (signal.aborted) throw new DOMException("aborted", "AbortError");
-
-        const report = analyzeObject3D(input.scene, input.productKey.productId);
-        const candidates = analyzeGemCandidatesFromGlbScene(
-          input.scene,
-          input.productKey.productId,
-          {
-            gemMeshHints: input.gemMeshHints,
-            materialNames: input.materialNames,
-          },
-        );
-
-        const primary = pickPrimaryGemCandidate(candidates);
-        if (!primary) return null;
-
-        const sourceMesh = findSceneMeshByKey(input.scene, primary.meshKey);
-        if (!sourceMesh) return null;
-
-        const reportPrim =
-          report.primitives.find(
-            (p) => `${p.meshName}#${p.primitiveIndex}` === primary.meshKey,
-          ) ?? report.primitives[0];
-
-        const gem = new GemRenderer({
-          canvas: input.canvas,
-          integration: true,
-        });
-
-        await gem.prepareForIntegration(input.environment.url);
-        if (signal.aborted) {
-          gem.dispose();
-          throw new DOMException("aborted", "AbortError");
-        }
-
-        await gem.applyFromAr360Environment(input.environment);
-        applyProductionQuality(gem, input.environment.exposure);
-
-        try {
-          gem.packFromSceneMesh(
-            sourceMesh,
-            primary.meshKey,
-            input.productKey.productId,
-            reportPrim,
-          );
-        } catch {
-          gem.dispose();
-          return null;
-        }
-
-        const session: SessionEntry = {
-          renderer: gem,
+        return createGemRendererSession(
+          input,
           candidates,
-          primaryKey: primary.meshKey,
-          hiddenMeshes: [],
-          overlayReady: false,
-          scene: input.scene,
-          syncOkFrames: 0,
-          syncMissFrames: 0,
-          dispose: () => disposeSessionEntry(session),
-        };
-
-        return session;
+          primary.meshKey,
+          materialSetting!,
+        );
       },
     );
 
     if (!entry) {
       bridgeState = {
-        mode: "pbr",
+        mode: "fallback",
+        phase: "fallback",
         productId: input.productKey.productId,
         reason: "No supported gemstone mesh",
       };
@@ -386,23 +698,15 @@ export async function attachGemBridge(
     sessionCache.set(ck, input.productKey.productId, entry, 32 * 1024 * 1024);
     activeSession = entry;
     startRenderLoop(input.viewer, entry, input.productKey.productId);
-
-    bridgeState = {
-      mode: "gem",
-      productId: input.productKey.productId,
-      candidates: entry.candidates,
-      primaryKey: entry.primaryKey,
-      overlayReady: false,
-    };
-    emit();
     return bridgeState;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.includes("aborted") || msg.includes("Abort")) {
-      bridgeState = { mode: "idle" };
+      bridgeState = { mode: "idle", phase: "idle" };
     } else {
       bridgeState = {
         mode: "error",
+        phase: "error",
         productId: input.productKey.productId,
         message: msg,
       };
@@ -414,10 +718,74 @@ export async function attachGemBridge(
 
 /** Update HDRI when editor changes environment — active product only. */
 export async function syncGemEnvironment(env: Ar360EnvironmentSource) {
-  if (!activeSession) return;
+  if (!activeSession?.renderer || !activeSession.gemRendererActive) return;
+  activeSession.environment = env;
+  if (lastAttachInput) lastAttachInput = { ...lastAttachInput, environment: env };
+  const setting = resolvePrimaryGemMaterialSetting(
+    lastAttachInput?.allMaterialSettings,
+    activeSession.candidates,
+    activeSession.primaryKey,
+  );
   try {
     await activeSession.renderer.applyFromAr360Environment(env);
+    if (setting) {
+      applyMaterialParamsToRenderer(activeSession.renderer, setting, env);
+    } else {
+      activeSession.renderer.setParams({
+        environmentIntensity: 1,
+        environmentRotation: env.rotationRadians,
+        exposure: resolveIntegrationExposure(env),
+      });
+    }
   } catch {
     /* fallback — keep PBR visible underneath */
   }
+}
+
+export function getGemIntegrationDiagnostics() {
+  const setting = activeSession
+    ? resolvePrimaryGemMaterialSetting(
+        lastAttachInput?.allMaterialSettings,
+        activeSession.candidates,
+        activeSession.primaryKey,
+      )
+    : null;
+  return {
+    bridgeState,
+    cacheEntries: sessionCache.stats().size,
+    queuePending: globalAssetLoadQueue.getStats().pending,
+    queueActive: globalAssetLoadQueue.getStats().active,
+    warmProductId: sessionCache.stats().pinned,
+    uiRenderer: buildGemUiRendererDiagnostic(
+      setting,
+      isGemRendererOverlayReady(),
+      Boolean(activeSession?.gemRendererActive),
+    ),
+    overlay: getGemIntegrationDebugOverlay(),
+  };
+}
+
+/** Dev diagnostic: GEM UI → RENDERER */
+export function getGemUiRendererDiagnostic() {
+  if (!activeSession) return buildGemUiRendererDiagnostic(null, false, false);
+  const setting = resolvePrimaryGemMaterialSetting(
+    lastAttachInput?.allMaterialSettings,
+    activeSession.candidates,
+    activeSession.primaryKey,
+  );
+  return buildGemUiRendererDiagnostic(
+    setting,
+    isGemRendererOverlayReady(),
+    Boolean(activeSession?.gemRendererActive),
+  );
+}
+
+/** Test hook — count active GemRenderer instances. */
+export function __gemBridgeTestGetActiveRendererCount(): number {
+  return activeSession?.renderer && activeSession.gemRendererActive ? 1 : 0;
+}
+
+/** Test hook — whether attach prepared context without second fetch. */
+export function __gemBridgeTestHasPreparedAttach(productKey: ActiveProductKey): boolean {
+  return preparedAttachByKey.has(cacheKey(productKey));
 }

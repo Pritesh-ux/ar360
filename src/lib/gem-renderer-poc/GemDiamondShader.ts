@@ -199,6 +199,7 @@ uniform int uEnableDispersion;
 uniform int uEnableAbsorption;
 uniform int uEnableRefraction;
 uniform int uDebugMode;
+uniform int uOverlayMode;
 uniform float uFrameSeed;
 uniform int uWavelengthMode; // 0=off/single, 3=rgb3
 uniform int uEarlyTermination;
@@ -604,6 +605,22 @@ void main() {
   float iorB = uIorRGB.z;
   bool useDisp = uWavelengthMode == 3 && uDebugMode == 0;
 
+  // Integration overlay: skip pixels that do not hit gem geometry (keep model-viewer PBR).
+  if (uOverlayMode == 1 && uDebugMode == 0) {
+    vec3 rdWorld = worldRayDir(gl_FragCoord.xy, vec2(0.5));
+    vec3 rd = normalize((uGemInvMatrix * vec4(rdWorld, 0.0)).xyz);
+    float tHit;
+    vec3 nFace;
+    int triHit;
+    vec3 bary;
+    vec3 nGeom;
+    int triProbe = 0;
+    if (!closestHitFull(camGem, rd, T_MIN, INFINITY, tHit, nFace, triHit, bary, nGeom, triProbe)) {
+      fragColor = vec4(0.0);
+      return;
+    }
+  }
+
   // Geometry diagnostic modes (primary hit only — no beauty path)
   if (uDebugMode >= 7) {
     vec3 rdWorld = worldRayDir(gl_FragCoord.xy, vec2(0.5));
@@ -688,7 +705,8 @@ void main() {
   }
 
   vec3 color = (sum / float(max(spp, 1))) * uExposure;
-  fragColor = vec4(color, testsNorm);
+  float alpha = uOverlayMode == 1 ? 1.0 : testsNorm;
+  fragColor = vec4(color, alpha);
 }
 `;
 
@@ -710,6 +728,7 @@ export type GemShaderUniforms = {
     gemInv: Matrix4,
     resolution: Vector2,
   ) => void;
+  setOverlayMode: (enabled: boolean) => void;
   applyParams: (params: GemPocParams) => void;
   setTime: (t: number) => void;
   dispose: () => void;
@@ -751,6 +770,7 @@ export function createGemDiamondMaterial(): GemShaderUniforms {
       uEnableAbsorption: { value: 1 },
       uEnableRefraction: { value: 1 },
       uDebugMode: { value: 0 },
+      uOverlayMode: { value: 0 },
       uFrameSeed: { value: 0 },
       uWavelengthMode: { value: 3 },
       uEarlyTermination: { value: 1 },
@@ -760,6 +780,7 @@ export function createGemDiamondMaterial(): GemShaderUniforms {
     depthWrite: false,
     depthTest: false,
     toneMapped: true,
+    transparent: true,
   });
 
   function wavelengthIORCpu(
@@ -800,6 +821,9 @@ export function createGemDiamondMaterial(): GemShaderUniforms {
       material.uniforms.uInvView.value.copy(invView);
       material.uniforms.uGemInvMatrix.value.copy(gemInv);
       material.uniforms.uResolution.value.copy(resolution);
+    },
+    setOverlayMode(enabled: boolean) {
+      material.uniforms.uOverlayMode.value = enabled ? 1 : 0;
     },
     applyParams(params) {
       material.uniforms.uIOR.value = params.ior;

@@ -24,6 +24,9 @@ import {
 /** Soft cap — BVH makes denser GLBs viable; still bounded for mobile. */
 export const GEM_POC_MAX_TRIANGLES = 4096;
 
+/** POC reference view-fit target — used for integration normalization only. */
+export const REFERENCE_CHARACTERISTIC_LENGTH = 1.6;
+
 export type PackedGemMesh = {
   triangleTexture: DataTexture;
   triangleCount: number;
@@ -32,10 +35,15 @@ export type PackedGemMesh = {
   center: Vector3;
   radius: number;
   characteristicLength: number;
+  /** World-space center preserved for integration camera transform. */
+  worldCenter: Vector3;
+  /** Mesh-local bounds center — integration uses live matrixWorld each frame. */
+  localCenter: Vector3;
+  /** Scale applied after centering (1 = none). Integration maps world → local. */
+  normalizationScale: number;
   truncated: boolean;
   sourceLabel: string;
   bvh: GemBvhHandle | null;
-  /** Centered positions retained for rebuild / diagnostics. */
   centeredPositions: Float32Array;
 };
 
@@ -142,11 +150,108 @@ export function adaptMeshToGem(
     center,
     radius: Math.max(radius, 1e-4),
     characteristicLength: Math.max(size.x, size.y, size.z, 1e-4),
+    worldCenter: center.clone(),
+    localCenter: center.clone(),
+    normalizationScale: 1,
     truncated,
     sourceLabel,
     bvh,
     centeredPositions: centered,
   };
+}
+
+/**
+ * Pack a ModelViewer scene mesh for integration overlay.
+ * Mesh-local vertices → center → POC reference normalization.
+ * Live mesh.matrixWorld is applied each frame (model-viewer target pan/orbit).
+ */
+export function adaptMeshToGemFromScene(
+  mesh: Mesh,
+  sourceLabel = "mesh",
+  targetCharacteristicLength = REFERENCE_CHARACTERISTIC_LENGTH,
+): PackedGemMesh {
+  mesh.updateWorldMatrix(true, false);
+  const localMatrix = new Matrix4();
+  const { positions, count: rawCount } = geometryWorldTriangles(
+    mesh.geometry,
+    localMatrix,
+  );
+  const truncated = rawCount > GEM_POC_MAX_TRIANGLES;
+  const triangleCount = Math.min(rawCount, GEM_POC_MAX_TRIANGLES);
+  const used = truncated ? positions.subarray(0, triangleCount * 9) : positions;
+
+  const bounds = new Box3();
+  const v = new Vector3();
+  for (let i = 0; i < triangleCount * 3; i++) {
+    v.set(used[i * 3], used[i * 3 + 1], used[i * 3 + 2]);
+    bounds.expandByPoint(v);
+  }
+  const localCenter = bounds.getCenter(new Vector3());
+  const size = bounds.getSize(new Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z, 1e-6);
+  const normalizationScale = targetCharacteristicLength / maxDim;
+
+  const centered = new Float32Array(triangleCount * 9);
+  for (let i = 0; i < triangleCount * 3; i++) {
+    centered[i * 3] = (used[i * 3] - localCenter.x) * normalizationScale;
+    centered[i * 3 + 1] = (used[i * 3 + 1] - localCenter.y) * normalizationScale;
+    centered[i * 3 + 2] = (used[i * 3 + 2] - localCenter.z) * normalizationScale;
+  }
+
+  const triangleTexture = packTriangleTexture(centered, triangleCount);
+  const boundsMin = new Vector3(
+    (bounds.min.x - localCenter.x) * normalizationScale,
+    (bounds.min.y - localCenter.y) * normalizationScale,
+    (bounds.min.z - localCenter.z) * normalizationScale,
+  );
+  const boundsMax = new Vector3(
+    (bounds.max.x - localCenter.x) * normalizationScale,
+    (bounds.max.y - localCenter.y) * normalizationScale,
+    (bounds.max.z - localCenter.z) * normalizationScale,
+  );
+  const normSize = boundsMax.clone().sub(boundsMin);
+  const radius = Math.max(normSize.x, normSize.y, normSize.z) * 0.5;
+
+  const worldCenter = localCenter.clone().applyMatrix4(mesh.matrixWorld);
+
+  let bvh: GemBvhHandle | null = null;
+  try {
+    bvh = buildGemBvh(centered, triangleCount);
+  } catch (err) {
+    console.warn("[GemMeshAdapter] BVH build failed; linear fallback only", err);
+  }
+
+  return {
+    triangleTexture,
+    triangleCount,
+    boundsMin,
+    boundsMax,
+    center: new Vector3(0, 0, 0),
+    radius: Math.max(radius, 1e-4),
+    characteristicLength: targetCharacteristicLength,
+    worldCenter,
+    localCenter: localCenter.clone(),
+    normalizationScale,
+    truncated,
+    sourceLabel,
+    bvh,
+    centeredPositions: centered,
+  };
+}
+
+/** World → normalized gem space: S * T(-localCenter) * inv(meshWorld). */
+export function buildIntegrationGemInvMatrix(
+  meshWorldMatrix: Matrix4,
+  localCenter: Vector3,
+  normalizationScale: number,
+): Matrix4 {
+  const invMesh = meshWorldMatrix.clone().invert();
+  const m = new Matrix4().copy(invMesh);
+  m.premultiply(new Matrix4().makeTranslation(-localCenter.x, -localCenter.y, -localCenter.z));
+  m.premultiply(
+    new Matrix4().makeScale(normalizationScale, normalizationScale, normalizationScale),
+  );
+  return m;
 }
 
 export function disposePackedGem(packed: PackedGemMesh | null) {
