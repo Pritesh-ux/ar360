@@ -57,6 +57,19 @@ export async function loginAction(formData: FormData) {
 
   if (!email || !password) withError(loginPath, "Please enter email and password.");
 
+  const { evaluateCustomerLoginPolicy } = await import("@/lib/security/staging-policy");
+  const loginPolicy = evaluateCustomerLoginPolicy({ email });
+  if (loginPolicy.allowed === false) {
+    void writeLoginLog({
+      actorType: "customer",
+      email,
+      status: "blocked",
+      reason: "staging_login_blocked",
+      ...meta,
+    }).catch(() => {});
+    withError(loginPath, loginPolicy.message);
+  }
+
   let user;
   try {
     user = await findUserByEmail(email);

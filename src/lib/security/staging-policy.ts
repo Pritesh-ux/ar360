@@ -7,6 +7,9 @@ import { isStagingDeployTarget, type EnvLike } from "@/lib/billing/razorpay-stag
 export const STAGING_SIGNUP_DISABLED_MESSAGE =
   "Registration is currently disabled on staging.";
 
+export const STAGING_LOGIN_DISABLED_MESSAGE =
+  "Customer login is currently disabled on staging.";
+
 export type StagingSignupPolicyResult =
   | { allowed: true }
   | {
@@ -15,9 +18,16 @@ export type StagingSignupPolicyResult =
       code: "STAGING_SIGNUP_DISABLED";
     };
 
-/** Comma-separated emails permitted to register on staging (optional QA allowlist). */
-export function parseStagingSignupAllowlist(env: EnvLike = process.env): Set<string> {
-  const raw = String(env.STAGING_SIGNUP_ALLOWLIST || "").trim();
+export type StagingLoginPolicyResult =
+  | { allowed: true }
+  | {
+      allowed: false;
+      message: string;
+      code: "STAGING_LOGIN_DISABLED";
+    };
+
+function parseEmailAllowlist(rawValue: string | undefined): Set<string> {
+  const raw = String(rawValue || "").trim();
   if (!raw) return new Set();
   return new Set(
     raw
@@ -25,6 +35,20 @@ export function parseStagingSignupAllowlist(env: EnvLike = process.env): Set<str
       .map((entry) => entry.trim().toLowerCase())
       .filter(Boolean),
   );
+}
+
+/** Comma-separated emails permitted to register on staging (optional; empty = no public signup). */
+export function parseStagingSignupAllowlist(env: EnvLike = process.env): Set<string> {
+  return parseEmailAllowlist(env.STAGING_SIGNUP_ALLOWLIST);
+}
+
+/**
+ * Comma-separated emails permitted to use customer login on staging.
+ * Empty allowlist = all customer logins blocked (fail closed).
+ * Master Admin login is a separate flow and is not gated by this list.
+ */
+export function parseStagingLoginAllowlist(env: EnvLike = process.env): Set<string> {
+  return parseEmailAllowlist(env.STAGING_LOGIN_ALLOWLIST);
 }
 
 /**
@@ -52,6 +76,34 @@ export function evaluatePublicSignupPolicy(input: {
     allowed: false,
     message: STAGING_SIGNUP_DISABLED_MESSAGE,
     code: "STAGING_SIGNUP_DISABLED",
+  };
+}
+
+/**
+ * Customer dashboard login policy (not Master Admin).
+ * Staging: only STAGING_LOGIN_ALLOWLIST emails may log in. Empty list blocks everyone.
+ * Production: unchanged.
+ */
+export function evaluateCustomerLoginPolicy(input: {
+  email?: string;
+  env?: EnvLike;
+}): StagingLoginPolicyResult {
+  const env = input.env ?? process.env;
+  if (!isStagingDeployTarget(env)) {
+    return { allowed: true };
+  }
+
+  const email = String(input.email || "")
+    .trim()
+    .toLowerCase();
+  if (email && parseStagingLoginAllowlist(env).has(email)) {
+    return { allowed: true };
+  }
+
+  return {
+    allowed: false,
+    message: STAGING_LOGIN_DISABLED_MESSAGE,
+    code: "STAGING_LOGIN_DISABLED",
   };
 }
 

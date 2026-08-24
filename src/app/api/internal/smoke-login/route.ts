@@ -57,6 +57,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
   }
 
+  const { evaluateCustomerLoginPolicy } = await import("@/lib/security/staging-policy");
+  const loginPolicy = evaluateCustomerLoginPolicy({ email });
+  if (loginPolicy.allowed === false) {
+    return NextResponse.json(
+      { error: loginPolicy.message, code: loginPolicy.code },
+      { status: 403 },
+    );
+  }
+
   if (user.status === "Deleted" || (user.status !== "Active" && user.status !== "Suspended")) {
     return NextResponse.json({ error: "Account not active" }, { status: 403 });
   }

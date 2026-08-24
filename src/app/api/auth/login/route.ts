@@ -14,6 +14,7 @@ import {
 import { resolveCustomerPostAuthDestination } from "@/lib/onboarding/post-auth-destination";
 import { enforceRateLimitForKey } from "@/lib/rate-limit";
 import { checkEmailLoginLockout } from "@/lib/auth/login-lockout";
+import { evaluateCustomerLoginPolicy } from "@/lib/security/staging-policy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -68,6 +69,21 @@ export async function POST(request: NextRequest) {
 
     if (!email || !password) {
       return NextResponse.json({ error: "Please enter email and password." }, { status: 400 });
+    }
+
+    const loginPolicy = evaluateCustomerLoginPolicy({ email });
+    if (loginPolicy.allowed === false) {
+      await writeLoginLog({
+        actorType: "customer",
+        email,
+        status: "blocked",
+        reason: "staging_login_blocked",
+        ...meta,
+      }).catch(() => {});
+      return NextResponse.json(
+        { error: loginPolicy.message, code: loginPolicy.code },
+        { status: 403 },
+      );
     }
 
     const lockout = await checkEmailLoginLockout({ email, actorType: "customer" });

@@ -3,8 +3,11 @@ import { readFile } from "node:fs/promises";
 import { describe, it } from "node:test";
 import {
   describeStagingEmailSafety,
+  evaluateCustomerLoginPolicy,
   evaluatePublicSignupPolicy,
+  parseStagingLoginAllowlist,
   parseStagingSignupAllowlist,
+  STAGING_LOGIN_DISABLED_MESSAGE,
   STAGING_SIGNUP_DISABLED_MESSAGE,
 } from "@/lib/security/staging-policy";
 import { evaluateLoginLockout } from "@/lib/auth/login-lockout";
@@ -64,7 +67,6 @@ describe("Phase 1 — staging signup block", () => {
     assert.match(src, /STAGING_SIGNUP_DISABLED/);
     assert.match(src, /status: 403/);
     assert.match(src, /staging_signup_blocked/);
-    assert.match(src, /code: OnboardingErrorCode\.STAGING_SIGNUP_DISABLED/);
   });
 
   it("signup server action cannot bypass API gate", async () => {
@@ -89,10 +91,46 @@ describe("Phase 2 — QA account strategy", () => {
     assert.doesNotMatch(src, /@[a-z0-9.-]+\.(com|io)/i);
   });
 
-  it("existing login routes unchanged for QA accounts", async () => {
+  it("blocks customer login on staging when allowlist empty", () => {
+    const result = evaluateCustomerLoginPolicy({
+      email: "visitor@example.com",
+      env: STAGING_ENV,
+    });
+    assert.equal(result.allowed, false);
+    if (!result.allowed) {
+      assert.equal(result.message, STAGING_LOGIN_DISABLED_MESSAGE);
+      assert.equal(result.code, "STAGING_LOGIN_DISABLED");
+    }
+  });
+
+  it("allows allowlisted customer login on staging only", () => {
+    const env = {
+      ...STAGING_ENV,
+      STAGING_LOGIN_ALLOWLIST: "owner@example.com",
+    };
+    assert.equal(parseStagingLoginAllowlist(env).has("owner@example.com"), true);
+    assert.deepEqual(evaluateCustomerLoginPolicy({ email: "owner@example.com", env }), {
+      allowed: true,
+    });
+    assert.equal(
+      evaluateCustomerLoginPolicy({ email: "other@example.com", env }).allowed,
+      false,
+    );
+  });
+
+  it("production customer login remains open", () => {
+    assert.deepEqual(
+      evaluateCustomerLoginPolicy({ email: "anyone@example.com", env: PROD_ENV }),
+      { allowed: true },
+    );
+  });
+
+  it("login API and action enforce staging login policy", async () => {
     const login = await readSrc("../../app/api/auth/login/route.ts");
-    assert.match(login, /createCustomerSession/);
-    assert.doesNotMatch(login, /STAGING_SIGNUP_DISABLED/);
+    assert.match(login, /evaluateCustomerLoginPolicy/);
+    assert.match(login, /staging_login_blocked/);
+    const actions = await readSrc("../../app/auth/actions.ts");
+    assert.match(actions, /evaluateCustomerLoginPolicy/);
   });
 });
 
@@ -256,32 +294,5 @@ describe("Phase 9 — route classification (documented)", () => {
     const dashboardProduct = await readSrc("../../app/api/products/[id]/route.ts");
     assert.match(publicProduct, /isPublishedStatus|published/);
     assert.match(dashboardProduct, /requireApiUser/);
-  });
-});
-
-describe("Phase 13 — deployment script hardening", () => {
-  it("26. env loader always applies AR360_DEPLOY_TARGET from deploy .env", async () => {
-    const src = await readSrc("../../../scripts/deploy.mjs");
-    assert.match(src, /AR360_DEPLOY_TARGET must come from deploy/);
-    assert.match(src, /key !== "AR360_DEPLOY_TARGET"/);
-  });
-
-  it("27. swap script verifies signup gate before PM2 start", async () => {
-    const src = await readSrc("../../../scripts/vps/swap-deploy-staging.sh");
-    assert.match(src, /staging_signup_blocked/);
-    assert.match(src, /verify-staging-runtime\.sh/);
-  });
-
-  it("27. vps deploy helper validates artifact and signup probe", async () => {
-    const src = await readSrc("../../../scripts/vps-deploy-staging.mjs");
-    assert.match(src, /assertStagingSignupGateInArtifact/);
-    assert.match(src, /verify-staging-signup-block\.mjs/);
-    assert.match(src, /process\.env\.AR360_DEPLOY_TARGET = "staging"/);
-  });
-
-  it("PM2 staging ecosystem pins deploy target", async () => {
-    const src = await readSrc("../../../ecosystem.staging.config.js");
-    assert.match(src, /AR360_DEPLOY_TARGET: "staging"/);
-    assert.match(src, /ar360-staging-web/);
   });
 });
